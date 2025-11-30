@@ -1,0 +1,47 @@
+name: YeniAsya
+description: "Yeni Asya Mobil Uygulaması"
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.9.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  flutter_launcher_icons: ^0.14.1
+  provider: ^6.0.5
+  font_awesome_flutter: ^10.6.0
+  http: ^1.2.1 
+  bcrypt: ^1.1.3
+  crypto: ^3.0.3
+  fluttertoast: ^8.2.4
+  shared_preferences: ^2.2.2
+  http_parser: ^4.0.2
+  syncfusion_flutter_pdfviewer: ^31.2.15
+  webview_flutter: ^4.4.2
+  file_picker: ^8.1.2
+  path: ^1.9.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+    
+  flutter_web_plugins:
+    sdk: flutter
+
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/
+
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: truew  
+  image_path: assets/images/logo.png
+  remove_alpha_ios: true
+  min_sdk_android: 21
