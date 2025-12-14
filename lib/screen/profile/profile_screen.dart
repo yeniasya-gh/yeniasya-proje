@@ -11,6 +11,8 @@ import '../../utils/route_guard.dart';
 import '../address/address_list_screen.dart';
 import '../admin/admin_panel_screen.dart';
 import '../order/order_list_screen.dart';
+import '../contact/contact_form.dart';
+import '../notification/notification_list_screen.dart';
 import 'pdf_viewer_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -149,6 +151,40 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     );
                   },
                 ),
+                const Divider(height: 1, indent: 56),
+                _menuTile(
+                  Icons.notifications_outlined,
+                  "Bildirimler",
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const NotificationListScreen(),
+                      ),
+                    );
+                  },
+                ),
+                const Divider(height: 1, indent: 56),
+                _menuTile(
+                  Icons.support_agent,
+                  "Bize Ulaşın",
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => Scaffold(
+                          appBar: AppBar(
+                            backgroundColor: Colors.white,
+                            foregroundColor: Colors.black,
+                            title: const Text("Bize Ulaşın"),
+                            elevation: 1,
+                          ),
+                          body: const SafeArea(child: ContactForm(popOnSuccess: true)),
+                        ),
+                      ),
+                    );
+                  },
+                ),
               ],
             ),
             const SizedBox(height: 30),
@@ -160,7 +196,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   onPressed: () {
                     context.read<AccessProvider>().clear();
                     auth.logout();
-                    Navigator.pop(context);
+                    Navigator.popUntil(context, (route) => route.isFirst);
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.red,

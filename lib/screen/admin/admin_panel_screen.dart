@@ -3,10 +3,13 @@ import 'admin_users_page.dart';
 import 'admin_books_page.dart';
 import 'admin_magazines_page.dart';
 import 'admin_newspapers_page.dart';
+import 'admin_notifications_page.dart';
 import 'admin_author_category_page.dart';
 import 'admin_orders_page.dart';
 import 'admin_stats_dashboard.dart';
 import 'admin_reports_page.dart';
+import 'admin_promo_codes_page.dart';
+import 'admin_reviews_page.dart';
 import '../../services/loading_manager.dart';
 
 enum AdminPage {
@@ -15,7 +18,10 @@ enum AdminPage {
   books,
   magazines,
   newspapers,
+  notifications,
+  promotions,
   orders,
+  reviews,
   reports,
   authorCategory,
   settings,
@@ -69,7 +75,10 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
                     _menuItem("Kitaplar", Icons.menu_book, AdminPage.books),
                     _menuItem("Dergiler", Icons.menu_book, AdminPage.magazines),
                     _menuItem("Gazeteler", Icons.article, AdminPage.newspapers),
+                    _menuItem("Bildirimler", Icons.notifications, AdminPage.notifications),
+                    _menuItem("Promosyon Kodları", Icons.local_offer, AdminPage.promotions),
                     _menuItem("Siparişler", Icons.receipt_long, AdminPage.orders),
+                    _menuItem("Yorumlar", Icons.reviews, AdminPage.reviews),
                     _menuItem("Raporlar", Icons.bar_chart, AdminPage.reports),
                     _menuItem("Yazar & Kategori", Icons.list, AdminPage.authorCategory),
                     _menuItem("Ayarlar", Icons.settings, AdminPage.settings),
@@ -139,8 +148,14 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
       return const AdminMagazinesPage();
     case AdminPage.newspapers:
       return const AdminNewspapersPage();
+    case AdminPage.notifications:
+      return const AdminNotificationsPage();
+    case AdminPage.promotions:
+      return const AdminPromoCodesPage();
     case AdminPage.orders:
       return const AdminOrdersPage();
+    case AdminPage.reviews:
+      return const AdminReviewsPage();
     case AdminPage.reports:
       return const AdminReportsPage();
     case AdminPage.authorCategory:

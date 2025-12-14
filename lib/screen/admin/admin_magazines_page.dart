@@ -158,7 +158,7 @@ class _AdminMagazinesPageState extends State<AdminMagazinesPage> {
     final campaignPriceCtrl = TextEditingController(
       text: magazine?["campaign_price"]?.toString() ?? "",
     );
-    String period = magazine?["period"] ?? "monthly";
+    String period = magazine?["period"] ?? "6m";
 
     Uint8List? pickedCoverBytes;
     String? pickedCoverName;
@@ -190,13 +190,10 @@ class _AdminMagazinesPageState extends State<AdminMagazinesPage> {
                   value: period,
                   decoration: const InputDecoration(labelText: "Periyot"),
                   items: const [
-                    DropdownMenuItem(value: "monthly", child: Text("Aylık")),
-                    DropdownMenuItem(
-                        value: "three_months", child: Text("3 Aylık")),
-                    DropdownMenuItem(
-                        value: "six_months", child: Text("6 Aylık")),
+                    DropdownMenuItem(value: "6m", child: Text("6 Aylık")),
+                    DropdownMenuItem(value: "12m", child: Text("12 Aylık")),
                   ],
-                  onChanged: (v) => period = v ?? "monthly",
+                  onChanged: (v) => period = v ?? "6m",
                 ),
                 TextFormField(
                   controller: coverCtrl,
@@ -576,9 +573,8 @@ class _AdminMagazinesPageState extends State<AdminMagazinesPage> {
 
   Widget _buildPeriodChip(String? period) {
     final label = switch (period) {
-      "monthly" => "Aylık",
-      "three_months" => "3 Aylık",
-      "six_months" => "6 Aylık",
+      "6m" => "6 Aylık",
+      "12m" => "12 Aylık",
       _ => "-",
     };
 

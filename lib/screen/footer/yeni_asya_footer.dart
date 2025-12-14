@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../contact/contact_form.dart';
 
 class YeniAsyaFooter extends StatelessWidget {
   const YeniAsyaFooter({super.key});
@@ -91,12 +92,7 @@ class YeniAsyaFooter extends StatelessWidget {
                 flex: 1,
                 child: _footerSection(
                   "Destek",
-                  [
-                    "Yardım Merkezi",
-                    "İletişim",
-                    "SSS",
-                    "Geri Bildirim",
-                  ],
+                  ["Yardım Merkezi", "İletişim", "SSS", "Geri Bildirim", "Bize Ulaşın"],
                   context,
                 ),
               ),
@@ -176,13 +172,30 @@ class YeniAsyaFooter extends StatelessWidget {
             padding: const EdgeInsets.symmetric(vertical: 4.0),
             child: InkWell(
               onTap: () {
-                final content = contentMap[item] ?? "Bu sayfa için içerik yakında eklenecek.";
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => StaticInfoPage(title: item, content: content),
-                  ),
-                );
+                if (item == "Bize Ulaşın") {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => Scaffold(
+                        appBar: AppBar(
+                          backgroundColor: Colors.white,
+                          foregroundColor: Colors.black,
+                          title: const Text("Bize Ulaşın"),
+                          elevation: 1,
+                        ),
+                        body: const SafeArea(child: ContactForm(popOnSuccess: true)),
+                      ),
+                    ),
+                  );
+                } else {
+                  final content = contentMap[item] ?? "Bu sayfa için içerik yakında eklenecek.";
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => StaticInfoPage(title: item, content: content),
+                    ),
+                  );
+                }
               },
               child: Text(
                 item,

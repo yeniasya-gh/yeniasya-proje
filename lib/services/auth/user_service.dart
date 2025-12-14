@@ -30,6 +30,8 @@ class UserService {
           name
           phone
           email
+          role_id
+          role { id name }
         }
       }
     ''';
@@ -90,7 +92,31 @@ class UserService {
     return AppUser.fromJson(list.first);
   }
 
-Future<AppUser?> getUserById(int id) async {
+  Future<AppUser?> getUserByEmail(String email) async {
+    const String query = r'''
+      query GetUserByEmail($email: String!) {
+        users(where: {email: {_eq: $email}}, limit: 1) {
+          id
+          name
+          phone
+          email
+          role_id
+          role { id name }
+        }
+      }
+    ''';
+
+    final data = await _hasura.graphQLRequest(
+      query: query,
+      variables: {"email": email},
+    );
+
+    final list = data["users"] as List<dynamic>? ?? [];
+    if (list.isEmpty) return null;
+    return AppUser.fromJson(list.first as Map<String, dynamic>);
+  }
+
+  Future<AppUser?> getUserById(int id) async {
   const String query = r'''
     query GetUser($id: bigint!) {
       users_by_pk(id: $id) {

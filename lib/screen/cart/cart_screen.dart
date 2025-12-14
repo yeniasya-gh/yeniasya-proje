@@ -8,9 +8,58 @@ import '../checkout/checkout_screen.dart';
 import '../../utils/safe_image.dart';
 import '../../services/upload_service.dart';
 import '../../services/auth/auth_provider.dart';
+import '../../services/promo_code_service.dart';
+import '../../services/error/error_manager.dart';
 
-class CartScreen extends StatelessWidget {
+class CartScreen extends StatefulWidget {
   const CartScreen({super.key});
+
+  @override
+  State<CartScreen> createState() => _CartScreenState();
+}
+
+class _CartScreenState extends State<CartScreen> {
+  final TextEditingController _promoCtrl = TextEditingController();
+  final PromoCodeService _promoService = PromoCodeService();
+  bool _applyingPromo = false;
+  String? _promoMessage;
+
+  @override
+  void dispose() {
+    _promoCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _applyPromo(BuildContext context) async {
+    final cart = context.read<CartProvider>();
+    final code = _promoCtrl.text.trim();
+    if (code.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Lütfen bir kod girin.")));
+      return;
+    }
+
+    setState(() {
+      _applyingPromo = true;
+      _promoMessage = null;
+    });
+
+    try {
+      final promo = await _promoService.validateAndGet(code);
+      if (promo == null) {
+        cart.clearPromo();
+        setState(() => _promoMessage = "Kod bulunamadı veya geçersiz.");
+        return;
+      }
+      cart.applyPromo(promo);
+      setState(() => _promoMessage = "${promo.code} kodu uygulandı (%${promo.discountPercent.toStringAsFixed(0)}).");
+    } catch (e) {
+      cart.clearPromo();
+      final parsed = ErrorManager.parseGraphQLError(e.toString());
+      setState(() => _promoMessage = parsed);
+    } finally {
+      if (mounted) setState(() => _applyingPromo = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -66,7 +115,7 @@ class CartScreen extends StatelessWidget {
                 horizontal: horizontalPadding,
                 vertical: 12,
               ),
-              child: _checkoutSummary(context, cart.totalPrice),
+              child: _checkoutSummary(context, cart),
             ),
     );
   }
@@ -163,50 +212,104 @@ class CartScreen extends StatelessWidget {
     );
   }
 
-  Widget _promoCodeSection() {
+  Widget _promoCodeSection(CartProvider cart) {
+    final applied = cart.appliedPromo;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
         color: const Color(0xFFF9F9F9),
         borderRadius: BorderRadius.circular(16),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: const Color(0xFFFFECEC),
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(Icons.local_offer, color: Colors.red),
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFECEC),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.local_offer, color: Colors.red),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: TextField(
+                  controller: _promoCtrl,
+                  enabled: !_applyingPromo,
+                  decoration: const InputDecoration(
+                    hintText: "Promosyon kodu girin",
+                    border: InputBorder.none,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              if (applied != null)
+                TextButton(
+                  onPressed: _applyingPromo
+                      ? null
+                      : () {
+                          cart.clearPromo();
+                          setState(() => _promoMessage = "Kod kaldırıldı.");
+                        },
+                  child: const Text(
+                    "Kaldır",
+                    style: TextStyle(color: Colors.black87, fontWeight: FontWeight.w600),
+                  ),
+                )
+              else
+                TextButton(
+                  onPressed: _applyingPromo ? null : () => _applyPromo(context),
+                  child: _applyingPromo
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text(
+                          "Uygula",
+                          style: TextStyle(color: Colors.red, fontWeight: FontWeight.w600),
+                        ),
+                ),
+            ],
           ),
-          const SizedBox(width: 12),
-          const Expanded(
-            child: TextField(
-              decoration: InputDecoration(
-                hintText: "Promosyon kodu girin",
-                border: InputBorder.none,
+          if (applied != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 8.0),
+              child: Row(
+                children: [
+                  Chip(
+                    label: Text("${applied.code}  -  %${applied.discountPercent.toStringAsFixed(0)} indirim"),
+                    backgroundColor: const Color(0xFFE8F5E9),
+                  ),
+                ],
               ),
             ),
-          ),
-          TextButton(
-            onPressed: () {},
-            child: const Text(
-              "Uygula",
-              style: TextStyle(color: Colors.red, fontWeight: FontWeight.w600),
+          if (_promoMessage != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 6.0),
+              child: Text(
+                _promoMessage!,
+                style: TextStyle(color: _promoMessage!.toLowerCase().contains("uygulandı") ? Colors.green : Colors.red),
+              ),
             ),
-          )
         ],
       ),
     );
   }
 
-  Widget _checkoutSummary(BuildContext context, double total) {
+  Widget _checkoutSummary(BuildContext context, CartProvider cart) {
     final auth = context.read<AuthProvider>();
+    final total = cart.totalPrice;
+    final discount = cart.discountAmount;
+    final payable = cart.totalAfterDiscount;
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        _promoCodeSection(),
+        _promoCodeSection(cart),
         const SizedBox(height: 12),
         Container(
           padding: const EdgeInsets.all(16),
@@ -227,11 +330,39 @@ class CartScreen extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   const Text(
-                    "Toplam Tutar",
+                    "Ara Toplam",
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                   ),
                   Text(
                     "₺${total.toStringAsFixed(2)}",
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text("İndirim", style: TextStyle(fontWeight: FontWeight.w500)),
+                  Text(
+                    discount > 0 ? "-₺${discount.toStringAsFixed(2)}" : "₺0.00",
+                    style: const TextStyle(color: Colors.green, fontWeight: FontWeight.w600),
+                  ),
+                ],
+              ),
+              const Divider(height: 20),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    "Ödenecek",
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                  ),
+                  Text(
+                    "₺${payable.toStringAsFixed(2)}",
                     style: const TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.bold,

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../services/admin/admin_magazine_service.dart';
 import '../../services/error/error_manager.dart';
 import '../../services/upload_service.dart';
+import '../../services/admin/admin_review_service.dart';
 import '../../utils/asset_image_picker.dart';
 import '../../utils/safe_image.dart';
 import '../../services/upload_service.dart';
@@ -21,10 +22,15 @@ class AdminMagazineDetailPage extends StatefulWidget {
 class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
   final AdminMagazineService _service = AdminMagazineService();
   final UploadService _uploadService = UploadService();
+  final AdminReviewService _reviewService = AdminReviewService();
 
   List<Map<String, dynamic>> _issues = [];
   bool _loading = true;
   bool _submitting = false;
+  bool _loadingReviews = true;
+  List<Map<String, dynamic>> _reviews = [];
+  double _avgRating = 0;
+  int _reviewCount = 0;
 
   String _formatPrice(dynamic value) {
     if (value == null) return "-";
@@ -40,6 +46,7 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
   void initState() {
     super.initState();
     _loadIssues();
+    _loadReviews();
   }
 
   Future<void> _loadIssues() async {
@@ -51,6 +58,24 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
       await _showError(e.toString());
     }
     setState(() => _loading = false);
+  }
+
+  Future<void> _loadReviews() async {
+    setState(() => _loadingReviews = true);
+    try {
+      final data = await _reviewService.getReviews(
+        productType: "magazine",
+        productId: widget.magazine["id"] as int,
+      );
+      setState(() {
+        _reviews = List<Map<String, dynamic>>.from(data["reviews"] ?? []);
+        _avgRating = (data["average"] as double?) ?? 0;
+        _reviewCount = data["count"] is int ? data["count"] as int : int.tryParse(data["count"]?.toString() ?? "0") ?? 0;
+      });
+    } catch (e) {
+      await _showError(e.toString());
+    }
+    setState(() => _loadingReviews = false);
   }
 
   Future<void> _showError(String rawError) {
@@ -599,7 +624,7 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
         elevation: 1,
       ),
       body: SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(16.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -622,74 +647,76 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
                 ],
               ),
               const SizedBox(height: 12),
-              Expanded(
-                child: Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.04),
-                        blurRadius: 8,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: _loading
-                      ? const Center(child: CircularProgressIndicator())
-                      : _issues.isEmpty
-                          ? const Center(child: Text("Henüz sayı eklenmemiş."))
-                          : ListView.separated(
-                              itemCount: _issues.length,
-                              separatorBuilder: (_, __) => const Divider(),
-                              itemBuilder: (_, i) {
-                                final issue = _issues[i];
-                                return ListTile(
-                                  leading: _issueCover(issue["photo_url"]),
-                                  title: Text(
-                                      "${(magazine["name"] ?? "").toString()} - ${issue["issue_number"]}"),
-                                  subtitle: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        "Eklendi: ${_formatDateTime(issue["added_at"])}",
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Row(
-                                        children: [
-                                          Text(
-                                            "Satış: ${_formatPrice(issue["sale_price"])}",
-                                            style: const TextStyle(fontWeight: FontWeight.w600),
-                                          ),
-                                          const SizedBox(width: 10),
-                                          Text(
-                                            "Kampanya: ${_formatPrice(issue["campaign_price"])}",
-                                            style: const TextStyle(color: Colors.red),
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                                  trailing: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      IconButton(
-                                        icon: const Icon(Icons.edit, color: Colors.orange),
-                                        onPressed: () => _showEditIssueDialog(issue),
-                                      ),
-                                      IconButton(
-                                        icon: const Icon(Icons.delete, color: Colors.red),
-                                        onPressed: () => _deleteIssue(issue["id"] as int),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              },
-                            ),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.04),
+                      blurRadius: 8,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
                 ),
+                child: _loading
+                    ? const Center(child: Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator()))
+                    : _issues.isEmpty
+                        ? const Center(child: Padding(padding: EdgeInsets.all(12), child: Text("Henüz sayı eklenmemiş.")))
+                        : ListView.separated(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: _issues.length,
+                            separatorBuilder: (_, __) => const Divider(),
+                            itemBuilder: (_, i) {
+                              final issue = _issues[i];
+                              return ListTile(
+                                leading: _issueCover(issue["photo_url"]),
+                                title: Text(
+                                    "${(magazine["name"] ?? "").toString()} - ${issue["issue_number"]}"),
+                                subtitle: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      "Eklendi: ${_formatDateTime(issue["added_at"])}",
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Row(
+                                      children: [
+                                        Text(
+                                          "Satış: ${_formatPrice(issue["sale_price"])}",
+                                          style: const TextStyle(fontWeight: FontWeight.w600),
+                                        ),
+                                        const SizedBox(width: 10),
+                                        Text(
+                                          "Kampanya: ${_formatPrice(issue["campaign_price"])}",
+                                          style: const TextStyle(color: Colors.red),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                                trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    IconButton(
+                                      icon: const Icon(Icons.edit, color: Colors.orange),
+                                      onPressed: () => _showEditIssueDialog(issue),
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(Icons.delete, color: Colors.red),
+                                      onPressed: () => _deleteIssue(issue["id"] as int),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
               ),
+              const SizedBox(height: 20),
+              _reviewsSection(),
             ],
           ),
         ),
@@ -764,6 +791,93 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
     );
   }
 
+  Widget _reviewsSection() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text("Yorumlar", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              if (_reviewCount > 0)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(color: Colors.amber.shade100, borderRadius: BorderRadius.circular(8)),
+                  child: Text("⭐ ${_avgRating.toStringAsFixed(1)} ($_reviewCount)"),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          _loadingReviews
+              ? const Center(child: Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator()))
+              : _reviews.isEmpty
+                  ? const Padding(
+                      padding: EdgeInsets.all(8.0),
+                      child: Text("Bu dergi için yorum yok."),
+                    )
+                  : ListView.separated(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: _reviews.length,
+                      separatorBuilder: (_, __) => const Divider(),
+                      itemBuilder: (_, i) {
+                        final r = _reviews[i];
+                        return ListTile(
+                          title: Row(
+                            children: [
+                              Text(
+                                "Kullanıcı #${r["user_id"] ?? "-"}",
+                                style: const TextStyle(fontWeight: FontWeight.w600),
+                              ),
+                              const SizedBox(width: 8),
+                              _ratingStars((r["rating"] ?? 0) as int? ?? 0),
+                            ],
+                          ),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const SizedBox(height: 4),
+                              Text(r["comment"] ?? "-"),
+                              const SizedBox(height: 4),
+                              Text(_formatDateTime(r["created_at"]), style: const TextStyle(fontSize: 11, color: Colors.black54)),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+        ],
+      ),
+    );
+  }
+
+  Widget _ratingStars(int value) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: List.generate(
+        5,
+        (i) => Icon(
+          i < value ? Icons.star : Icons.star_border,
+          color: Colors.amber,
+          size: 16,
+        ),
+      ),
+    );
+  }
+
   Widget _buildCoverCell(String? url) {
     if (url == null || url.isEmpty) {
       return const SizedBox(
@@ -830,9 +944,8 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
 
   Widget _buildPeriodChip(String? period) {
     final label = switch (period) {
-      "monthly" => "Aylık",
-      "three_months" => "3 Aylık",
-      "six_months" => "6 Aylık",
+      "6m" => "6 Aylık",
+      "12m" => "12 Aylık",
       _ => "-",
     };
 

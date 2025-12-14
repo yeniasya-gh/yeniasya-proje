@@ -2,6 +2,9 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../../models/cart_item.dart';
 import '../../services/cart/cart_provider.dart';
 import '../../utils/safe_image.dart';
@@ -9,6 +12,10 @@ import '../profile/pdf_viewer_screen.dart';
 import '../../services/upload_service.dart';
 import '../../services/admin/admin_magazine_service.dart';
 import '../../services/access_provider.dart';
+import '../../services/review_service.dart';
+import '../../services/auth/auth_provider.dart';
+import '../../services/secure_file_service.dart';
+import '../../services/error/error_manager.dart';
 
 class ProductDetail {
   final String id;
@@ -47,6 +54,29 @@ class ProductDetailScreen extends StatefulWidget {
 
 class _ProductDetailScreenState extends State<ProductDetailScreen> {
   Map<String, dynamic>? _selectedIssue;
+  final _reviewService = ReviewService();
+  final TextEditingController _commentCtrl = TextEditingController();
+  int _rating = 5;
+  bool _reviewSubmitting = false;
+  bool _reviewsLoading = false;
+  List<Map<String, dynamic>> _reviews = [];
+  double _avgRating = 0;
+  int _reviewCount = 0;
+  bool _hasLocalCopy = false;
+  bool _downloadBusy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadReviews();
+    _checkLocalCopy();
+  }
+
+  @override
+  void dispose() {
+    _commentCtrl.dispose();
+    super.dispose();
+  }
 
   void _addToCart(BuildContext context) {
     final cart = context.read<CartProvider>();
@@ -95,6 +125,412 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text("Sepete eklendi")),
     );
+  }
+
+  bool _hasContentAccess(BuildContext context) {
+    if (_hasLocalCopy) return true;
+    final target = _reviewTarget();
+    if (target == null) {
+      return widget.detail.metadata?["disableAdd"] == true;
+    }
+    final access = context.read<AccessProvider>();
+    final hasAccess = access.hasAccess(
+      target["productType"] as String,
+      itemId: target["productId"] as int?,
+    );
+    return hasAccess;
+  }
+
+  String _shareText() {
+    final subtitle = widget.detail.subtitle ?? "";
+    final shareUrl = widget.detail.metadata?["shareUrl"]?.toString();
+    final fileUrl = widget.detail.metadata?["fileUrl"]?.toString();
+    final imageUrl = widget.detail.imageUrl;
+    final deepLink = _shareLink();
+    final targetUrl = [
+      deepLink,
+      shareUrl,
+      fileUrl,
+      imageUrl,
+    ].firstWhere((u) => u != null && u.toString().isNotEmpty, orElse: () => "");
+
+    final parts = <String>[
+      widget.detail.title,
+      if (subtitle.isNotEmpty) subtitle,
+      if (targetUrl is String && targetUrl.isNotEmpty) targetUrl,
+    ];
+    return parts.join(" - ");
+  }
+
+  String _shareLink() {
+    final target = _reviewTarget();
+    if (target == null) return "";
+    final type = (target["productType"] ?? "").toString();
+    final id = target["productId"];
+    if (id == null) return "";
+
+    String typeParam;
+    switch (type) {
+      case "book":
+        typeParam = "book";
+        break;
+      case "magazine":
+        typeParam = "magazine";
+        break;
+      case "magazine_issue":
+        typeParam = "magazine_issue";
+        break;
+      case "newspaper_subscription":
+        typeParam = "newspaper_subscription";
+        break;
+      default:
+        typeParam = type;
+    }
+
+    const base = "https://yeniasyadigital.com";
+    return "$base/urun?type=$typeParam&id=$id";
+  }
+
+  Future<void> _shareGeneral() async {
+    final text = _shareText();
+    try {
+      await Share.share(text);
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Paylaşım başlatılamadı.")));
+    }
+  }
+
+  Future<void> _shareWhatsApp() async {
+    final text = _shareText();
+    final uri = Uri.parse("https://wa.me/?text=${Uri.encodeComponent(text)}");
+    try {
+      final canLaunch = await canLaunchUrl(uri);
+      if (canLaunch) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        await Share.share(text);
+      }
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Paylaşım başlatılamadı.")));
+    }
+  }
+
+  Future<void> _checkLocalCopy() async {
+    final fileUrl = _currentFileUrl();
+    if (fileUrl == null || fileUrl.isEmpty) return;
+    final cached = await SecureFileService.instance.hasCached(fileUrl);
+    if (mounted) setState(() => _hasLocalCopy = cached);
+  }
+
+  Future<void> _openPdf(BuildContext context, String fileUrl) async {
+    setState(() => _downloadBusy = true);
+    try {
+      await SecureFileService.instance.getPdfBytes(url: fileUrl, isPrivate: true);
+      setState(() => _hasLocalCopy = true);
+      if (!mounted) return;
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => PdfViewerScreen(
+            url: fileUrl,
+            title: widget.detail.title,
+            isPrivate: true,
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Dosya açılamadı: ${ErrorManager.parseGraphQLError(e.toString())}")),
+      );
+    } finally {
+      if (mounted) setState(() => _downloadBusy = false);
+    }
+  }
+
+  String? _currentFileUrl() {
+    // Öncelik seçili sayı -> onun file_url'i
+    final selFile = _selectedIssue?["file_url"]?.toString();
+    if (selFile != null && selFile.isNotEmpty) {
+      return UploadService.normalizeUrl(selFile);
+    }
+    // Yoksa ürün metadata fileUrl
+    final baseUrl = widget.detail.metadata?["fileUrl"]?.toString();
+    if (baseUrl != null && baseUrl.isNotEmpty) {
+      return UploadService.normalizeUrl(baseUrl);
+    }
+    return null;
+  }
+
+  Map<String, dynamic>? _reviewTarget() {
+    final idRaw = widget.detail.metadata?["productId"];
+    final parsedId = int.tryParse(idRaw?.toString() ?? "");
+    if (parsedId == null) return null;
+
+    String type;
+    switch (widget.detail.type) {
+      case CartItemType.book:
+        type = "book";
+        break;
+      case CartItemType.magazine:
+        type = "magazine";
+        break;
+      case CartItemType.magazineIssue:
+        type = "magazine_issue";
+        break;
+      case CartItemType.newspaperSubscription:
+        type = "newspaper_subscription";
+        break;
+    }
+
+    return {
+      "productId": parsedId,
+      "productType": type,
+    };
+  }
+
+  Future<void> _loadReviews() async {
+    final target = _reviewTarget();
+    if (target == null) return;
+
+    setState(() => _reviewsLoading = true);
+    try {
+      final data = await _reviewService.getReviews(
+        productType: target["productType"] as String,
+        productId: target["productId"] as int,
+      );
+      setState(() {
+        _reviews = List<Map<String, dynamic>>.from(data["reviews"] ?? []);
+        _avgRating = (data["average"] as double?) ?? 0;
+        _reviewCount = data["count"] is int ? data["count"] as int : int.tryParse(data["count"]?.toString() ?? "0") ?? 0;
+      });
+    } catch (_) {
+      // Sessiz geç
+    } finally {
+      if (mounted) setState(() => _reviewsLoading = false);
+    }
+  }
+
+  Future<void> _submitReview() async {
+    final target = _reviewTarget();
+    if (target == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Bu ürün için yorum aktif değil.")));
+      return;
+    }
+
+    final user = context.read<AuthProvider>().user;
+    final userId = user?.id;
+    if (userId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Yorum yapmak için giriş yapın.")));
+      return;
+    }
+
+    final access = context.read<AccessProvider>();
+    final hasAccess = access.hasAccess(target["productType"] as String, itemId: target["productId"] as int?);
+    if (!hasAccess) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Satın aldığınız ürünlere yorum ekleyebilirsiniz.")));
+      return;
+    }
+
+    final comment = _commentCtrl.text.trim();
+    if (comment.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Lütfen yorum yazın.")));
+      return;
+    }
+
+    setState(() => _reviewSubmitting = true);
+    try {
+      await _reviewService.addReview(
+        productType: target["productType"] as String,
+        productId: target["productId"] as int,
+        userId: userId,
+        rating: _rating,
+        comment: comment,
+        userName: user?.name,
+        userEmail: user?.email,
+        productTitle: widget.detail.title,
+      );
+      _commentCtrl.clear();
+      setState(() => _rating = 5);
+      await _loadReviews();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Yorumunuz onaya gönderildi.")));
+      }
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Yorum eklenemedi")));
+    } finally {
+      if (mounted) setState(() => _reviewSubmitting = false);
+    }
+  }
+
+  Widget _reviewsSection() {
+    final target = _reviewTarget();
+    if (target == null) {
+      return const SizedBox.shrink();
+    }
+    final access = context.watch<AccessProvider>();
+    final canReview = access.hasAccess(target["productType"] as String, itemId: target["productId"] as int?);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Text("Değerlendirmeler", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+            const SizedBox(width: 8),
+            if (_reviewCount > 0)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(color: Colors.amber.shade100, borderRadius: BorderRadius.circular(8)),
+                child: Text("⭐ ${_avgRating.toStringAsFixed(1)} ($_reviewCount)"),
+              ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        if (access.expiry(target["productType"] as String, itemId: target["productId"] as int?) != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8.0),
+            child: Text(
+              "Abonelik bitiş: ${_formatDate(access.expiry(target["productType"] as String, itemId: target["productId"] as int?)!)}",
+              style: const TextStyle(color: Colors.black54),
+            ),
+          ),
+        _reviewForm(canReview),
+        const SizedBox(height: 12),
+        _reviewsLoading
+            ? const Center(child: CircularProgressIndicator())
+            : _reviews.isEmpty
+                ? const Text("Henüz yorum yok.")
+                : Column(
+                    children: _reviews
+                        .map(
+                          (r) => Card(
+                            margin: const EdgeInsets.only(bottom: 8),
+                            child: ListTile(
+                              title: Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      (r["user_name"] ?? r["user_email"] ?? "Kullanıcı #${r["user_id"] ?? "-"}").toString(),
+                                      style: const TextStyle(fontWeight: FontWeight.w600),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  _ratingStars((r["rating"] ?? 0) as int? ?? 0, size: 16),
+                                ],
+                              ),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const SizedBox(height: 4),
+                                  Text(r["comment"] ?? "-"),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    _formatDate(r["created_at"]),
+                                    style: const TextStyle(fontSize: 11, color: Colors.black54),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        )
+                        .toList(),
+                  ),
+      ],
+    );
+  }
+
+  Widget _reviewForm(bool canReview) {
+    final user = context.watch<AuthProvider>().user;
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF7F8FA),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Text("Puanınız:", style: TextStyle(fontWeight: FontWeight.w600)),
+              const SizedBox(width: 8),
+              _ratingStars(_rating, onTap: (v) => setState(() => _rating = v)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _commentCtrl,
+            maxLines: 3,
+            decoration: InputDecoration(
+              hintText: user == null
+                  ? "Yorum yapmak için giriş yapın"
+                  : (canReview ? "Yorumunuzu yazın" : "Sadece satın alınan ürünlere yorum yapılabilir"),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+              filled: true,
+              fillColor: Colors.white,
+            ),
+            readOnly: user == null || !canReview,
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: 140,
+            height: 42,
+            child: ElevatedButton(
+              onPressed: user == null || _reviewSubmitting || !canReview ? null : _submitReview,
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+              child: _reviewSubmitting
+                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Text("Gönder"),
+            ),
+          ),
+          if (user != null && !canReview)
+            const Padding(
+              padding: EdgeInsets.only(top: 6.0),
+              child: Text(
+                "Bu ürünü satın aldıktan sonra yorum yapabilirsiniz.",
+                style: TextStyle(color: Colors.black54, fontSize: 12),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _ratingStars(int value, {double size = 20, ValueChanged<int>? onTap}) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: List.generate(5, (i) {
+        final idx = i + 1;
+        return IconButton(
+          icon: Icon(
+            idx <= value ? Icons.star : Icons.star_border,
+            color: Colors.amber,
+            size: size,
+          ),
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(),
+          visualDensity: VisualDensity.compact,
+          onPressed: onTap == null ? null : () => onTap(idx),
+        );
+      }),
+    );
+  }
+
+  String _formatDate(dynamic raw) {
+    if (raw == null) return "-";
+    DateTime? dt;
+    try {
+      dt = DateTime.tryParse(raw.toString());
+    } catch (_) {}
+    if (dt == null) return raw.toString();
+    String two(int v) => v.toString().padLeft(2, '0');
+    return "${two(dt.day)}.${two(dt.month)}.${dt.year} ${two(dt.hour)}:${two(dt.minute)}";
   }
 
   @override
@@ -151,11 +587,30 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                   Text(widget.detail.subtitle!, style: const TextStyle(color: Colors.black54, fontSize: 14)),
                 ],
                 const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _shareGeneral,
+                        icon: const Icon(Icons.share),
+                        label: const Text("Sosyal Medyada Paylaş"),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _shareWhatsApp,
+                        icon: const Icon(FontAwesomeIcons.whatsapp, color: Colors.green),
+                        label: const Text("WhatsApp"),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
                 Text(
                   widget.detail.description.isNotEmpty ? widget.detail.description : "Açıklama yakında.",
                   style: const TextStyle(fontSize: 15, height: 1.5),
                 ),
-                const SizedBox(height: 16),
                 Container(
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
@@ -190,6 +645,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                   ),
                   const SizedBox(height: 20),
                 ],
+                const SizedBox(height: 16),
+                _reviewsSection(),
                 const SizedBox(height: 80),
               ],
             ),
@@ -202,36 +659,35 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           height: 54,
           child: ElevatedButton(
             onPressed: () {
-              final disable = widget.detail.metadata?["disableAdd"] == true;
-              final fileUrl = widget.detail.metadata?["fileUrl"]?.toString();
+              final hasAccess = _hasContentAccess(context);
+
               if (_selectedIssue != null) {
                 _addToCart(context);
                 return;
               }
-              if (disable && fileUrl != null && fileUrl.isNotEmpty) {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => PdfViewerScreen(
-                      url: fileUrl,
-                      title: widget.detail.title,
-                      isPrivate: true,
-                    ),
-                  ),
-                );
-                return;
-              }
-              if (disable) return;
+              if (hasAccess) return;
               _addToCart(context);
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: _selectedIssue != null
                   ? Colors.red
-                  : (widget.detail.metadata?["disableAdd"] == true ? Colors.blue : Colors.red),
+                  : (_hasContentAccess(context) ? Colors.blue : Colors.red),
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
-            child: Text(_buttonLabel(widget.detail)),
+            child: Builder(
+              builder: (context) {
+                final hasAccess = _hasContentAccess(context);
+                final label = _buttonLabel(widget.detail, hasAccess);
+                return Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(label),
+                  ],
+                );
+              },
+            ),
           ),
         ),
       ),
@@ -271,26 +727,36 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     );
   }
 
-  String _buttonLabel(ProductDetail detail) {
+  String _buttonLabel(ProductDetail detail, bool hasAccess) {
     if (_selectedIssue != null) {
       final price = _selectedIssue?["price"] as double? ?? 0;
       return "Sepete Ekle (₺${price.toStringAsFixed(2)})";
     }
 
-    final disable = detail.metadata?["disableAdd"] == true;
-    if (disable) {
+    if (hasAccess) {
       switch (detail.type) {
         case CartItemType.book:
-          return "Kitabı Gör";
+          return "Kitap erişimi aktif";
         case CartItemType.magazine:
-          return "Dergiyi Gör";
+          return _accessText(detail, fallback: "Abonelik aktif");
         case CartItemType.magazineIssue:
-          return "Dergi Sayısını Gör";
+          return "Dergi sayısı erişimi aktif";
         case CartItemType.newspaperSubscription:
-          return "Gazeteyi Gör";
+          return _accessText(detail, fallback: "Abonelik aktif");
       }
     }
     return detail.actionLabel;
+  }
+
+  String _accessText(ProductDetail detail, {required String fallback}) {
+    final target = _reviewTarget();
+    if (target == null) return fallback;
+    final access = context.read<AccessProvider>();
+    final exp = access.expiry(target["productType"] as String, itemId: target["productId"] as int?);
+    if (exp == null) return fallback;
+    String two(int v) => v.toString().padLeft(2, '0');
+    final dateText = "${two(exp.day)}.${two(exp.month)}.${exp.year}";
+    return "$fallback (Bitiş: $dateText)";
   }
 }
 

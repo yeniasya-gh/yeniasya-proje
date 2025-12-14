@@ -4,7 +4,6 @@ import '../../services/address_service.dart';
 import '../../services/error/error_manager.dart';
 import '../../services/auth/auth_provider.dart';
 import '../../services/cart/cart_provider.dart';
-import '../../models/cart_item.dart';
 import '../address/address_form_screen.dart';
 import 'payment_screen.dart';
 
@@ -84,7 +83,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _orderSummary(cart.items, cart.totalPrice),
+                    _orderSummary(cart),
                     const SizedBox(height: 16),
                     _addressSection(),
                     const SizedBox(height: 100),
@@ -130,7 +129,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     );
   }
 
-  Widget _orderSummary(List<CartItem> items, double total) {
+  Widget _orderSummary(CartProvider cart) {
+    final items = cart.items;
+    final total = cart.totalPrice;
+    final discount = cart.discountAmount;
+    final payable = cart.totalAfterDiscount;
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -166,12 +170,41 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               ),
             ),
           ),
+          if (cart.appliedPromo != null) ...[
+            const SizedBox(height: 4),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text("Promosyon (${cart.appliedPromo!.code})", style: const TextStyle(color: Colors.black87)),
+                Text("%${cart.appliedPromo!.discountPercent.toStringAsFixed(0)}"),
+              ],
+            ),
+          ],
           const Divider(),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text("Toplam", style: TextStyle(fontWeight: FontWeight.bold)),
-              Text("₺${total.toStringAsFixed(2)}",
+              const Text("Ara Toplam", style: TextStyle(fontWeight: FontWeight.w600)),
+              Text("₺${total.toStringAsFixed(2)}", style: const TextStyle(fontWeight: FontWeight.w700)),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text("İndirim"),
+              Text(
+                discount > 0 ? "-₺${discount.toStringAsFixed(2)}" : "₺0.00",
+                style: const TextStyle(color: Colors.green, fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text("Ödenecek", style: TextStyle(fontWeight: FontWeight.bold)),
+              Text("₺${payable.toStringAsFixed(2)}",
                   style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.red)),
             ],
           ),

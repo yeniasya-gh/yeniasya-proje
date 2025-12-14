@@ -1,6 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Allow network calls in release builds for GraphQL/HTTP services -->
+    <uses-permission android:name="android.permission.INTERNET" />
     <application
-        android:label="yeniasya"
+        android:label="Yeni Asya"
         android:name="${applicationName}"
         android:icon="@mipmap/launcher_icon">
         <activity

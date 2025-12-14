@@ -70,6 +70,10 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     final status = _order?["status"]?.toString() ?? "-";
     final total = _order?["total_paid"]?.toString() ?? "0";
     final date = _formatDate(_order?["created_at"]);
+    final promoCode = _order?["promo_code"]?.toString();
+    final promoDiscountAmount =
+        (_order?["promo_discount_amount"] is num) ? (_order?["promo_discount_amount"] as num).toDouble() : double.tryParse(_order?["promo_discount_amount"]?.toString() ?? "0") ?? 0;
+    final promoPercent = _order?["promo_discount_percent"];
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -103,6 +107,30 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           const SizedBox(height: 8),
           Text(date, style: const TextStyle(color: Colors.black54)),
           const SizedBox(height: 8),
+          if (promoCode != null && promoCode.isNotEmpty) ...[
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text("Promosyon ($promoCode)", style: const TextStyle(color: Colors.black87)),
+                Text(
+                  promoPercent == null ? " " : "%${promoPercent.toString()}",
+                  style: const TextStyle(color: Colors.black54),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text("İndirim"),
+                Text(
+                  "-₺${promoDiscountAmount.toStringAsFixed(2)}",
+                  style: const TextStyle(color: Colors.green, fontWeight: FontWeight.w600),
+                ),
+              ],
+            ),
+            const Divider(),
+          ],
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [

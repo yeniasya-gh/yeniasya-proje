@@ -3,17 +3,20 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/access_provider.dart';
-import '/screen/footer//yeni_asya_footer.dart';
+import '/screen/footer/yeni_asya_footer.dart';
 import '/services/auth/auth_provider.dart';
 import '/screen/login/login_screen.dart';
 import '/screen/profile/profile_screen.dart';
 import '/utils/route_guard.dart';
 import '/screen/cart/cart_screen.dart';
+import '/screen/order/order_list_screen.dart';
+import '/screen/order/order_detail_screen.dart';
 import '../services/admin/admin_magazine_service.dart';
 import '../services/admin/admin_book_service.dart';
 import '../services/admin/admin_newspaper_service.dart';
 import '../services/cart/cart_provider.dart';
 import '../models/cart_item.dart';
+import '../services/order_service.dart';
 import '../services/upload_service.dart';
 import '../services/access_provider.dart';
 import '../screen/profile/pdf_viewer_screen.dart';
@@ -21,10 +24,12 @@ import 'search/search_screen.dart';
 import 'product/product_detail_screen.dart';
 import '../utils/safe_image.dart';
 
-enum HomeSection { home, magazines, books, newspapers }
+enum HomeSection { home, magazines, books, newspapers, attachments }
 
 class HomeResponsiveScreen extends StatefulWidget {
-  const HomeResponsiveScreen({super.key});
+  final Uri? initialUri;
+
+  const HomeResponsiveScreen({super.key, this.initialUri});
 
   @override
   State<HomeResponsiveScreen> createState() => _HomeResponsiveScreenState();
@@ -36,17 +41,28 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
   final AdminMagazineService _magService = AdminMagazineService();
   final AdminBookService _bookService = AdminBookService();
   final AdminNewspaperService _newsService = AdminNewspaperService();
+  final OrderService _orderService = OrderService();
 
   List<Map<String, dynamic>> magazines = [];
   List<Map<String, dynamic>> books = [];
   List<Map<String, dynamic>> newspapers = [];
   bool loading = true;
+  int _mobileNavIndex = 0;
+  bool libraryLoading = false;
+  List<Map<String, dynamic>> libraryOrders = [];
+  bool _deepLinkHandled = false;
+  AuthProvider? _authListener;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _authListener = context.read<AuthProvider>();
+      _authListener?.addListener(_onAuthChange);
+    });
     _loadData();
     _loadAccessIfNeeded();
+    _loadLibraryOrders();
   }
 
   Future<void> _loadData() async {
@@ -60,10 +76,69 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         books = book;
         newspapers = news;
       });
+      await _handleInitialDeepLink();
     } catch (e) {
       debugPrint("Home load error: $e");
     }
     setState(() => loading = false);
+  }
+
+  Future<void> _loadLibraryOrders() async {
+    setState(() => libraryLoading = true);
+    try {
+      final userId = context.read<AuthProvider>().user?.id;
+      if (userId != null) {
+        final orders = await _orderService.getOrdersWithItems(userId);
+        setState(() => libraryOrders = orders);
+      }
+    } catch (e) {
+      debugPrint("Library load error: $e");
+    }
+    setState(() => libraryLoading = false);
+  }
+
+  void _onAuthChange() {
+    final auth = _authListener;
+    if (auth == null) return;
+    if (auth.isLoggedIn) {
+      _loadData();
+      _loadAccessIfNeeded();
+      _loadLibraryOrders();
+    }
+  }
+
+  Future<void> _handleInitialDeepLink() async {
+    if (_deepLinkHandled || widget.initialUri == null) return;
+    final uri = widget.initialUri!;
+    final type = uri.queryParameters["type"];
+    final id = int.tryParse(uri.queryParameters["id"] ?? "");
+    if (type == null || id == null) return;
+
+    ProductDetail? detail;
+    switch (type) {
+      case "book":
+        final data = books.firstWhere((b) => b["id"] == id, orElse: () => {});
+        if (data.isNotEmpty) detail = _mapBookDetail(data);
+        break;
+      case "magazine":
+        final data = magazines.firstWhere((m) => m["id"] == id, orElse: () => {});
+        if (data.isNotEmpty) detail = _mapMagazineDetail(data);
+        break;
+      case "magazine_issue":
+        break;
+      case "newspaper_subscription":
+        final data = newspapers.firstWhere((n) => n["id"] == id, orElse: () => {});
+        if (data.isNotEmpty) detail = _mapNewspaperDetail(data);
+        break;
+    }
+
+    if (detail != null) {
+      _deepLinkHandled = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _openProductDetail(detail!);
+      });
+    }
   }
 
   Future<void> _loadAccessIfNeeded() async {
@@ -74,6 +149,12 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
       if (userId == null) return;
       await context.read<AccessProvider>().load(userId);
     });
+  }
+
+  @override
+  void dispose() {
+    _authListener?.removeListener(_onAuthChange);
+    super.dispose();
   }
 
   double _parsePrice(dynamic value, {double fallback = 0}) {
@@ -117,7 +198,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
 
   ProductDetail _mapMagazineDetail(Map<String, dynamic> mag) {
     final hasAccess = context.read<AccessProvider>().hasAccess("magazine", itemId: mag["id"] as int?);
-    final actionLabel = hasAccess ? "Dergiyi Gör" : "Abone Ol";
+  final actionLabel = hasAccess ? "E-dergiyi Gör" : "Abone Ol";
     final price = _parsePrice(mag["campaign_price"] ?? mag["sale_price"]);
     return ProductDetail(
       id: "mag-${mag["id"]}",
@@ -130,7 +211,8 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
       metadata: {
         "productId": mag["id"],
         "disableAdd": hasAccess,
-        "fileUrl": null,
+        "fileUrl": mag["file_url"],
+        "period": mag["period"],
       },
       actionLabel: actionLabel,
     );
@@ -174,6 +256,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         "productId": "gazete-abonelik",
         "disableAdd": hasSub,
         "fileUrl": fileUrl,
+        "period": news["period"],
       },
       actionLabel: hasSub ? "Gazeteyi Gör" : "Abone Ol",
     );
@@ -181,6 +264,8 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Access provider'ı dinleyerek satın alınan içeriklerin UI'yi güncellemesini sağla
+    context.watch<AccessProvider>();
     final auth = context.watch<AuthProvider>();
     final cart = context.watch<CartProvider>();
     final screenWidth = MediaQuery.of(context).size.width;
@@ -223,9 +308,10 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
                         Row(
                           children: [
                             _menuItem("Anasayfa", HomeSection.home),
-                            _menuItem("Dergiler", HomeSection.magazines),
-                            _menuItem("Kitaplar", HomeSection.books),
-                            _menuItem("Gazeteler", HomeSection.newspapers),
+                            _menuItem("E-Dergi", HomeSection.magazines),
+                            _menuItem("E-Kitap", HomeSection.books),
+                            _menuItem("E-Gazete", HomeSection.newspapers),
+                            _menuItem("Ekler", HomeSection.attachments),
                           ],
                         ),
                     ],
@@ -244,7 +330,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
                               contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(10),
-                                borderSide: BorderSide.none,
+                                borderSide: BorderSide(color: Colors.grey.shade400, width: 0.5),
                               ),
                             ),
                             onSubmitted: (q) => _openSearch(initialQuery: q),
@@ -352,42 +438,54 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         ),
       ),
       body: SafeArea(
-        child: Stack(
-          children: [
-            SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+        child: _mobileNavIndex == 2 && !isWeb
+            ? _libraryView(context, this)
+            : Stack(
                 children: [
-                  Center(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 1600),
-                      child: Padding(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: isWeb ? 64 : (isTablet ? 32 : 16),
-                          vertical: 24,
-                        ),
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(minHeight: 500),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              if (_section == HomeSection.home) ...[
-                                _buildPremiumCard(isWeb),
-                                const SizedBox(height: 20),
+                  SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Center(
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 1600),
+                            child: Padding(
+                              padding: EdgeInsets.symmetric(
+                                horizontal: isWeb ? 64 : (isTablet ? 32 : 16),
+                                vertical: 24,
+                              ),
+                              child: ConstrainedBox(
+                                constraints: const BoxConstraints(minHeight: 500),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                if (_section == HomeSection.home) ...[
+                                  _buildPremiumCard(isWeb),
+                                  const SizedBox(height: 20),
+                                ],
+                                if (isWeb)
+                                  Row(
+                                    children: [
+                                      _menuItem("E-dergi", HomeSection.magazines),
+                                      _menuItem("E-kitap", HomeSection.books),
+                                      _menuItem("E-gazete", HomeSection.newspapers),
+                                      _menuItem("Ekler", HomeSection.attachments),
+                                    ],
+                                  ),
+                                if (isWeb) const SizedBox(height: 16),
+                                _buildBodyContent(isWeb, isTablet, cart),
                               ],
-                              _buildBodyContent(isWeb, isTablet, cart),
-                            ],
+                            ),
                           ),
                         ),
-                      ),
+                          ),
+                        ),
+                        if (isWeb) const YeniAsyaFooter(),
+                      ],
                     ),
                   ),
-                  if (isWeb) const YeniAsyaFooter(),
                 ],
               ),
-            ),
-          ],
-        ),
       ),
       bottomNavigationBar: isWeb
           ? null
@@ -395,10 +493,17 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
               selectedItemColor: Colors.red,
               unselectedItemColor: Colors.grey,
               type: BottomNavigationBarType.fixed,
-              currentIndex: 0,
+              currentIndex: _mobileNavIndex,
               onTap: (index) {
+                setState(() => _mobileNavIndex = index);
+                if (index == 0) {
+                  setState(() => _section = HomeSection.home);
+                }
                 if (index == 1) {
                   _openSearch();
+                }
+                if (index == 2) {
+                  _loadLibraryOrders();
                 }
                 if (index == 3) {
                   if (auth.isLoggedIn) {
@@ -421,7 +526,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
               items: const [
                 BottomNavigationBarItem(icon: Icon(Icons.home), label: "Ana Sayfa"),
                 BottomNavigationBarItem(icon: Icon(Icons.search), label: "Ara"),
-                BottomNavigationBarItem(icon: Icon(Icons.bookmark_border), label: "Kaydedilenler"),
+                BottomNavigationBarItem(icon: Icon(Icons.library_books_outlined), label: "Kütüphanem"),
                 BottomNavigationBarItem(icon: Icon(Icons.person_outline), label: "Profil"),
               ],
             ),
@@ -434,7 +539,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _sectionHeadingText("Dergiler"),
+            _sectionHeadingText("E-dergi"),
             const SizedBox(height: 16),
             _magazineListGrid(context, isWeb),
           ],
@@ -443,7 +548,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _sectionHeadingText("Kitaplar"),
+            _sectionHeadingText("E-kitap"),
             const SizedBox(height: 16),
             _bookListGrid(context, isWeb, isTablet),
             const SizedBox(height: 24),
@@ -453,11 +558,13 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _sectionHeadingText("Gazeteler"),
+            _sectionHeadingText("E-gazete"),
             const SizedBox(height: 16),
             _newspaperListGrid(context, isWeb),
           ],
         );
+      case HomeSection.attachments:
+        return _attachmentsPlaceholder();
       case HomeSection.home:
       default:
         return Column(
@@ -530,12 +637,12 @@ Widget _magazineShowcase(BuildContext context, bool isWeb, CartProvider cart) {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _sectionHeader(
-          "Öne Çıkan Dergiler",
+          "Öne Çıkan E-dergi",
           onViewAll: () {
             if (isWeb) {
               setState(() => _section = HomeSection.magazines);
             } else {
-              _openFullList(context, "Dergiler",
+              _openFullList(context, "E-dergi",
                   (ctx) => _magazineListGrid(ctx, false));
             }
           },
@@ -545,7 +652,7 @@ Widget _magazineShowcase(BuildContext context, bool isWeb, CartProvider cart) {
           builder: (context, constraints) {
             final itemWidth = constraints.maxWidth / crossAxisCount;
             final cardHeight =
-                isWeb ? 280.0 : (itemWidth * 0.9).clamp(0, 320).toDouble();
+                isWeb ? 290.0 : (itemWidth * 1.0).clamp(0, 320).toDouble();
             return GridView.builder(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
@@ -601,12 +708,12 @@ Widget _booksShowcase(BuildContext context, bool isWeb, CartProvider cart) {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _sectionHeader(
-          "Popüler Kitaplar",
+          "Popüler E-kitap",
           onViewAll: () {
             if (isWeb) {
               setState(() => _section = HomeSection.books);
             } else {
-              _openFullList(context, "Kitaplar",
+              _openFullList(context, "E-kitap",
                   (ctx) => _bookListGrid(ctx, false, false));
             }
           },
@@ -676,7 +783,7 @@ Widget _booksShowcase(BuildContext context, bool isWeb, CartProvider cart) {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text("Günlük Gazeteler", style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+            const Text("E-gazete", style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
             if (!access.hasAccess("newspaper_subscription"))
               ElevatedButton(
                 onPressed: () {
@@ -697,10 +804,10 @@ Widget _booksShowcase(BuildContext context, bool isWeb, CartProvider cart) {
                   if (isWeb) {
                     setState(() => _section = HomeSection.newspapers);
                   } else {
-                  _openFullList(context, "Gazeteler",
-                      (ctx) => _newspaperListGrid(ctx, false));
-                }
-              },
+                    _openFullList(context, "E-gazete",
+                        (ctx) => _newspaperListGrid(ctx, false));
+                  }
+                },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.red,
                   foregroundColor: Colors.white,
@@ -737,7 +844,7 @@ Widget _magazineListGrid(BuildContext context, bool isWeb) {
       builder: (context, constraints) {
         final itemWidth = constraints.maxWidth / crossAxisCount;
         final cardHeight =
-            isWeb ? 280.0 : (itemWidth * 0.9).clamp(0, 300).toDouble();
+            isWeb ? 290.0 : (itemWidth * 1.0).clamp(0, 320).toDouble();
         return GridView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
@@ -1211,6 +1318,192 @@ void _addToCart(BuildContext context, CartProvider cart, CartItem item) {
   ScaffoldMessenger.of(context).showSnackBar(
     const SnackBar(content: Text("Sepete eklendi")),
   );
+}
+
+Widget _libraryView(BuildContext context, _HomeResponsiveScreenState state) {
+  final auth = context.watch<AuthProvider>();
+
+  if (!auth.isLoggedIn) {
+    return const Center(
+      child: Padding(
+        padding: EdgeInsets.all(24.0),
+        child: Text("Kütüphaneyi görmek için üye girişi yapmalısınız."),
+      ),
+    );
+  }
+
+  if (state.libraryLoading) {
+    return const Center(child: CircularProgressIndicator());
+  }
+
+  if (state.libraryOrders.isEmpty) {
+    return const Center(child: Text("Henüz satın alınan ürün bulunamadı."));
+  }
+
+  final items = state.libraryOrders
+      .expand<Map<String, dynamic>>((o) => List<Map<String, dynamic>>.from(o["order_items"] ?? []))
+      .toList();
+
+  final books = items.where((i) => (i["product_type"] ?? "") == "book").toList();
+  final mags = items.where((i) => (i["product_type"] ?? "") == "magazine").toList();
+  final news = items.where((i) => (i["product_type"] ?? "").toString().contains("newspaper")).toList();
+
+  return RefreshIndicator(
+    onRefresh: state._loadLibraryOrders,
+    child: ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        _librarySection(context, "Kitaplar", books),
+        const SizedBox(height: 16),
+        _librarySection(context, "E-dergi", mags),
+        const SizedBox(height: 16),
+        _librarySection(context, "E-gazete", news),
+      ],
+    ),
+  );
+}
+
+Widget _libraryOrderCard(BuildContext context, Map<String, dynamic> order) {
+  final id = order["id"]?.toString() ?? "-";
+  final total = order["total_paid"]?.toString() ?? "0";
+  final status = (order["status"] ?? "").toString().toLowerCase();
+  final date = order["created_at"]?.toString() ?? "";
+
+  return InkWell(
+    onTap: () {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => OrderDetailScreen(orderId: order["id"] as int),
+        ),
+      );
+    },
+    child: Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8, offset: const Offset(0, 4)),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text("Sipariş #$id", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  _statusLabel(status),
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.blue),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(date, style: const TextStyle(color: Colors.black54, fontSize: 13)),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text("Toplam", style: TextStyle(fontWeight: FontWeight.w600)),
+              Text("₺$total", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
+            ],
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+Widget _librarySection(BuildContext context, String title, List<Map<String, dynamic>> items) {
+  return Container(
+    padding: const EdgeInsets.all(16),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(14),
+      boxShadow: [
+        BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8, offset: const Offset(0, 4)),
+      ],
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+        const SizedBox(height: 8),
+        if (items.isEmpty)
+          const Text("Bulunamadı.", style: TextStyle(color: Colors.black54))
+        else
+          ...items.map(
+            (i) => ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text(i["title"] ?? "-", maxLines: 2, overflow: TextOverflow.ellipsis),
+              subtitle: Text(
+                "Adet: ${i["quantity"] ?? 1} • Sipariş #${i["order_id"] ?? "-"}",
+                style: const TextStyle(fontSize: 12),
+              ),
+              trailing: Text(
+                "₺${(i["line_total"] ?? i["unit_price"] ?? 0).toString()}",
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              onTap: () {
+                final orderId = i["order_id"];
+                if (orderId is int) {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => OrderDetailScreen(orderId: orderId)),
+                  );
+                }
+              },
+            ),
+          ),
+      ],
+    ),
+  );
+  }
+
+  Widget _attachmentsPlaceholder() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8, offset: const Offset(0, 4)),
+        ],
+      ),
+      child: const Text(
+        "Ekler yakında eklenecek.",
+        style: TextStyle(fontSize: 16),
+      ),
+    );
+  }
+
+String _statusLabel(String status) {
+  switch (status.toLowerCase()) {
+    case "pending":
+      return "Beklemede";
+    case "paid":
+      return "Ödendi";
+    case "shipped":
+      return "Kargoda";
+    case "delivered":
+      return "Teslim Edildi";
+    case "canceled":
+      return "İptal";
+    case "refunded":
+      return "İade";
+    default:
+      return status.isEmpty ? "-" : status;
+  }
 }
 
 void _openFullList(

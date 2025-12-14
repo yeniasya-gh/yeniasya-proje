@@ -10,6 +10,10 @@ class OrderService {
           id
           total_paid
           status
+          promo_code_id
+          promo_code
+          promo_discount_percent
+          promo_discount_amount
           created_at
         }
       }
@@ -23,6 +27,49 @@ class OrderService {
     return List<Map<String, dynamic>>.from(data["orders"] ?? []);
   }
 
+  Future<List<Map<String, dynamic>>> getOrdersWithItems(int userId) async {
+    final orders = await getOrders(userId);
+    if (orders.isEmpty) return [];
+
+    final ids = orders.map((o) => o["id"]).whereType<int>().toList();
+    if (ids.isEmpty) return orders;
+
+    const itemsQuery = r'''
+      query GetOrderItems($order_ids: [bigint!]!) {
+        order_items(where: {order_id: {_in: $order_ids}}) {
+          id
+          order_id
+          title
+          quantity
+          unit_price
+          line_total
+          product_type
+          metadata
+        }
+      }
+    ''';
+
+    final itemsData = await _hasura.graphQLRequest(
+      query: itemsQuery,
+      variables: {"order_ids": ids},
+    );
+
+    final items = List<Map<String, dynamic>>.from(itemsData["order_items"] ?? []);
+    final byOrder = <int, List<Map<String, dynamic>>>{};
+    for (final item in items) {
+      final oid = item["order_id"] as int?;
+      if (oid == null) continue;
+      byOrder.putIfAbsent(oid, () => []).add(item);
+    }
+
+    return orders
+        .map((o) => {
+              ...o,
+              "order_items": byOrder[o["id"]] ?? <Map<String, dynamic>>[],
+            })
+        .toList();
+  }
+
   Future<Map<String, dynamic>?> getOrderDetail(int id) async {
     const query = r'''
       query GetOrderDetail($id: bigint!) {
@@ -33,6 +80,10 @@ class OrderService {
           created_at
           delivery_address_id
           billing_address_id
+          promo_code_id
+          promo_code
+          promo_discount_percent
+          promo_discount_amount
         }
         order_items(where: {order_id: {_eq: $id}}) {
           id
@@ -67,24 +118,39 @@ class OrderService {
     required int billingAddressId,
     required double totalPaid,
     required List<Map<String, dynamic>> items,
+    int? promoCodeId,
+    String? promoCode,
+    double? promoDiscountPercent,
+    double? promoDiscountAmount,
   }) async {
     const createOrderMutation = r'''
       mutation CreateOrder(
         $user_id: bigint!,
         $delivery_address_id: bigint!,
         $billing_address_id: bigint!,
-        $total_paid: numeric!
+        $total_paid: numeric!,
+        $promo_code_id: bigint,
+        $promo_code: String,
+        $promo_discount_percent: numeric,
+        $promo_discount_amount: numeric
       ) {
         insert_orders_one(object: {
           user_id: $user_id,
           status: "paid",
           delivery_address_id: $delivery_address_id,
           billing_address_id: $billing_address_id,
-          total_paid: $total_paid
+          total_paid: $total_paid,
+          promo_code_id: $promo_code_id,
+          promo_code: $promo_code,
+          promo_discount_percent: $promo_discount_percent,
+          promo_discount_amount: $promo_discount_amount
         }) {
           id
           total_paid
           created_at
+          promo_code
+          promo_discount_percent
+          promo_discount_amount
         }
       }
     ''';
@@ -96,6 +162,10 @@ class OrderService {
         "delivery_address_id": deliveryAddressId,
         "billing_address_id": billingAddressId,
         "total_paid": totalPaid,
+        "promo_code_id": promoCodeId,
+        "promo_code": promoCode,
+        "promo_discount_percent": promoDiscountPercent,
+        "promo_discount_amount": promoDiscountAmount,
       },
     );
 
@@ -123,5 +193,43 @@ class OrderService {
     }
 
     return createdOrder;
+  }
+}
+
+class ContactService {
+  final _hasura = HasuraManager.instance;
+
+  Future<bool> sendContact({
+    required String subject,
+    required String message,
+    int? userId,
+    String? email,
+  }) async {
+    const mutation = r'''
+      mutation InsertContact(
+        $subject: String!,
+        $message: String!,
+        $user_id: bigint,
+        $email: String
+      ) {
+        insert_contact_messages_one(object: {
+          subject: $subject,
+          message: $message,
+          user_id: $user_id,
+          email: $email
+        }) { id }
+      }
+    ''';
+
+    await _hasura.graphQLRequest(
+      query: mutation,
+      variables: {
+        "subject": subject,
+        "message": message,
+        "user_id": userId,
+        "email": email,
+      },
+    );
+    return true;
   }
 }

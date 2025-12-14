@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "921079372710",
+    "project_id": "yeniasya-d401b",
+    "storage_bucket": "yeniasya-d401b.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:921079372710:android:2aaf656bd83b7bec84cd67",
+        "android_client_info": {
+          "package_name": "com.yeniasya.books"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "921079372710-g24ul48s7s83obst2861vmsgogbg5arp.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.yeniasya.books",
+            "certificate_hash": "a53e60c0f4a211e997c7ed87773aab9cd8cd2bf9"
+          }
+        },
+        {
+          "client_id": "921079372710-ma27ah75aficaj4187kd4bnsls6386rr.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCPMItz3SCtm3jSJhOxoGScz7xh8CWlh_k"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "921079372710-ma27ah75aficaj4187kd4bnsls6386rr.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

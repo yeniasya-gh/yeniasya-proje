@@ -4,9 +4,14 @@ import '/screen/home_responsive_screen.dart';
 import '/services/auth/auth_provider.dart';
 import '/services/cart/cart_provider.dart';
 import '/services/access_provider.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
 
   final authProvider = AuthProvider();
 
@@ -26,7 +31,9 @@ void main() async {
 
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  final Uri? initialUri;
+
+  const MyApp({super.key, this.initialUri});
 
   @override
   Widget build(BuildContext context) {
@@ -36,7 +43,7 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.red),
       ),
-      home: const HomeResponsiveScreen(),
+      home: HomeResponsiveScreen(initialUri: initialUri),
     );
   }
 }
@@ -51,7 +58,7 @@ class AppWrapper extends StatelessWidget {
       onTap: () {
         FocusManager.instance.primaryFocus?.unfocus();
       },
-      child: const MyApp(),
+      child: MyApp(initialUri: Uri.base),
     );
   }
 }

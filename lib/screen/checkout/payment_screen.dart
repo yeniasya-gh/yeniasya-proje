@@ -7,6 +7,9 @@ import '../../services/access_provider.dart';
 import '../../models/cart_item.dart';
 import '../checkout/order_success_screen.dart';
 import '../../services/user_content_access_service.dart';
+import '../../services/mail_manager.dart';
+import '../../services/auth/auth_provider.dart';
+import '../../services/promo_code_service.dart';
 
 class PaymentScreen extends StatefulWidget {
   final int deliveryAddressId;
@@ -34,6 +37,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
   bool _loading = false;
   final _orderService = OrderService();
   final _accessService = UserContentAccessService();
+  final _promoService = PromoCodeService();
 
   @override
   void dispose() {
@@ -47,7 +51,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     final cart = context.read<CartProvider>();
-    final totalBeforeClear = cart.totalPrice;
+    final payableTotal = cart.totalAfterDiscount;
+    final promo = cart.appliedPromo;
+    final discountAmount = cart.discountAmount;
     setState(() => _loading = true);
     try {
       final itemsPayload = cart.items.map((item) {
@@ -72,6 +78,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         final parsedProductId = int.tryParse(rawProductId?.toString() ?? "");
         String? itemType;
         int? itemId;
+        DateTime? expiresAt;
 
         switch (item.type) {
           case CartItemType.book:
@@ -81,6 +88,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
           case CartItemType.magazine:
             itemType = "magazine";
             itemId = parsedProductId;
+            expiresAt = _computeExpiry(item.metadata?["period"]);
             break;
           case CartItemType.magazineIssue:
             itemType = "magazine_issue";
@@ -89,6 +97,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
           case CartItemType.newspaperSubscription:
             itemType = "newspaper_subscription";
             itemId = null;
+            expiresAt = _computeExpiry(item.metadata?["period"]);
             break;
         }
 
@@ -100,7 +109,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
             "item_type": itemType,
             "item_id": itemId,
             "started_at": DateTime.now().toIso8601String(),
-            "expires_at": null,
+            "expires_at": expiresAt?.toIso8601String(),
             "purchase_price": item.price,
           });
         }
@@ -117,9 +126,34 @@ class _PaymentScreenState extends State<PaymentScreen> {
         userId: widget.userId,
         deliveryAddressId: widget.deliveryAddressId,
         billingAddressId: widget.billingAddressId,
-        totalPaid: totalBeforeClear,
+        totalPaid: payableTotal,
+        promoCodeId: promo?.id,
+        promoCode: promo?.code,
+        promoDiscountPercent: promo?.discountPercent,
+        promoDiscountAmount: discountAmount,
         items: itemsPayload,
       );
+
+      if (promo != null) {
+        await _promoService.markUsed(promo.id);
+      }
+
+      // Sipariş e-postası
+      try {
+        final user = context.read<AuthProvider>().user;
+        if (user != null) {
+          await MailManager.instance.sendOrderSummary(
+            to: user.email,
+            name: user.name,
+            orderId: (order["id"] ?? "").toString(),
+            total: payableTotal,
+            items: itemsPayload,
+          );
+        }
+      } catch (e) {
+        // ignore: avoid_print
+        print("🔴 [Mail] Sipariş maili gönderilemedi: $e");
+      }
 
       // refresh access cache
       if (mounted) {
@@ -138,7 +172,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         MaterialPageRoute(
           builder: (_) => OrderSuccessScreen(
             orderId: order["id"]?.toString() ?? "-",
-            total: order["total_paid"]?.toString() ?? totalBeforeClear.toStringAsFixed(2),
+            total: order["total_paid"]?.toString() ?? payableTotal.toStringAsFixed(2),
           ),
         ),
         (route) => route.isFirst,
@@ -171,7 +205,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _orderSummary(cart.items, cart.totalPrice),
+              _orderSummary(cart),
               const SizedBox(height: 16),
               _cardForm(),
               const SizedBox(height: 100),
@@ -199,7 +233,12 @@ class _PaymentScreenState extends State<PaymentScreen> {
     );
   }
 
-  Widget _orderSummary(List<CartItem> items, double total) {
+  Widget _orderSummary(CartProvider cart) {
+    final items = cart.items;
+    final total = cart.totalPrice;
+    final discount = cart.discountAmount;
+    final payable = cart.totalAfterDiscount;
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -225,12 +264,41 @@ class _PaymentScreenState extends State<PaymentScreen> {
               ),
             ),
           ),
+          if (cart.appliedPromo != null) ...[
+            const SizedBox(height: 4),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text("Promosyon (${cart.appliedPromo!.code})", style: const TextStyle(color: Colors.black87)),
+                Text("%${cart.appliedPromo!.discountPercent.toStringAsFixed(0)}"),
+              ],
+            ),
+          ],
           const Divider(),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text("Toplam", style: TextStyle(fontWeight: FontWeight.bold)),
-              Text("₺${total.toStringAsFixed(2)}",
+              const Text("Ara Toplam", style: TextStyle(fontWeight: FontWeight.w600)),
+              Text("₺${total.toStringAsFixed(2)}", style: const TextStyle(fontWeight: FontWeight.w700)),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text("İndirim"),
+              Text(
+                discount > 0 ? "-₺${discount.toStringAsFixed(2)}" : "₺0.00",
+                style: const TextStyle(color: Colors.green, fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text("Ödenecek", style: TextStyle(fontWeight: FontWeight.bold)),
+              Text("₺${payable.toStringAsFixed(2)}",
                   style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.red)),
             ],
           ),
@@ -304,5 +372,17 @@ class _PaymentScreenState extends State<PaymentScreen> {
       case CartItemType.newspaperSubscription:
         return "newspaper_subscription";
     }
+  }
+
+  DateTime? _computeExpiry(dynamic periodRaw) {
+    final now = DateTime.now();
+    final period = periodRaw?.toString().toLowerCase();
+    if (period == "6m" || period == "6ay" || period == "6" || period == "6month") {
+      return DateTime(now.year, now.month + 6, now.day);
+    }
+    if (period == "12m" || period == "12ay" || period == "12" || period == "12month" || period == "1y") {
+      return DateTime(now.year + 1, now.month, now.day);
+    }
+    return null;
   }
 }

@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../services/auth/auth_provider.dart';
 import '../register/register_bottom_sheet.dart';
+import '../register/social_register_bottom_sheet.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -16,6 +18,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final passwordCtrl = TextEditingController();
 
   bool isLoading = false;
+  bool socialLoading = false;
   bool obscurePassword = true;
   bool rememberMe = false;
 
@@ -25,6 +28,41 @@ class _LoginScreenState extends State<LoginScreen> {
     _loadRememberedCredentials();
     emailCtrl.addListener(_onTextChanged);
     passwordCtrl.addListener(_onTextChanged);
+  }
+
+  Future<void> _handleGoogleSignIn() async {
+    final auth = context.read<AuthProvider>();
+    setState(() => socialLoading = true);
+    final result = await auth.signInWithGoogle();
+    setState(() => socialLoading = false);
+
+    if (result.user != null) {
+      if (mounted) Navigator.pop(context);
+      return;
+    }
+
+    if (result.draft != null && mounted) {
+      final completed = await showModalBottomSheet<bool>(
+        context: context,
+        isScrollControlled: true,
+        useRootNavigator: true,
+        backgroundColor: Colors.white,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        builder: (_) => SocialRegisterBottomSheet(draft: result.draft!),
+      );
+      if (completed == true && mounted) {
+        Navigator.pop(context);
+      }
+      return;
+    }
+
+    if (result.error != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(result.error!)),
+      );
+    }
   }
 
   Future<void> _loadRememberedCredentials() async {
@@ -282,6 +320,33 @@ class _LoginScreenState extends State<LoginScreen> {
                                         fontWeight: FontWeight.w600,
                                       ),
                                     ),
+                            ),
+                          ),
+
+                          const SizedBox(height: 10),
+
+                          SizedBox(
+                            height: 48,
+                            child: OutlinedButton.icon(
+                              icon: socialLoading
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(strokeWidth: 2),
+                                    )
+                                  : const Icon(FontAwesomeIcons.google, color: Colors.red),
+                              label: const Text(
+                                "Google ile devam et",
+                                style: TextStyle(fontWeight: FontWeight.w600),
+                              ),
+                              style: OutlinedButton.styleFrom(
+                                side: const BorderSide(color: Colors.red),
+                                foregroundColor: Colors.red,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                              ),
+                              onPressed: socialLoading ? null : _handleGoogleSignIn,
                             ),
                           ),
 
