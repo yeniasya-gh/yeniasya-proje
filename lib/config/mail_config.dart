@@ -7,7 +7,7 @@ class MailConfig {
   static const smtpPort = 465;
   static const useSsl = false;
   static const smtpUsername = "aykut@coqode.com";
-  static const smtpPassword = "Amasya.05";
+  static const smtpPassword = "";
   static const fromEmail = "aykut@coqode.com";
   static const fromName = "Yeni Asya";
 }
