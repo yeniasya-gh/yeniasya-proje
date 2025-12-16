@@ -56,16 +56,23 @@ class SecureFileService {
   }
 
   Future<Uint8List> _downloadRaw(String url, {required bool isPrivate}) async {
+    final normalized = UploadService.normalizeUrl(url);
     if (!isPrivate) {
-      final resp = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 20));
+      final resp = await http.get(Uri.parse(normalized)).timeout(const Duration(seconds: 20));
       if (resp.statusCode != 200 || resp.bodyBytes.isEmpty) {
         throw Exception("PDF alınamadı (${resp.statusCode})");
       }
       return resp.bodyBytes;
     }
 
+    final path = _extractPath(normalized);
+
+    if (kIsWeb) {
+      return _downloadViaViewToken(path);
+    }
+
     final uri = Uri.parse(UploadService.normalizeUrl("/private/view"));
-    final payload = {"path": url.replaceFirst(RegExp(r'^https?://[^/]+'), "")};
+    final payload = {"path": path};
     final resp = await http
         .post(
           uri,
@@ -81,6 +88,97 @@ class SecureFileService {
       throw Exception("Görünüm linki alınamadı (${resp.statusCode})");
     }
     return resp.bodyBytes;
+  }
+
+  Future<Uint8List> _downloadViaViewToken(String path) async {
+    final viewToken = await _requestViewToken(path);
+    try {
+      return await _fetchPdfWithToken(viewToken);
+    } on _TokenExpiredException {
+      final refreshed = await _requestViewToken(path);
+      return _fetchPdfWithToken(refreshed);
+    }
+  }
+
+  Future<_ViewTokenData> _requestViewToken(String path) async {
+    final uri = Uri.parse(UploadService.normalizeUrl("/private/view-token"));
+    final resp = await http
+        .post(
+          uri,
+          headers: {
+            "content-type": "application/json",
+            "accept": "application/json",
+            "x-api-key": UploadService.privateAuthToken,
+          },
+          body: jsonEncode({"path": path}),
+        )
+        .timeout(const Duration(seconds: 15));
+
+    if (resp.statusCode != 200 || resp.body.isEmpty) {
+      throw Exception("Token alınamadı (${resp.statusCode})");
+    }
+
+    try {
+      final data = jsonDecode(resp.body);
+      final tokenUrl = data["url"] ?? data["viewUrl"] ?? data["path"];
+      final token = data["token"]?.toString();
+      if ((tokenUrl == null || tokenUrl.toString().isEmpty) && (token == null || token.isEmpty)) {
+        throw Exception("Token veya URL boş döndü");
+      }
+      return _ViewTokenData(
+        token: token,
+        url: tokenUrl?.toString(),
+      );
+    } catch (e) {
+      throw Exception("Token yanıtı çözülemedi: $e");
+    }
+  }
+
+  Future<Uint8List> _fetchPdfWithToken(_ViewTokenData tokenData) async {
+    final secureUrl = _buildSecureUrl(tokenData);
+    final resp = await http
+        .get(
+          Uri.parse(secureUrl),
+          headers: {
+            "accept": "application/pdf",
+          },
+        )
+        .timeout(const Duration(seconds: 20));
+
+    if (resp.statusCode == 401 || resp.statusCode == 403) {
+      throw _TokenExpiredException();
+    }
+
+    if (resp.statusCode != 200 || resp.bodyBytes.isEmpty) {
+      throw Exception("PDF alınamadı (${resp.statusCode})");
+    }
+
+    return resp.bodyBytes;
+  }
+
+  Future<String> getWebViewSecureUrl({required String url}) async {
+    final normalized = UploadService.normalizeUrl(url);
+    final path = _extractPath(normalized);
+    final token = await _requestViewToken(path);
+    return _buildSecureUrl(token);
+  }
+
+  String _buildSecureUrl(_ViewTokenData tokenData) {
+    if (tokenData.url != null && tokenData.url!.isNotEmpty) {
+      return UploadService.normalizeUrl(tokenData.url!);
+    }
+    final token = tokenData.token;
+    if (token == null || token.isEmpty) {
+      throw Exception("Token bulunamadı");
+    }
+    final base = UploadService.normalizeUrl("/private/view-secure");
+    return Uri.parse(base).replace(queryParameters: {"token": token}).toString();
+  }
+
+  String _extractPath(String url) {
+    final parsed = Uri.tryParse(url);
+    if (parsed != null && parsed.hasAuthority) return parsed.path;
+    return url.replaceFirst(RegExp(r'^https?://[^/]+'), "");
   }
 
   Future<Uint8List> _encrypt(Uint8List data) async {
@@ -128,4 +226,13 @@ class SecureFileService {
     final path = uri?.pathSegments.join("_") ?? url;
     return path.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), "_");
   }
+}
+
+class _TokenExpiredException implements Exception {}
+
+class _ViewTokenData {
+  final String? token;
+  final String? url;
+
+  _ViewTokenData({this.token, this.url});
 }

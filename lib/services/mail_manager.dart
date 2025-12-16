@@ -1,34 +1,24 @@
-import 'package:mailer/mailer.dart';
-import 'package:mailer/smtp_server.dart';
+import 'dart:convert';
+
+import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 import '../config/mail_config.dart';
 
 class MailManager {
   MailManager._() {
-    smtpHost = MailConfig.smtpHost;
-    smtpPort = MailConfig.smtpPort;
-    useSsl = MailConfig.useSsl;
-    smtpUsername = MailConfig.smtpUsername;
-    smtpPassword = MailConfig.smtpPassword;
-    fromEmail = MailConfig.fromEmail;
+    mailApiUrl = MailConfig.mailApiUrl;
+    mailToken = MailConfig.mailToken;
     fromName = MailConfig.fromName;
   }
 
   static final MailManager instance = MailManager._();
 
-  /// SMTP ayarlarını doldur (Gmail SMTP kullanacaksanız 2FA + Uygulama Şifresi gerekir)
-  /// host: smtp.gmail.com, port: 587 (STARTTLS) veya 465 (SSL)
-  /// username: app@yeniasya.com.tr (veya Gmail adresi)
-  /// password: uygulama şifresi
-  String smtpHost = "";
-  int smtpPort = 587;
-  bool useSsl = false;
-  String smtpUsername = "";
-  String smtpPassword = "";
-  String fromEmail = "";
+  /// CDN mail servisi yapılandırması
+  String mailApiUrl = "";
+  String mailToken = "";
   String fromName = "Yeni Asya";
 
-  bool get _isConfigured =>
-      smtpHost.isNotEmpty && smtpUsername.isNotEmpty && smtpPassword.isNotEmpty && fromEmail.isNotEmpty;
+  bool get _isConfigured => mailApiUrl.isNotEmpty && mailToken.isNotEmpty;
 
   Future<void> sendWelcomeEmail({
     required String to,
@@ -98,11 +88,12 @@ class MailManager {
   }
 
   String _wrapTemplate(String body) {
+    final brand = fromName;
     return """
     <div style="font-family:Arial, sans-serif; background:#fafafa; padding:16px;">
       <div style="max-width:640px;margin:0 auto;background:#fff;border-radius:10px;box-shadow:0 6px 20px rgba(0,0,0,0.05);padding:20px;">
         <div style="text-align:center;margin-bottom:16px;">
-          <h1 style="color:#d32f2f;margin:0;">Yeni Asya</h1>
+          <h1 style="color:#d32f2f;margin:0;">$brand</h1>
         </div>
         $body
         <hr style="margin:20px 0;border:none;border-top:1px solid #eee;">
@@ -119,27 +110,21 @@ class MailManager {
   }) async {
     if (!_isConfigured) {
       // ignore: avoid_print
-      print("🔴 [Mail] SMTP yapılandırması eksik, mail gönderilmedi.");
+      print("🔴 [Mail] Mail servisi yapılandırması eksik, mail gönderilmedi.");
       return;
     }
-    final smtpServer = SmtpServer(
-      smtpHost,
-      port: smtpPort,
-      ssl: useSsl,
-      username: smtpUsername,
-      password: smtpPassword,
-    );
 
-    final message = Message()
-      ..from = Address(fromEmail, fromName)
-      ..recipients.add(to)
-      ..subject = subject
-      ..html = html;
+    final payload = {
+      "to": to,
+      "subject": subject,
+      "text": _htmlToText(html),
+      "html": html,
+    };
 
     // ignore: avoid_print
-    print("📧 [Mail] Gönderim başlıyor -> $to | $subject");
+    print("📧 [Mail] Gönderim başlıyor -> $to | $subject | ${payload["text"]}");
     try {
-      await send(message, smtpServer);
+      await _postJson(payload);
       // ignore: avoid_print
       print("✅ [Mail] Gönderildi -> $to");
     } catch (e) {
@@ -147,5 +132,28 @@ class MailManager {
       print("🔴 [Mail] Gönderilemedi -> $to | Hata: $e");
       rethrow;
     }
+  }
+
+  Future<void> _postJson(Map<String, dynamic> payload) async {
+    final response = await http.post(
+      Uri.parse(mailApiUrl),
+      headers: {
+        "Content-Type": "application/json",
+        "x-mail-token": mailToken,
+      },
+      body: jsonEncode(payload),
+    );
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception("Status: ${response.statusCode} Body: ${response.body}");
+    }
+  }
+
+  /// Çok basit bir HTML temizleyici; CDNe text alanı göndermek için kullanılıyor.
+  String _htmlToText(String html) {
+    return html
+        .replaceAll(RegExp(r'<[^>]*>', multiLine: true), " ")
+        .replaceAll(RegExp(r'\s+'), " ")
+        .trim();
   }
 }

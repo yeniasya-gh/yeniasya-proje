@@ -16,6 +16,8 @@ import '../../services/review_service.dart';
 import '../../services/auth/auth_provider.dart';
 import '../../services/secure_file_service.dart';
 import '../../services/error/error_manager.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter/foundation.dart';
 
 class ProductDetail {
   final String id;
@@ -189,6 +191,19 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
     const base = "https://yeniasyadigital.com";
     return "$base/urun?type=$typeParam&id=$id";
+  }
+
+  Future<void> _openPdfExternal(String url) async {
+    final normalized = UploadService.normalizeUrl(url);
+    final uri = Uri.parse(normalized);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } else {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("PDF açılamadı.")),
+      );
+    }
   }
 
   Future<void> _shareGeneral() async {
@@ -665,7 +680,21 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                 _addToCart(context);
                 return;
               }
-              if (hasAccess) return;
+              if (hasAccess) {
+                final fileUrl = _currentFileUrl();
+                if (fileUrl != null && fileUrl.isNotEmpty) {
+                  if (kIsWeb) {
+                    _openPdfExternal(fileUrl);
+                  } else {
+                    _openPdf(context, fileUrl);
+                  }
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text("Bu içerik için indirme bağlantısı bulunamadı.")),
+                  );
+                }
+                return;
+              }
               _addToCart(context);
             },
             style: ElevatedButton.styleFrom(

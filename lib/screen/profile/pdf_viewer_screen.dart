@@ -1,13 +1,18 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:http/http.dart' as http;
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 
 import '../../services/upload_service.dart';
 import '../../services/error/error_manager.dart';
 import '../../services/secure_file_service.dart';
+import '../../widgets/pdf_web_frame_stub.dart'
+    if (dart.library.html) '../../widgets/pdf_web_frame_web.dart' as pdf_web_frame;
 
 class PdfViewerScreen extends StatefulWidget {
   final String url;
@@ -27,6 +32,7 @@ class PdfViewerScreen extends StatefulWidget {
 
 class _PdfViewerScreenState extends State<PdfViewerScreen> {
   Uint8List? _bytes;
+  String? _webPdfUrl;
   bool _loading = true;
   String? _error;
   final PdfViewerController _controller = PdfViewerController();
@@ -34,6 +40,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   double _zoom = 1.0;
   final Set<int> _bookmarks = {};
   final Map<int, String> _notes = {};
+  bool _testBusy = false;
 
   @override
   void initState() {
@@ -41,13 +48,68 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     _load();
   }
 
+  // Geçici test: web'de PDF fetch sorununu debug etmek için
+  Future<void> testPdfFetch() async {
+    const pdfPath = "/private/dergi/1764576570252-07_Temmuz_2025_Bizim_Aile_compressed.pdf";
+    final targetPath = Uri.parse(UploadService.normalizeUrl(pdfPath)).path;
+    final tokenUri = Uri.parse(UploadService.normalizeUrl("/private/view-token"));
+    setState(() => _testBusy = true);
+    try {
+      final tokenResp = await http
+          .post(
+            tokenUri,
+            headers: {
+              "content-type": "application/json",
+              "accept": "application/json",
+              "x-api-key": UploadService.privateAuthToken,
+            },
+            body: jsonEncode({"path": targetPath}),
+          )
+          .timeout(const Duration(seconds: 10));
+      debugPrint("🧪 Token status: ${tokenResp.statusCode}");
+      debugPrint("🧪 Token body: ${tokenResp.body}");
+      if (tokenResp.statusCode == 200) {
+        final tokenData = jsonDecode(tokenResp.body);
+        final pdfUrl = tokenData["url"] ?? tokenData["viewUrl"] ?? tokenData["path"];
+        final token = tokenData["token"]?.toString();
+        debugPrint("🧪 Token PDF URL: $pdfUrl");
+        debugPrint("🧪 Token value: $token");
+        final viewSecure = (pdfUrl != null && pdfUrl.toString().isNotEmpty)
+            ? UploadService.normalizeUrl(pdfUrl.toString())
+            : Uri.parse(UploadService.normalizeUrl("/private/view-secure"))
+                .replace(queryParameters: {"token": token ?? ""}).toString();
+        if (viewSecure.isNotEmpty) {
+          final pdfResp = await http
+              .get(
+                Uri.parse(viewSecure.toString()),
+                headers: {"accept": "application/pdf"},
+              )
+              .timeout(const Duration(seconds: 10));
+          debugPrint("🧪 PDF fetch status: ${pdfResp.statusCode}");
+          debugPrint("🧪 Content-Type: ${pdfResp.headers["content-type"]}");
+          debugPrint("🧪 Body length: ${pdfResp.bodyBytes.length}");
+        }
+      }
+    } catch (e) {
+      debugPrint("🧪 PDF fetch error: $e");
+    } finally {
+      if (mounted) setState(() => _testBusy = false);
+    }
+  }
+
   Future<void> _load() async {
     setState(() {
       _loading = true;
       _error = null;
+      _webPdfUrl = null;
     });
     try {
-      _bytes = await _fetchPdfBytes();
+      if (kIsWeb && widget.isPrivate) {
+        _bytes = null;
+        _webPdfUrl = await SecureFileService.instance.getWebViewSecureUrl(url: widget.url);
+      } else {
+        _bytes = await _fetchPdfBytes();
+      }
     } catch (e) {
       _error = ErrorManager.parseGraphQLError(e.toString());
     } finally {
@@ -91,25 +153,13 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
           ? const Center(child: CircularProgressIndicator())
           : _error != null
               ? _errorView()
-              : (_bytes == null
-                  ? _errorView()
-                  : Column(
-                      children: [
-                        _toolbar(),
-                        Expanded(
-                          child: SfPdfViewer.memory(
-                            _bytes!,
-                            key: _pdfKey,
-                            controller: _controller,
-                            canShowScrollHead: true,
-                            canShowScrollStatus: true,
-                            pageLayoutMode: PdfPageLayoutMode.single,
-                            enableDoubleTapZooming: true,
-                          ),
-                        ),
-                        _bookmarksBar(),
-                      ],
-                    )),
+              : Column(
+                  children: [
+                    _toolbar(),
+                    Expanded(child: _buildViewer()),
+                    _bookmarksBar(),
+                  ],
+                ),
     );
   }
 
@@ -133,10 +183,54 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
 
   Future<Uint8List> _fetchPdfBytes() async {
     final normalized = UploadService.normalizeUrl(widget.url);
+    // Web'de özel dosyalar için yeni /private/view-file endpoint'ini kullan
+    if (kIsWeb && widget.isPrivate) {
+      return SecureFileService.instance.getPdfBytes(url: normalized, isPrivate: widget.isPrivate);
+    }
+
+    if (kIsWeb) {
+      final resp = await http.get(Uri.parse(normalized)).timeout(const Duration(seconds: 20));
+      if (resp.statusCode == 200 && resp.bodyBytes.isNotEmpty) {
+        return resp.bodyBytes;
+      }
+      return SecureFileService.instance.getPdfBytes(url: normalized, isPrivate: widget.isPrivate);
+    }
+
     return SecureFileService.instance.getPdfBytes(
       url: normalized,
       isPrivate: widget.isPrivate,
     );
+  }
+
+  Widget _buildViewer() {
+    if (kIsWeb && widget.isPrivate) {
+      if (_webPdfUrl == null) {
+        return _errorView();
+      }
+      return pdf_web_frame.buildPdfWebFrame(_webPdfUrl!);
+    }
+
+    if (_bytes == null) return _errorView();
+
+    return SfPdfViewer.memory(
+      _bytes!,
+      key: _pdfKey,
+      controller: _controller,
+      canShowScrollHead: true,
+      canShowScrollStatus: true,
+      pageLayoutMode: PdfPageLayoutMode.single,
+      enableDoubleTapZooming: true,
+    );
+  }
+
+  Future<void> _openPdfExternal(String url) async {
+    final normalized = UploadService.normalizeUrl(url);
+    final uri = Uri.parse(normalized);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } else {
+      debugPrint("🧪 PDF external launch failed");
+    }
   }
 
   Widget _toolbar() {

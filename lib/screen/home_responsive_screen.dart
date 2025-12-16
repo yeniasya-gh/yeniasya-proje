@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../services/access_provider.dart';
 import '/screen/footer/yeni_asya_footer.dart';
 import '/services/auth/auth_provider.dart';
+import '/services/mail_manager.dart';
 import '/screen/login/login_screen.dart';
 import '/screen/profile/profile_screen.dart';
 import '/utils/route_guard.dart';
@@ -52,6 +53,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
   List<Map<String, dynamic>> libraryOrders = [];
   bool _deepLinkHandled = false;
   AuthProvider? _authListener;
+  bool _sendingTestMail = false;
 
   @override
   void initState() {
@@ -194,6 +196,30 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         _openProductDetail(_mapNewspaperDetail(item));
       }
     });
+  }
+
+  Future<void> _sendTestMail() async {
+    if (_sendingTestMail) return;
+    setState(() => _sendingTestMail = true);
+    try {
+      await MailManager.instance.sendWelcomeEmail(
+        to: "ayktbyz@gmail.com",
+        name: "Test Kullanıcı",
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Test mail gönderildi.")),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Mail gönderilemedi: $e")),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _sendingTestMail = false);
+      }
+    }
   }
 
   ProductDetail _mapMagazineDetail(Map<String, dynamic> mag) {
@@ -461,6 +487,21 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
                               children: [
                                 if (_section == HomeSection.home) ...[
                                   _buildPremiumCard(isWeb),
+                                  const SizedBox(height: 20),
+                                  Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: OutlinedButton.icon(
+                                      onPressed: _sendingTestMail ? null : _sendTestMail,
+                                      icon: _sendingTestMail
+                                          ? const SizedBox(
+                                              width: 16,
+                                              height: 16,
+                                              child: CircularProgressIndicator(strokeWidth: 2),
+                                            )
+                                          : const Icon(Icons.mail_outline),
+                                      label: Text(_sendingTestMail ? "Gönderiliyor..." : "Test Mail Gönder"),
+                                    ),
+                                  ),
                                   const SizedBox(height: 20),
                                 ],
                                 if (isWeb)
