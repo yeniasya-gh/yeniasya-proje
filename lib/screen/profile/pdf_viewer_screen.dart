@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 
 import '../../services/upload_service.dart';
@@ -13,7 +14,6 @@ import '../../services/error/error_manager.dart';
 import '../../services/secure_file_service.dart';
 import '../../widgets/pdf_web_frame_stub.dart'
     if (dart.library.html) '../../widgets/pdf_web_frame_web.dart' as pdf_web_frame;
-
 class PdfViewerScreen extends StatefulWidget {
   final String url;
   final String title;
@@ -41,6 +41,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   final Set<int> _bookmarks = {};
   final Map<int, String> _notes = {};
   bool _testBusy = false;
+  int? _lastSavedPage;
 
   @override
   void initState() {
@@ -104,18 +105,23 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       _webPdfUrl = null;
     });
     try {
-      if (kIsWeb && widget.isPrivate) {
+      await _loadPersistedState();
+      if (kIsWeb) {
+        final target = widget.isPrivate
+            ? await SecureFileService.instance.getWebViewSecureUrl(url: widget.url)
+            : UploadService.normalizeUrl(widget.url);
+        _webPdfUrl = target;
         _bytes = null;
-        _webPdfUrl = await SecureFileService.instance.getWebViewSecureUrl(url: widget.url);
-      } else {
-        _bytes = await _fetchPdfBytes();
+        return;
       }
+
+      _bytes = await _fetchPdfBytes();
     } catch (e) {
       _error = ErrorManager.parseGraphQLError(e.toString());
     } finally {
       if (mounted) {
         setState(() => _loading = false);
-        if (_bytes == null && _error == null) {
+        if (_bytes == null && _error == null && !(kIsWeb && _webPdfUrl != null)) {
           _error = "PDF yüklenemedi, lütfen tekrar deneyin.";
         }
       }
@@ -129,6 +135,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isWeb = kIsWeb;
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.title, maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -137,16 +144,18 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
             icon: const Icon(Icons.refresh),
             onPressed: _loading ? null : _load,
           ),
-          IconButton(
-            icon: const Icon(Icons.bookmark_add_outlined),
-            tooltip: "Bu sayfayı işaretle",
-            onPressed: _loading ? null : _addBookmark,
-          ),
-          IconButton(
-            icon: const Icon(Icons.note_add_outlined),
-            tooltip: "Etiket/Not ekle",
-            onPressed: _loading ? null : _addNoteDialog,
-          ),
+          if (!isWeb)
+            IconButton(
+              icon: const Icon(Icons.bookmark_add_outlined),
+              tooltip: "Bu sayfayı işaretle",
+              onPressed: _loading ? null : _addBookmark,
+            ),
+          if (!isWeb)
+            IconButton(
+              icon: const Icon(Icons.note_add_outlined),
+              tooltip: "Etiket/Not ekle",
+              onPressed: _loading ? null : _addNoteDialog,
+            ),
         ],
       ),
       body: _loading
@@ -155,9 +164,9 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
               ? _errorView()
               : Column(
                   children: [
-                    _toolbar(),
+                    if (!isWeb) _toolbar(),
                     Expanded(child: _buildViewer()),
-                    _bookmarksBar(),
+                    if (!isWeb) _bookmarksBar(),
                   ],
                 ),
     );
@@ -203,8 +212,8 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   }
 
   Widget _buildViewer() {
-    if (kIsWeb && widget.isPrivate) {
-      if (_webPdfUrl == null) {
+    if (kIsWeb) {
+      if (_webPdfUrl == null || _webPdfUrl!.isEmpty) {
         return _errorView();
       }
       return pdf_web_frame.buildPdfWebFrame(_webPdfUrl!);
@@ -216,6 +225,20 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       _bytes!,
       key: _pdfKey,
       controller: _controller,
+      onPageChanged: (details) {
+        setState(() {});
+        _persistState(page: details.newPageNumber);
+      },
+      onDocumentLoaded: (_) {
+        setState(() {});
+        if (_lastSavedPage != null && _lastSavedPage! > 0) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              _controller.jumpToPage(_lastSavedPage!);
+            }
+          });
+        }
+      },
       canShowScrollHead: true,
       canShowScrollStatus: true,
       pageLayoutMode: PdfPageLayoutMode.single,
@@ -290,6 +313,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     final page = _controller.pageNumber;
     setState(() => _bookmarks.add(page));
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Sayfa $page ayraca eklendi")));
+    _persistState();
   }
 
   void _openBookmarksSheet() {
@@ -310,6 +334,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
               icon: const Icon(Icons.delete_outline),
               onPressed: () {
                 setState(() => _bookmarks.remove(p));
+                _persistState();
                 Navigator.pop(context);
               },
             ),
@@ -339,7 +364,10 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
                   label: Text("Sayfa $p"),
                   onPressed: () => _controller.jumpToPage(p),
                   deleteIcon: const Icon(Icons.close, size: 16),
-                  onDeleted: () => setState(() => _bookmarks.remove(p)),
+                  onDeleted: () {
+                    setState(() => _bookmarks.remove(p));
+                    _persistState();
+                  },
                 ),
               ),
             )
@@ -372,11 +400,62 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     if (saved == null) return;
     if (saved.isEmpty) {
       setState(() => _notes.remove(page));
+      _persistState();
       return;
     }
     setState(() => _notes[page] = saved);
     if (!_bookmarks.contains(page)) {
       setState(() => _bookmarks.add(page));
     }
+    _persistState();
+  }
+
+  String get _storageKey {
+    final parsed = Uri.tryParse(widget.url);
+    final name = parsed?.pathSegments.isNotEmpty == true ? parsed!.pathSegments.last : widget.url;
+    return "pdf_state::$name";
+  }
+
+  Future<void> _loadPersistedState() async {
+    if (kIsWeb) return;
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_storageKey);
+    if (raw == null) return;
+    try {
+      final data = jsonDecode(raw) as Map<String, dynamic>;
+      final savedBookmarks = (data["bookmarks"] as List?)
+          ?.map((e) => int.tryParse(e.toString()) ?? 0)
+          .where((e) => e > 0)
+          .toSet();
+      final savedNotesRaw = data["notes"] as Map<String, dynamic>?;
+      final savedNotes = <int, String>{};
+      savedNotesRaw?.forEach((k, v) {
+        final key = int.tryParse(k.toString());
+        if (key != null && v != null) savedNotes[key] = v.toString();
+      });
+      final savedPage = int.tryParse(data["page"]?.toString() ?? "");
+      setState(() {
+        _bookmarks
+          ..clear()
+          ..addAll(savedBookmarks ?? {});
+        _notes
+          ..clear()
+          ..addAll(savedNotes);
+        _lastSavedPage = savedPage;
+      });
+    } catch (_) {
+      // ignore invalid state
+    }
+  }
+
+  Future<void> _persistState({int? page}) async {
+    if (kIsWeb) return;
+    final prefs = await SharedPreferences.getInstance();
+    final data = {
+      "page": page ?? _controller.pageNumber,
+      "bookmarks": _bookmarks.toList(),
+      "notes": _notes.map((k, v) => MapEntry(k.toString(), v)),
+    };
+    await prefs.setString(_storageKey, jsonEncode(data));
   }
 }

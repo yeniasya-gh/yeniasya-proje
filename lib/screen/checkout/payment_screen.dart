@@ -99,6 +99,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
             itemId = null;
             expiresAt = _computeExpiry(item.metadata?["period"]);
             break;
+          case CartItemType.supplement:
+            itemType = "ek";
+            itemId = parsedProductId;
+            break;
         }
 
         if (itemType == null) continue;
@@ -371,6 +375,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
         return "magazine_one";
       case CartItemType.newspaperSubscription:
         return "newspaper_subscription";
+      case CartItemType.supplement:
+        return "ek";
     }
   }
 

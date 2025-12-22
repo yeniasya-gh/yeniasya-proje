@@ -13,12 +13,14 @@ class AccessProvider extends ChangeNotifier {
     "magazine": <int?>{},
     "magazine_issue": <int?>{},
     "newspaper_subscription": <int?>{},
+    "ek": <int?>{},
   };
   final Map<String, Map<int?, DateTime?>> _expires = {
     "book": <int?, DateTime?>{},
     "magazine": <int?, DateTime?>{},
     "magazine_issue": <int?, DateTime?>{},
     "newspaper_subscription": <int?, DateTime?>{},
+    "ek": <int?, DateTime?>{},
   };
 
   bool hasAccess(String type, {int? itemId}) {

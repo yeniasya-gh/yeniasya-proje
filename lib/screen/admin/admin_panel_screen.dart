@@ -10,6 +10,8 @@ import 'admin_stats_dashboard.dart';
 import 'admin_reports_page.dart';
 import 'admin_promo_codes_page.dart';
 import 'admin_reviews_page.dart';
+import 'admin_ekler_page.dart';
+import 'admin_slider_page.dart';
 import '../../services/loading_manager.dart';
 
 enum AdminPage {
@@ -24,6 +26,8 @@ enum AdminPage {
   reviews,
   reports,
   authorCategory,
+  ekler,
+  sliders,
   settings,
 }
 
@@ -81,6 +85,8 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
                     _menuItem("Yorumlar", Icons.reviews, AdminPage.reviews),
                     _menuItem("Raporlar", Icons.bar_chart, AdminPage.reports),
                     _menuItem("Yazar & Kategori", Icons.list, AdminPage.authorCategory),
+                    _menuItem("Ekler", Icons.file_present, AdminPage.ekler),
+                    _menuItem("Sliderlar", Icons.slideshow, AdminPage.sliders),
                     _menuItem("Ayarlar", Icons.settings, AdminPage.settings),
                   ],
                 ),
@@ -160,6 +166,10 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
       return const AdminReportsPage();
     case AdminPage.authorCategory:
       return const AdminAuthorCategoryPage();
+    case AdminPage.ekler:
+      return const AdminEklerPage();
+    case AdminPage.sliders:
+      return const AdminSliderPage();
     case AdminPage.settings:
       return const Center(child: Text("Ayarlar Sayfası"));
     default:

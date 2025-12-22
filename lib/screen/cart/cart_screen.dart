@@ -457,6 +457,8 @@ class _CartScreenState extends State<CartScreen> {
         return "Dergi Sayısı";
       case CartItemType.newspaperSubscription:
         return "Gazete Aboneliği";
+      case CartItemType.supplement:
+        return "Ek";
     }
   }
 }

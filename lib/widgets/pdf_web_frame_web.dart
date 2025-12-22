@@ -17,7 +17,7 @@ Widget buildPdfWebFrame(String url) {
       ..style.height = '100%'
       ..allow = 'cross-origin-isolated; fullscreen'
       ..setAttribute('allowfullscreen', 'true')
-      ..setAttribute('sandbox', 'allow-same-origin allow-scripts allow-forms allow-popups allow-downloads');
+      ..setAttribute('sandbox', 'allow-same-origin allow-scripts allow-forms allow-popups');
     return iframe;
   });
 

@@ -3,6 +3,7 @@ enum CartItemType {
   magazine,
   magazineIssue,
   newspaperSubscription,
+  supplement,
 }
 
 class CartItem {

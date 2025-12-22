@@ -4,7 +4,7 @@ import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 
-enum UploadFileType { book, magazine, newspaper }
+enum UploadFileType { book, magazine, newspaper, supplement, slider }
 
 class UploadService {
   UploadService({String? baseUrl}) : _baseUrl = baseUrl ?? "https://cdn.yeniasyadigital.com";
@@ -33,6 +33,10 @@ class UploadService {
         return "dergi";
       case UploadFileType.newspaper:
         return "gazete";
+      case UploadFileType.supplement:
+        return "ek";
+      case UploadFileType.slider:
+        return "slider";
     }
   }
 

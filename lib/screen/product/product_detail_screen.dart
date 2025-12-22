@@ -298,6 +298,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       case CartItemType.newspaperSubscription:
         type = "newspaper_subscription";
         break;
+      case CartItemType.supplement:
+        type = "ek";
+        break;
     }
 
     return {
@@ -596,7 +599,36 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                   },
                 ),
                 const SizedBox(height: 16),
-                Text(widget.detail.title, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                if (widget.detail.type == CartItemType.book)
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          widget.detail.title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      OutlinedButton.icon(
+                        onPressed: null,
+                        icon: Icon(Icons.headphones, color: Colors.grey.shade500),
+                        label: Text(
+                          "Sesli Kitap",
+                          style: TextStyle(color: Colors.grey.shade500, fontWeight: FontWeight.w600),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          side: BorderSide(color: Colors.grey.shade300),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                      ),
+                    ],
+                  )
+                else
+                  Text(widget.detail.title, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
                 if ((widget.detail.subtitle ?? "").isNotEmpty) ...[
                   const SizedBox(height: 6),
                   Text(widget.detail.subtitle!, style: const TextStyle(color: Colors.black54, fontSize: 14)),
@@ -762,18 +794,20 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       return "Sepete Ekle (₺${price.toStringAsFixed(2)})";
     }
 
-    if (hasAccess) {
-      switch (detail.type) {
-        case CartItemType.book:
-          return "Kitap erişimi aktif";
-        case CartItemType.magazine:
-          return _accessText(detail, fallback: "Abonelik aktif");
-        case CartItemType.magazineIssue:
-          return "Dergi sayısı erişimi aktif";
-        case CartItemType.newspaperSubscription:
-          return _accessText(detail, fallback: "Abonelik aktif");
+      if (hasAccess) {
+        switch (detail.type) {
+          case CartItemType.book:
+            return "Kitap erişimi aktif";
+          case CartItemType.magazine:
+            return _accessText(detail, fallback: "Abonelik aktif");
+          case CartItemType.magazineIssue:
+            return "Dergi sayısı erişimi aktif";
+          case CartItemType.newspaperSubscription:
+            return _accessText(detail, fallback: "Abonelik aktif");
+          case CartItemType.supplement:
+            return "Ek erişimi aktif";
+        }
       }
-    }
     return detail.actionLabel;
   }
 
