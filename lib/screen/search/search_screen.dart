@@ -8,6 +8,7 @@ class SearchScreen extends StatefulWidget {
   final List<Map<String, dynamic>> books;
   final List<Map<String, dynamic>> magazines;
   final List<Map<String, dynamic>> newspapers;
+  final List<Map<String, dynamic>> attachments;
   final String initialQuery;
 
   const SearchScreen({
@@ -15,6 +16,7 @@ class SearchScreen extends StatefulWidget {
     required this.books,
     required this.magazines,
     required this.newspapers,
+    required this.attachments,
     this.initialQuery = "",
   });
 
@@ -78,11 +80,13 @@ class _SearchScreenState extends State<SearchScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _section("Kitaplar", results.books),
+              _section("Kitaplar", results.books, "book"),
               const SizedBox(height: 18),
-              _section("Dergiler", results.magazines),
+              _section("Dergiler", results.magazines, "magazine"),
               const SizedBox(height: 18),
-              _section("Gazeteler", results.newspapers),
+              _section("Gazeteler", results.newspapers, "newspaper"),
+              const SizedBox(height: 18),
+              _section("Ekler", results.ekler, "ek"),
             ],
           ),
         ),
@@ -92,7 +96,7 @@ class _SearchScreenState extends State<SearchScreen> {
 
   _ResultBuckets _filterResults(String q) {
     if (q.trim().isEmpty) {
-      return _ResultBuckets([], [], []);
+      return _ResultBuckets([], [], [], []);
     }
     final lower = q.toLowerCase();
     final books = widget.books.where((b) {
@@ -113,10 +117,16 @@ class _SearchScreenState extends State<SearchScreen> {
       return d.contains(lower) || t.contains(lower);
     }).toList();
 
-    return _ResultBuckets(books, mags, news);
+    final eks = widget.attachments.where((e) {
+      final name = (e["ad"] ?? "").toString().toLowerCase();
+      final desc = (e["aciklama"] ?? "").toString().toLowerCase();
+      return name.contains(lower) || desc.contains(lower);
+    }).toList();
+
+    return _ResultBuckets(books, mags, news, eks);
   }
 
-  Widget _section(String title, List<Map<String, dynamic>> items) {
+  Widget _section(String title, List<Map<String, dynamic>> items, String type) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -125,19 +135,27 @@ class _SearchScreenState extends State<SearchScreen> {
         if (items.isEmpty)
           const Text("Sonuç bulunamadı.", style: TextStyle(color: Colors.black54))
         else
-          ...items.map((i) => _resultTile(i)),
+          ...items.map((i) => _resultTile(i, type)),
       ],
     );
   }
 
-  Widget _resultTile(Map<String, dynamic> item) {
-    final title = (item["title"] ?? item["name"] ?? "Başlık").toString();
-    final subtitle = (item["author_rel"]?["name"] ?? item["category"] ?? item["publish_date"] ?? "")
+  Widget _resultTile(Map<String, dynamic> item, String type) {
+    final title = (type == "ek"
+            ? (item["ad"] ?? item["title"] ?? "Ek")
+            : (item["title"] ?? item["name"] ?? "Başlık"))
         .toString();
-    final image = item["cover_url"] ??
-        item["cover_image_url"] ??
-        item["image_url"] ??
-        "assets/images/gazete.jpg";
+    final subtitle = (type == "ek"
+            ? (item["aciklama"] ?? item["description"] ?? item["publish_date"] ?? "")
+            : (item["author_rel"]?["name"] ?? item["category"] ?? item["publish_date"] ?? ""))
+        .toString();
+    final image = (type == "ek"
+            ? (item["photo_url"] ?? item["image_url"] ?? "assets/images/gazete.jpg")
+            : (item["cover_url"] ??
+                item["cover_image_url"] ??
+                item["image_url"] ??
+                "assets/images/gazete.jpg"))
+        .toString();
 
     return ListTile(
       contentPadding: EdgeInsets.zero,
@@ -152,10 +170,6 @@ class _SearchScreenState extends State<SearchScreen> {
       title: Text(title, maxLines: 2, overflow: TextOverflow.ellipsis),
       subtitle: Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis),
       onTap: () {
-        final type = item["title"] != null
-            ? "book"
-            : (item["name"] != null ? "magazine" : "newspaper");
-
         Navigator.pop(context, {"item": item, "type": type});
       },
     );
@@ -196,6 +210,7 @@ class _ResultBuckets {
   final List<Map<String, dynamic>> books;
   final List<Map<String, dynamic>> magazines;
   final List<Map<String, dynamic>> newspapers;
+  final List<Map<String, dynamic>> ekler;
 
-  _ResultBuckets(this.books, this.magazines, this.newspapers);
+  _ResultBuckets(this.books, this.magazines, this.newspapers, this.ekler);
 }

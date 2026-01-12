@@ -92,12 +92,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ),
             const SizedBox(height: 30),
-            const Text(
-              "Abonelikler / İçerikler",
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 12),
-            _subscriptionCard(auth),
+            if (kIsWeb) ...[
+              const Text(
+                "Abonelikler / İçerikler",
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 12),
+              _subscriptionCard(auth),
+            ],
             if (kIsWeb && auth.user?.isAdmin == true) ...[
               const SizedBox(height: 20),
               _menuCard(

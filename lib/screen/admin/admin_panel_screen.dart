@@ -12,6 +12,7 @@ import 'admin_promo_codes_page.dart';
 import 'admin_reviews_page.dart';
 import 'admin_ekler_page.dart';
 import 'admin_slider_page.dart';
+import 'admin_newspaper_subscription_types_page.dart';
 import '../../services/loading_manager.dart';
 
 enum AdminPage {
@@ -20,6 +21,7 @@ enum AdminPage {
   books,
   magazines,
   newspapers,
+  newspaperTypes,
   notifications,
   promotions,
   orders,
@@ -52,11 +54,11 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
               Container(
                 width: 240,
                 color: Colors.grey.shade900,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                child: ListView(
+                  padding: EdgeInsets.zero,
                   children: [
                     const SizedBox(height: 40),
-                        IconButton(
+                    IconButton(
                       icon: const Icon(Icons.arrow_back, color: Colors.white),
                       onPressed: () {
                         Navigator.pop(context);
@@ -79,6 +81,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
                     _menuItem("Kitaplar", Icons.menu_book, AdminPage.books),
                     _menuItem("Dergiler", Icons.menu_book, AdminPage.magazines),
                     _menuItem("Gazeteler", Icons.article, AdminPage.newspapers),
+                    _menuItem("Gazete Tipleri", Icons.newspaper, AdminPage.newspaperTypes),
                     _menuItem("Bildirimler", Icons.notifications, AdminPage.notifications),
                     _menuItem("Promosyon Kodları", Icons.local_offer, AdminPage.promotions),
                     _menuItem("Siparişler", Icons.receipt_long, AdminPage.orders),
@@ -88,6 +91,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
                     _menuItem("Ekler", Icons.file_present, AdminPage.ekler),
                     _menuItem("Sliderlar", Icons.slideshow, AdminPage.sliders),
                     _menuItem("Ayarlar", Icons.settings, AdminPage.settings),
+                    const SizedBox(height: 16),
                   ],
                 ),
               ),
@@ -154,6 +158,8 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
       return const AdminMagazinesPage();
     case AdminPage.newspapers:
       return const AdminNewspapersPage();
+    case AdminPage.newspaperTypes:
+      return const AdminNewspaperSubscriptionTypesPage();
     case AdminPage.notifications:
       return const AdminNotificationsPage();
     case AdminPage.promotions:

@@ -118,10 +118,18 @@ class OrderService {
     required int billingAddressId,
     required double totalPaid,
     required List<Map<String, dynamic>> items,
+    String status = "paid",
     int? promoCodeId,
     String? promoCode,
     double? promoDiscountPercent,
     double? promoDiscountAmount,
+    String? merchantPaymentId,
+    String? paymentSessionToken,
+    bool? paymentApproved,
+    String? paymentResponseCode,
+    String? paymentResponseMsg,
+    String? paymentErrorCode,
+    String? paymentErrorMsg,
   }) async {
     const createOrderMutation = r'''
       mutation CreateOrder(
@@ -129,21 +137,36 @@ class OrderService {
         $delivery_address_id: bigint!,
         $billing_address_id: bigint!,
         $total_paid: numeric!,
+        $status: order_status!,
         $promo_code_id: bigint,
         $promo_code: String,
         $promo_discount_percent: numeric,
-        $promo_discount_amount: numeric
+        $promo_discount_amount: numeric,
+        $merchant_payment_id: String,
+        $payment_session_token: String,
+        $payment_approved: Boolean,
+        $payment_response_code: String,
+        $payment_response_msg: String,
+        $payment_error_code: String,
+        $payment_error_msg: String
       ) {
         insert_orders_one(object: {
           user_id: $user_id,
-          status: "paid",
+          status: $status,
           delivery_address_id: $delivery_address_id,
           billing_address_id: $billing_address_id,
           total_paid: $total_paid,
           promo_code_id: $promo_code_id,
           promo_code: $promo_code,
           promo_discount_percent: $promo_discount_percent,
-          promo_discount_amount: $promo_discount_amount
+          promo_discount_amount: $promo_discount_amount,
+          merchant_payment_id: $merchant_payment_id,
+          payment_session_token: $payment_session_token,
+          payment_approved: $payment_approved,
+          payment_response_code: $payment_response_code,
+          payment_response_msg: $payment_response_msg,
+          payment_error_code: $payment_error_code,
+          payment_error_msg: $payment_error_msg
         }) {
           id
           total_paid
@@ -162,10 +185,18 @@ class OrderService {
         "delivery_address_id": deliveryAddressId,
         "billing_address_id": billingAddressId,
         "total_paid": totalPaid,
+        "status": status,
         "promo_code_id": promoCodeId,
         "promo_code": promoCode,
         "promo_discount_percent": promoDiscountPercent,
         "promo_discount_amount": promoDiscountAmount,
+        "merchant_payment_id": merchantPaymentId,
+        "payment_session_token": paymentSessionToken,
+        "payment_approved": paymentApproved,
+        "payment_response_code": paymentResponseCode,
+        "payment_response_msg": paymentResponseMsg,
+        "payment_error_code": paymentErrorCode,
+        "payment_error_msg": paymentErrorMsg,
       },
     );
 
@@ -193,6 +224,53 @@ class OrderService {
     }
 
     return createdOrder;
+  }
+
+  Future<void> updateOrderPaymentStatus({
+    required int orderId,
+    required String status,
+    bool? paymentApproved,
+    String? paymentResponseCode,
+    String? paymentResponseMsg,
+    String? paymentErrorCode,
+    String? paymentErrorMsg,
+  }) async {
+    const mutation = r'''
+      mutation UpdateOrderPayment(
+        $id: bigint!,
+        $status: order_status!,
+        $payment_approved: Boolean,
+        $payment_response_code: String,
+        $payment_response_msg: String,
+        $payment_error_code: String,
+        $payment_error_msg: String
+      ) {
+        update_orders_by_pk(
+          pk_columns: {id: $id},
+          _set: {
+            status: $status,
+            payment_approved: $payment_approved,
+            payment_response_code: $payment_response_code,
+            payment_response_msg: $payment_response_msg,
+            payment_error_code: $payment_error_code,
+            payment_error_msg: $payment_error_msg
+          }
+        ) { id }
+      }
+    ''';
+
+    await _hasura.graphQLRequest(
+      query: mutation,
+      variables: {
+        "id": orderId,
+        "status": status,
+        "payment_approved": paymentApproved,
+        "payment_response_code": paymentResponseCode,
+        "payment_response_msg": paymentResponseMsg,
+        "payment_error_code": paymentErrorCode,
+        "payment_error_msg": paymentErrorMsg,
+      },
+    );
   }
 }
 

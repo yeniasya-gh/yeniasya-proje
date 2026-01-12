@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../services/upload_service.dart';
+
 /// Safe image loader with single cache-bust retry for flaky CDN responses.
 Widget safeImage(
   String? url, {
@@ -12,8 +14,7 @@ Widget safeImage(
     return _placeholder(width, height, fallbackIcon);
   }
 
-  final isNetwork = url.startsWith("http://") || url.startsWith("https://");
-  if (!isNetwork) {
+  if (url.startsWith("assets/")) {
     return Image.asset(
       url,
       width: width,
@@ -24,7 +25,7 @@ Widget safeImage(
   }
 
   return _SafeNetworkImage(
-    url: url,
+    url: UploadService.normalizeUrl(url),
     width: width,
     height: height,
     fit: fit,
@@ -65,7 +66,7 @@ class _SafeNetworkImage extends StatefulWidget {
 class _SafeNetworkImageState extends State<_SafeNetworkImage> {
   late String _currentUrl;
   int _attempt = 0;
-  static const int _maxAttempts = 10;
+  static const int _maxAttempts = 50;
 
   @override
   void initState() {
@@ -87,9 +88,12 @@ class _SafeNetworkImageState extends State<_SafeNetworkImage> {
         return _placeholder(widget.width, widget.height, Icons.image);
       },
       errorBuilder: (_, __, ___) {
+        if (_currentUrl.startsWith("data:")) {
+          return _placeholder(widget.width, widget.height, widget.fallbackIcon);
+        }
         if (_attempt < _maxAttempts - 1) {
           _attempt++;
-          final uri = Uri.parse(widget.url);
+          final uri = Uri.parse(_currentUrl);
           final busted = uri.replace(queryParameters: {
             ...uri.queryParameters,
             "cb": "${DateTime.now().millisecondsSinceEpoch}$_attempt",

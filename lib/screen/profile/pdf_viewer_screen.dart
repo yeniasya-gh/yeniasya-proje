@@ -158,17 +158,21 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
             ),
         ],
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-              ? _errorView()
-              : Column(
-                  children: [
-                    if (!isWeb) _toolbar(),
-                    Expanded(child: _buildViewer()),
-                    if (!isWeb) _bookmarksBar(),
-                  ],
-                ),
+      body: SafeArea(
+        top: false,
+        bottom: true,
+        child: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : _error != null
+                ? _errorView()
+                : Column(
+                    children: [
+                      if (!isWeb) _toolbar(),
+                      Expanded(child: _buildViewer()),
+                      if (!isWeb) _bookmarksBar(),
+                    ],
+                  ),
+      ),
     );
   }
 

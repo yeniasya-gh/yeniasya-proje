@@ -6,6 +6,7 @@ import '../../services/admin/admin_ek_service.dart';
 import '../../services/error/error_manager.dart';
 import '../../services/upload_service.dart';
 import '../../utils/asset_image_picker.dart';
+import '../../utils/safe_image.dart';
 
 class AdminEklerPage extends StatefulWidget {
   const AdminEklerPage({super.key});
@@ -659,19 +660,18 @@ class _AdminEklerPageState extends State<AdminEklerPage> {
   }
 
   Widget _thumb(String? url) {
-    final normalized = UploadService.normalizeUrl(url ?? "");
     return ClipRRect(
       borderRadius: BorderRadius.circular(8),
       child: Container(
         width: 60,
         height: 60,
         color: Colors.grey.shade200,
-        child: normalized.isEmpty
+        child: (url == null || url.isEmpty)
             ? const Icon(Icons.image_not_supported)
-            : Image.network(
-                normalized,
+            : safeImage(
+                url,
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => const Icon(Icons.image_not_supported),
+                fallbackIcon: Icons.image_not_supported,
               ),
       ),
     );

@@ -890,38 +890,15 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
       );
     }
 
-    final normalized = UploadService.normalizeUrl(url);
-    final isNetwork =
-        normalized.startsWith("http://") || normalized.startsWith("https://");
-
-    final fallback = const SizedBox(
-      width: 70,
-      height: 100,
-      child: ColoredBox(
-        color: Color(0xFFE0E0E0),
-        child: Icon(Icons.broken_image, size: 26),
-      ),
-    );
-
-    final imageWidget = isNetwork
-        ? Image.network(
-            normalized,
-            width: 70,
-            height: 100,
-            fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => fallback,
-          )
-        : Image.asset(
-            normalized,
-            width: 70,
-            height: 100,
-            fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => fallback,
-          );
-
     return ClipRRect(
       borderRadius: BorderRadius.circular(6),
-      child: imageWidget,
+      child: safeImage(
+        url,
+        width: 70,
+        height: 100,
+        fit: BoxFit.cover,
+        fallbackIcon: Icons.broken_image,
+      ),
     );
   }
 
@@ -943,9 +920,10 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
   }
 
   Widget _buildPeriodChip(String? period) {
-    final label = switch (period) {
-      "6m" => "6 Aylık",
-      "12m" => "12 Aylık",
+    final normalized = _normalizePeriod(period);
+    final label = switch (normalized) {
+      "1m" => "Aylık",
+      "3m" => "3 Aylık",
       _ => "-",
     };
 
@@ -955,5 +933,12 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
       labelStyle: const TextStyle(color: Colors.red, fontWeight: FontWeight.w600),
       padding: EdgeInsets.zero,
     );
+  }
+
+  String? _normalizePeriod(dynamic period) {
+    final normalized = period?.toString().toLowerCase();
+    if (normalized == "6m") return "1m";
+    if (normalized == "12m") return "3m";
+    return normalized;
   }
 }

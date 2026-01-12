@@ -10,9 +10,9 @@ class AdminSliderService {
           id
           title
           subtitle
+          description
           image_url
           link_url
-          button_text
           sort_order
           is_active
           created_at
@@ -30,9 +30,9 @@ class AdminSliderService {
           id
           title
           subtitle
+          description
           image_url
           link_url
-          button_text
           sort_order
           is_active
           created_at
@@ -48,9 +48,9 @@ class AdminSliderService {
   Future<bool> add({
     required String title,
     String? subtitle,
+    String? description,
     required String imageUrl,
     String? linkUrl,
-    String? buttonText,
     int sortOrder = 0,
     bool isActive = true,
   }) async {
@@ -58,18 +58,18 @@ class AdminSliderService {
       mutation AddSlider(
         $title: String!,
         $subtitle: String,
+        $description: String,
         $image_url: String!,
         $link_url: String,
-        $button_text: String,
         $sort_order: Int!,
         $is_active: Boolean!
       ) {
         insert_slider_one(object: {
           title: $title,
           subtitle: $subtitle,
+          description: $description,
           image_url: $image_url,
           link_url: $link_url,
-          button_text: $button_text,
           sort_order: $sort_order,
           is_active: $is_active
         }) { id }
@@ -81,9 +81,9 @@ class AdminSliderService {
       variables: {
         "title": title,
         "subtitle": subtitle,
+        "description": description,
         "image_url": imageUrl,
         "link_url": linkUrl,
-        "button_text": buttonText,
         "sort_order": sortOrder,
         "is_active": isActive,
       },
@@ -95,9 +95,9 @@ class AdminSliderService {
     required int id,
     required String title,
     String? subtitle,
+    String? description,
     required String imageUrl,
     String? linkUrl,
-    String? buttonText,
     int sortOrder = 0,
     bool isActive = true,
   }) async {
@@ -106,9 +106,9 @@ class AdminSliderService {
         $id: Int!,
         $title: String!,
         $subtitle: String,
+        $description: String,
         $image_url: String!,
         $link_url: String,
-        $button_text: String,
         $sort_order: Int!,
         $is_active: Boolean!
       ) {
@@ -117,9 +117,9 @@ class AdminSliderService {
           _set: {
             title: $title,
             subtitle: $subtitle,
+            description: $description,
             image_url: $image_url,
             link_url: $link_url,
-            button_text: $button_text,
             sort_order: $sort_order,
             is_active: $is_active
           }
@@ -133,9 +133,9 @@ class AdminSliderService {
         "id": id,
         "title": title,
         "subtitle": subtitle,
+        "description": description,
         "image_url": imageUrl,
         "link_url": linkUrl,
-        "button_text": buttonText,
         "sort_order": sortOrder,
         "is_active": isActive,
       },

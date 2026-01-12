@@ -148,4 +148,56 @@ class AdminUserService {
 
     return true;
   }
+
+  Future<List<Map<String, dynamic>>> getActiveAccess(int userId) async {
+    const query = r'''
+      query GetUserAccess($user_id: Int!) {
+        user_content_access(
+          where: {
+            user_id: {_eq: $user_id},
+            is_active: {_eq: true}
+          },
+          order_by: {started_at: desc}
+        ) {
+          id
+          item_type
+          item_id
+          started_at
+          expires_at
+        }
+      }
+    ''';
+
+    final data = await _hasura.graphQLRequest(
+      query: query,
+      variables: {"user_id": userId},
+    );
+
+    return List<Map<String, dynamic>>.from(data["user_content_access"] ?? []);
+  }
+
+  Future<List<Map<String, dynamic>>> getAllAccess(int userId) async {
+    const query = r'''
+      query GetUserAccessAll($user_id: Int!) {
+        user_content_access(
+          where: {user_id: {_eq: $user_id}},
+          order_by: {started_at: desc}
+        ) {
+          id
+          item_type
+          item_id
+          started_at
+          expires_at
+          is_active
+        }
+      }
+    ''';
+
+    final data = await _hasura.graphQLRequest(
+      query: query,
+      variables: {"user_id": userId},
+    );
+
+    return List<Map<String, dynamic>>.from(data["user_content_access"] ?? []);
+  }
 }

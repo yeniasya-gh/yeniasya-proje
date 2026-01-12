@@ -1,11 +1,14 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:pdfx/pdfx.dart';
+import 'package:path/path.dart' as p;
 
 import '../../services/admin/admin_newspaper_service.dart';
 import '../../services/error/error_manager.dart';
 import '../../services/upload_service.dart';
 import '../../utils/asset_image_picker.dart';
+import '../../utils/safe_image.dart';
 
 class AdminNewspapersPage extends StatefulWidget {
   const AdminNewspapersPage({super.key});
@@ -74,7 +77,6 @@ class _AdminNewspapersPageState extends State<AdminNewspapersPage> {
     final isEdit = newspaper != null;
     final formKey = GlobalKey<FormState>();
 
-    final imageCtrl = TextEditingController(text: newspaper?["image_url"] ?? "");
     final dateCtrl = TextEditingController(text: newspaper?["publish_date"] ?? "");
     final fileCtrl = TextEditingController(text: newspaper?["file_url"] ?? "");
 
@@ -82,162 +84,180 @@ class _AdminNewspapersPageState extends State<AdminNewspapersPage> {
     String? pickedImageName;
     Uint8List? pickedPdfBytes;
     String? pickedPdfName;
+    bool isProcessing = false;
 
     await showDialog(
       context: context,
-      builder: (_) => AlertDialog(
-        title: Text(isEdit ? "Gazete Düzenle" : "Yeni Gazete"),
-        content: SizedBox(
-          width: 420,
-          child: Form(
-            key: formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextFormField(
-                  controller: imageCtrl,
-                  readOnly: true,
-                  onTap: () => _pickImage(
-                    imageCtrl,
-                    onPicked: (bytes, name) {
-                      pickedImageBytes = bytes;
-                      pickedImageName = name;
+      builder: (_) => StatefulBuilder(
+        builder: (ctx, setSt) => AlertDialog(
+          title: Text(isEdit ? "Gazete Düzenle" : "Yeni Gazete"),
+          content: SizedBox(
+            width: 420,
+            child: Form(
+              key: formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextFormField(
+                    controller: dateCtrl,
+                    readOnly: true,
+                    onTap: () async {
+                      final now = DateTime.now();
+                      final initial = DateTime.tryParse(dateCtrl.text) ?? now;
+                      final picked = await showDatePicker(
+                        context: context,
+                        initialDate: initial,
+                        firstDate: DateTime(now.year - 5),
+                        lastDate: DateTime(now.year + 2),
+                      );
+                      if (picked != null) {
+                        final formatted =
+                            "${picked.year}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}";
+                        dateCtrl.text = formatted;
+                      }
                     },
-                  ),
-                  decoration: InputDecoration(
-                    labelText: "Kapak Görseli (PNG/JPG/WEBP)",
-                    suffixIcon: IconButton(
-                      icon: const Icon(Icons.upload_file),
-                      onPressed: () => _pickImage(
-                        imageCtrl,
-                        onPicked: (bytes, name) {
-                          pickedImageBytes = bytes;
-                          pickedImageName = name;
-                        },
-                      ),
+                    decoration: const InputDecoration(
+                      labelText: "Yayın Tarihi",
+                      suffixIcon: Icon(Icons.date_range),
                     ),
+                    validator: (v) => v == null || v.isEmpty ? "Zorunlu" : null,
                   ),
-                  validator: (v) => v == null || v.isEmpty ? "Zorunlu" : null,
-                ),
-                TextFormField(
-                  controller: dateCtrl,
-                  readOnly: true,
-                  onTap: () async {
-                    final now = DateTime.now();
-                    final initial = DateTime.tryParse(dateCtrl.text) ?? now;
-                    final picked = await showDatePicker(
-                      context: context,
-                      initialDate: initial,
-                      firstDate: DateTime(now.year - 5),
-                      lastDate: DateTime(now.year + 2),
-                    );
-                    if (picked != null) {
-                      final formatted =
-                          "${picked.year}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}";
-                      dateCtrl.text = formatted;
-                    }
-                  },
-                  decoration: const InputDecoration(
-                    labelText: "Yayın Tarihi",
-                    suffixIcon: Icon(Icons.date_range),
-                  ),
-                  validator: (v) => v == null || v.isEmpty ? "Zorunlu" : null,
-                ),
-                TextFormField(
-                  controller: fileCtrl,
-                  readOnly: true,
-                  onTap: () => _pickPdf(
-                    fileCtrl,
-                    onPicked: (bytes, name) {
-                      pickedPdfBytes = bytes;
-                      pickedPdfName = name;
-                    },
-                  ),
-                  decoration: InputDecoration(
-                    labelText: "Gazete PDF (özel erişim)",
-                    suffixIcon: IconButton(
-                      icon: const Icon(Icons.upload_file),
-                      onPressed: () => _pickPdf(
+                  TextFormField(
+                    controller: fileCtrl,
+                    readOnly: true,
+                    onTap: () async {
+                      setSt(() => isProcessing = true);
+                      await _pickPdf(
                         fileCtrl,
-                        onPicked: (bytes, name) {
+                        onPicked: (bytes, name) async {
                           pickedPdfBytes = bytes;
                           pickedPdfName = name;
+                          await _tryGenerateCoverFromPdf(
+                            pdfBytes: bytes,
+                            pdfName: name,
+                            onPicked: (imageBytes, imageName) {
+                              pickedImageBytes = imageBytes;
+                              pickedImageName = imageName;
+                            },
+                          );
                         },
+                      );
+                      if (ctx.mounted) setSt(() => isProcessing = false);
+                    },
+                    decoration: InputDecoration(
+                      labelText: "Gazete PDF (özel erişim)",
+                      suffixIcon: IconButton(
+                        icon: const Icon(Icons.upload_file),
+                        onPressed: isProcessing
+                            ? null
+                            : () async {
+                                setSt(() => isProcessing = true);
+                                await _pickPdf(
+                                  fileCtrl,
+                                  onPicked: (bytes, name) async {
+                                    pickedPdfBytes = bytes;
+                                    pickedPdfName = name;
+                                    await _tryGenerateCoverFromPdf(
+                                      pdfBytes: bytes,
+                                      pdfName: name,
+                                      onPicked: (imageBytes, imageName) {
+                                        pickedImageBytes = imageBytes;
+                                        pickedImageName = imageName;
+                                      },
+                                    );
+                                  },
+                                );
+                                if (ctx.mounted) setSt(() => isProcessing = false);
+                              },
                       ),
                     ),
+                    validator: (v) => v == null || v.isEmpty ? "Zorunlu" : null,
                   ),
-                  validator: (v) => v == null || v.isEmpty ? "Zorunlu" : null,
-                ),
-              ],
+                  if (isProcessing) ...[
+                    const SizedBox(height: 12),
+                    const LinearProgressIndicator(),
+                  ],
+                ],
+              ),
             ),
           ),
+          actions: [
+            TextButton(
+              onPressed: isProcessing ? null : () => Navigator.pop(context),
+              child: const Text("Kapat"),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+              onPressed: isProcessing
+                  ? null
+                  : () async {
+                      if (!formKey.currentState!.validate()) return;
+
+                      final payload = {
+                        "id": newspaper?["id"],
+                        "publish_date": dateCtrl.text.trim(),
+                        "file_url": fileCtrl.text.trim(),
+                      };
+
+                      Navigator.pop(context);
+
+                      try {
+                        String imageUrl = (newspaper?["image_url"] ?? "").toString().trim();
+                        if (pickedImageBytes != null && pickedImageName != null) {
+                          imageUrl = await _uploadService.uploadPublic(
+                            type: UploadFileType.newspaper,
+                            bytes: pickedImageBytes!,
+                            filename: pickedImageName!,
+                          );
+                        }
+                        if (imageUrl.isEmpty) {
+                          await _showError("Kapak görseli oluşturulamadı. Lütfen PDF'i yeniden seçin.");
+                          if (mounted) {
+                            await Future.microtask(
+                              () => _showAddOrEditDialog(newspaper: newspaper),
+                            );
+                          }
+                          return;
+                        }
+
+                        String fileUrl = payload["file_url"] as String;
+                        if (pickedPdfBytes != null && pickedPdfName != null) {
+                          fileUrl = await _uploadService.uploadPrivate(
+                            type: UploadFileType.newspaper,
+                            bytes: pickedPdfBytes!,
+                            filename: pickedPdfName!,
+                          );
+                        }
+
+                        if (isEdit) {
+                          await _service.update(
+                            id: payload["id"] as int,
+                            imageUrl: imageUrl,
+                            fileUrl: fileUrl,
+                            publishDate: payload["publish_date"] as String,
+                          );
+                        } else {
+                          await _service.add(
+                            imageUrl: imageUrl,
+                            fileUrl: fileUrl,
+                            publishDate: payload["publish_date"] as String,
+                          );
+                        }
+                        await _loadData();
+                      } catch (e) {
+                        await _showError(e.toString());
+                        if (mounted) {
+                          await Future.microtask(
+                            () => _showAddOrEditDialog(newspaper: payload),
+                          );
+                        }
+                      }
+                    },
+              child: Text(isEdit ? "Kaydet" : "Oluştur",
+                  style: const TextStyle(color: Colors.white)),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Kapat"),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () async {
-              if (!formKey.currentState!.validate()) return;
-
-              final payload = {
-                "id": newspaper?["id"],
-                "image_url": imageCtrl.text.trim(),
-                "publish_date": dateCtrl.text.trim(),
-                "file_url": fileCtrl.text.trim(),
-              };
-
-              Navigator.pop(context);
-
-              try {
-                String imageUrl = payload["image_url"] as String;
-                if (pickedImageBytes != null && pickedImageName != null) {
-                  imageUrl = await _uploadService.uploadPublic(
-                    type: UploadFileType.newspaper,
-                    bytes: pickedImageBytes!,
-                    filename: pickedImageName!,
-                  );
-                }
-
-                String fileUrl = payload["file_url"] as String;
-                if (pickedPdfBytes != null && pickedPdfName != null) {
-                  fileUrl = await _uploadService.uploadPrivate(
-                    type: UploadFileType.newspaper,
-                    bytes: pickedPdfBytes!,
-                    filename: pickedPdfName!,
-                  );
-                }
-
-                if (isEdit) {
-                  await _service.update(
-                    id: payload["id"] as int,
-                    imageUrl: imageUrl,
-                    fileUrl: fileUrl,
-                    publishDate: payload["publish_date"] as String,
-                  );
-                } else {
-                  await _service.add(
-                    imageUrl: imageUrl,
-                    fileUrl: fileUrl,
-                    publishDate: payload["publish_date"] as String,
-                  );
-                }
-                await _loadData();
-              } catch (e) {
-                await _showError(e.toString());
-                if (mounted) {
-                  await Future.microtask(
-                    () => _showAddOrEditDialog(newspaper: payload),
-                  );
-                }
-              }
-            },
-            child: Text(isEdit ? "Kaydet" : "Oluştur",
-                style: const TextStyle(color: Colors.white)),
-          ),
-        ],
       ),
     );
   }
@@ -279,47 +299,15 @@ class _AdminNewspapersPageState extends State<AdminNewspapersPage> {
     );
   }
 
-  Future<void> _pickImage(
-    TextEditingController controller, {
-    required void Function(Uint8List bytes, String name) onPicked,
-  }) async {
-    try {
-      final picked = await AssetImagePicker.pickImageFile();
-      if (picked == null) return;
-      onPicked(picked.bytes, picked.name);
-      controller.text = picked.name;
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Seçildi: ${picked.name}")),
-        );
-      }
-    } catch (e) {
-      await showDialog(
-        context: context,
-        builder: (_) => AlertDialog(
-          title: const Text("İşlem başarısız"),
-          content: Text(e.toString()),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text("Tamam"),
-            ),
-          ],
-        ),
-      );
-    }
-  }
-
   Future<void> _pickPdf(
     TextEditingController controller, {
-    required void Function(Uint8List bytes, String name) onPicked,
+    required Future<void> Function(Uint8List bytes, String name) onPicked,
   }) async {
     try {
       final picked = await AssetImagePicker.pickFile(allowedExtensions: const ["pdf"]);
       if (picked == null) return;
-      onPicked(picked.bytes, picked.name);
       controller.text = picked.name;
+      await onPicked(picked.bytes, picked.name);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -344,10 +332,6 @@ class _AdminNewspapersPageState extends State<AdminNewspapersPage> {
   }
 
   Widget _imageWidget(String url) {
-    final normalized = UploadService.normalizeUrl(url);
-    final isNetwork =
-        normalized.startsWith("http://") || normalized.startsWith("https://");
-
     if (url.isEmpty) {
       return const SizedBox(
         width: 60,
@@ -359,30 +343,58 @@ class _AdminNewspapersPageState extends State<AdminNewspapersPage> {
       );
     }
 
-    final fallback = const SizedBox(
+    return safeImage(
+      url,
       width: 60,
       height: 70,
-      child: ColoredBox(
-        color: Color(0xFFE0E0E0),
-        child: Icon(Icons.broken_image, size: 22),
-      ),
+      fit: BoxFit.cover,
+      fallbackIcon: Icons.broken_image,
     );
+  }
 
-    return isNetwork
-        ? Image.network(
-            normalized,
-            width: 60,
-            height: 70,
-            fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => fallback,
-          )
-        : Image.asset(
-            normalized,
-            width: 60,
-            height: 70,
-            fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => fallback,
-          );
+  Future<void> _tryGenerateCoverFromPdf({
+    required Uint8List pdfBytes,
+    required String pdfName,
+    required void Function(Uint8List bytes, String name) onPicked,
+  }) async {
+    try {
+      final coverBytes = await _renderPdfCover(pdfBytes);
+      if (coverBytes == null) return;
+      final coverName = "${p.basenameWithoutExtension(pdfName)}.png";
+      onPicked(coverBytes, coverName);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("PDF kapağı otomatik oluşturuldu.")),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("PDF kapağı oluşturulamadı.")),
+        );
+      }
+    }
+  }
+
+  Future<Uint8List?> _renderPdfCover(Uint8List pdfBytes) async {
+    PdfDocument? doc;
+    PdfPage? page;
+    try {
+      doc = await PdfDocument.openData(pdfBytes);
+      if (doc.pagesCount < 1) return null;
+      page = await doc.getPage(1);
+      final maxWidth = 1200.0;
+      final scale = page.width > maxWidth ? (maxWidth / page.width) : 1.0;
+      final pageImage = await page.render(
+        width: page.width * scale,
+        height: page.height * scale,
+        format: PdfPageImageFormat.png,
+      );
+      return pageImage?.bytes;
+    } finally {
+      await page?.close();
+      await doc?.close();
+    }
   }
 
   @override

@@ -43,6 +43,11 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.red),
       ),
+      builder: (context, child) => SafeArea(
+        top: false,
+        bottom: true,
+        child: child ?? const SizedBox.shrink(),
+      ),
       home: HomeResponsiveScreen(initialUri: initialUri),
     );
   }

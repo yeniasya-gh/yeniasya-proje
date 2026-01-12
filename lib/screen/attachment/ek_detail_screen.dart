@@ -5,6 +5,8 @@ import '../../models/cart_item.dart';
 import '../../services/access_provider.dart';
 import '../../services/cart/cart_provider.dart';
 import '../../services/upload_service.dart';
+import '../../utils/safe_image.dart';
+import '../../utils/cart_feedback.dart';
 import '../profile/pdf_viewer_screen.dart';
 
 class EkDetailScreen extends StatelessWidget {
@@ -41,10 +43,10 @@ class EkDetailScreen extends StatelessWidget {
                 ),
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(12),
-                  child: Image.network(
+                  child: safeImage(
                     imageUrl,
                     fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => const Icon(Icons.image_not_supported, size: 48),
+                    fallbackIcon: Icons.image_not_supported,
                   ),
                 ),
               ),
@@ -67,27 +69,29 @@ class EkDetailScreen extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 20),
-            SizedBox(
-              width: double.infinity,
-              height: 50,
-              child: ElevatedButton(
-                onPressed: () {
-                  if (isFree || hasAccess) {
-                    _openPdf(context, ek["pdf_url"]?.toString() ?? "", isFree: isFree);
-                  } else {
-                    _addToCart(context, ek, price);
-                  }
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: (isFree || hasAccess) ? Colors.blue : Colors.red,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                ),
-                child: Text((isFree || hasAccess) ? "Görüntüle" : "Sepete Ekle"),
-              ),
-            ),
           ],
+        ),
+      ),
+      bottomNavigationBar: SafeArea(
+        minimum: const EdgeInsets.all(16),
+        child: SizedBox(
+          width: double.infinity,
+          height: 50,
+          child: ElevatedButton(
+            onPressed: () {
+              if (isFree || hasAccess) {
+                _openPdf(context, ek["pdf_url"]?.toString() ?? "", isFree: isFree);
+              } else {
+                _addToCart(context, ek, price);
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: (isFree || hasAccess) ? Colors.blue : Colors.red,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            child: Text((isFree || hasAccess) ? "Görüntüle" : "Sepete Ekle"),
+          ),
         ),
       ),
     );
@@ -131,7 +135,7 @@ class EkDetailScreen extends StatelessWidget {
       },
     );
     cart.addOrIncrement(item);
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Sepete eklendi")));
+    showAddedToCartDialog(context);
   }
 
   Widget _chip(String label, Color color) {

@@ -158,7 +158,7 @@ class _AdminMagazinesPageState extends State<AdminMagazinesPage> {
     final campaignPriceCtrl = TextEditingController(
       text: magazine?["campaign_price"]?.toString() ?? "",
     );
-    String period = magazine?["period"] ?? "6m";
+    String period = _normalizePeriod(magazine?["period"]) ?? "1m";
 
     Uint8List? pickedCoverBytes;
     String? pickedCoverName;
@@ -190,10 +190,12 @@ class _AdminMagazinesPageState extends State<AdminMagazinesPage> {
                   value: period,
                   decoration: const InputDecoration(labelText: "Periyot"),
                   items: const [
+                    DropdownMenuItem(value: "1m", child: Text("Aylık")),
+                    DropdownMenuItem(value: "3m", child: Text("3 Aylık")),
                     DropdownMenuItem(value: "6m", child: Text("6 Aylık")),
                     DropdownMenuItem(value: "12m", child: Text("12 Aylık")),
                   ],
-                  onChanged: (v) => period = v ?? "6m",
+                  onChanged: (v) => period = v ?? "1m",
                 ),
                 TextFormField(
                   controller: coverCtrl,
@@ -572,7 +574,10 @@ class _AdminMagazinesPageState extends State<AdminMagazinesPage> {
   }
 
   Widget _buildPeriodChip(String? period) {
-    final label = switch (period) {
+    final normalized = _normalizePeriod(period);
+    final label = switch (normalized) {
+      "1m" => "Aylık",
+      "3m" => "3 Aylık",
       "6m" => "6 Aylık",
       "12m" => "12 Aylık",
       _ => "-",
@@ -584,5 +589,10 @@ class _AdminMagazinesPageState extends State<AdminMagazinesPage> {
       labelStyle: const TextStyle(color: Colors.red, fontWeight: FontWeight.w600),
       padding: EdgeInsets.zero,
     );
+  }
+
+  String? _normalizePeriod(dynamic period) {
+    final normalized = period?.toString().toLowerCase();
+    return normalized;
   }
 }

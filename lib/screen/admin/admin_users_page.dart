@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../services/admin/admin_user_service.dart';
 import '../../services/error/error_manager.dart';
+import 'admin_user_detail_page.dart';
 
 class AdminUsersPage extends StatefulWidget {
   const AdminUsersPage({super.key});
@@ -87,6 +88,15 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
     } catch (e) {
       _showError("Kullanıcı silinemedi:\n$e");
     }
+  }
+
+  void _openUserDetail(Map<String, dynamic> user) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AdminUserDetailPage(user: user),
+      ),
+    );
   }
 
   // ➕ Kullanıcı ekleme popup
@@ -365,6 +375,10 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
                           DataCell(
                             Row(
                               children: [
+                                IconButton(
+                                  icon: const Icon(Icons.info_outline, color: Colors.teal),
+                                  onPressed: () => _openUserDetail(u),
+                                ),
                                 IconButton(
                                   icon: const Icon(Icons.edit,
                                       color: Colors.blue),

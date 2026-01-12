@@ -88,8 +88,8 @@ class _AdminSliderPageState extends State<AdminSliderPage> {
 
     final titleCtrl = TextEditingController(text: slider?["title"] ?? "");
     final subtitleCtrl = TextEditingController(text: slider?["subtitle"] ?? "");
+    final descriptionCtrl = TextEditingController(text: slider?["description"] ?? "");
     final linkCtrl = TextEditingController(text: slider?["link_url"] ?? "");
-    final buttonCtrl = TextEditingController(text: slider?["button_text"] ?? "");
     final imageCtrl = TextEditingController(text: slider?["image_url"] ?? "");
     final sortCtrl = TextEditingController(text: (slider?["sort_order"] ?? 0).toString());
     bool isActive = slider?["is_active"] ?? true;
@@ -147,15 +147,17 @@ class _AdminSliderPageState extends State<AdminSliderPage> {
                     maxLines: 2,
                   ),
                   TextFormField(
+                    controller: descriptionCtrl,
+                    decoration: const InputDecoration(labelText: "Açıklama"),
+                    minLines: 3,
+                    maxLines: 6,
+                  ),
+                  TextFormField(
                     controller: linkCtrl,
                     decoration: const InputDecoration(
                       labelText: "Link (opsiyonel)",
                       helperText: "Örn: https://... veya ?type=book&id=12",
                     ),
-                  ),
-                  TextFormField(
-                    controller: buttonCtrl,
-                    decoration: const InputDecoration(labelText: "Buton metni (opsiyonel)"),
                   ),
                   TextFormField(
                     controller: sortCtrl,
@@ -199,17 +201,17 @@ class _AdminSliderPageState extends State<AdminSliderPage> {
                   final sortOrder = int.tryParse(sortCtrl.text.trim()) ?? 0;
                   final title = titleCtrl.text.trim();
                   final subtitle = subtitleCtrl.text.trim();
+                  final description = descriptionCtrl.text.trim();
                   final linkUrl = linkCtrl.text.trim();
-                  final buttonText = buttonCtrl.text.trim();
 
                   if (isEdit) {
                     await _service.update(
                       id: slider?["id"] as int,
                       title: title,
                       subtitle: subtitle.isEmpty ? null : subtitle,
+                      description: description.isEmpty ? null : description,
                       imageUrl: imageUrl,
                       linkUrl: linkUrl.isEmpty ? null : linkUrl,
-                      buttonText: buttonText.isEmpty ? null : buttonText,
                       sortOrder: sortOrder,
                       isActive: isActive,
                     );
@@ -217,9 +219,9 @@ class _AdminSliderPageState extends State<AdminSliderPage> {
                     await _service.add(
                       title: title,
                       subtitle: subtitle.isEmpty ? null : subtitle,
+                      description: description.isEmpty ? null : description,
                       imageUrl: imageUrl,
                       linkUrl: linkUrl.isEmpty ? null : linkUrl,
-                      buttonText: buttonText.isEmpty ? null : buttonText,
                       sortOrder: sortOrder,
                       isActive: isActive,
                     );
@@ -281,9 +283,9 @@ class _AdminSliderPageState extends State<AdminSliderPage> {
         id: slider["id"] as int,
         title: (slider["title"] ?? "").toString(),
         subtitle: (slider["subtitle"] ?? "").toString().isEmpty ? null : slider["subtitle"].toString(),
+        description: (slider["description"] ?? "").toString().isEmpty ? null : slider["description"].toString(),
         imageUrl: (slider["image_url"] ?? "").toString(),
         linkUrl: (slider["link_url"] ?? "").toString().isEmpty ? null : slider["link_url"].toString(),
-        buttonText: (slider["button_text"] ?? "").toString().isEmpty ? null : slider["button_text"].toString(),
         sortOrder: _parseSort(slider["sort_order"]),
         isActive: value,
       );

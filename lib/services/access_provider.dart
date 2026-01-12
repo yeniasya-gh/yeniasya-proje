@@ -22,16 +22,28 @@ class AccessProvider extends ChangeNotifier {
     "newspaper_subscription": <int?, DateTime?>{},
     "ek": <int?, DateTime?>{},
   };
+  final Map<String, Map<int?, DateTime?>> _starts = {
+    "book": <int?, DateTime?>{},
+    "magazine": <int?, DateTime?>{},
+    "magazine_issue": <int?, DateTime?>{},
+    "newspaper_subscription": <int?, DateTime?>{},
+    "ek": <int?, DateTime?>{},
+  };
 
   bool hasAccess(String type, {int? itemId}) {
     final set = _access[type] ?? {};
-    // subscriptions may have null itemId
+    // subscriptions or legacy rows may have null itemId
     if (itemId == null) return set.isNotEmpty;
+    if (set.contains(null)) return true;
     return set.contains(itemId);
   }
 
   DateTime? expiry(String type, {int? itemId}) {
     return _expires[type]?[itemId];
+  }
+
+  DateTime? startDate(String type, {int? itemId}) {
+    return _starts[type]?[itemId];
   }
 
   Future<void> load(int userId) async {
@@ -42,14 +54,30 @@ class AccessProvider extends ChangeNotifier {
       for (final key in _access.keys) {
         _access[key] = <int?>{};
         _expires[key] = <int?, DateTime?>{};
+        _starts[key] = <int?, DateTime?>{};
       }
       for (final e in entries) {
         final type = (e["item_type"] ?? "").toString();
-        final itemId = e["item_id"] as int?;
+        final rawId = e["item_id"];
+        int? itemId;
+        if (rawId is int) {
+          itemId = rawId;
+        } else if (rawId != null) {
+          itemId = int.tryParse(rawId.toString());
+        }
         _access.putIfAbsent(type, () => <int?>{}).add(itemId);
         final expiresRaw = e["expires_at"]?.toString();
         final expDt = expiresRaw == null ? null : DateTime.tryParse(expiresRaw);
-        _expires.putIfAbsent(type, () => <int?, DateTime?>{})[itemId] = expDt;
+        final expMap = _expires.putIfAbsent(type, () => <int?, DateTime?>{});
+        if (!expMap.containsKey(itemId)) {
+          expMap[itemId] = expDt;
+        }
+        final startedRaw = e["started_at"]?.toString();
+        final startedDt = startedRaw == null ? null : DateTime.tryParse(startedRaw);
+        final startMap = _starts.putIfAbsent(type, () => <int?, DateTime?>{});
+        if (!startMap.containsKey(itemId)) {
+          startMap[itemId] = startedDt;
+        }
       }
     } finally {
       _loading = false;
@@ -61,6 +89,7 @@ class AccessProvider extends ChangeNotifier {
     for (final key in _access.keys) {
       _access[key]!.clear();
       _expires[key]!.clear();
+      _starts[key]!.clear();
     }
     notifyListeners();
   }

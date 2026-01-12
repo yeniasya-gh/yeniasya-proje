@@ -31,6 +31,40 @@ class AddressService {
     return List<Map<String, dynamic>>.from(data["user_addresses"] ?? []);
   }
 
+  Future<Map<String, dynamic>?> getAddressById(int id) async {
+    const query = r'''
+      query GetAddressById($id: Int!) {
+        user_addresses_by_pk(id: $id) {
+          id
+          user_id
+          address_name
+          address_type
+          country
+          city
+          district
+          full_address
+          postal_code
+          tax_or_tc_no
+          tax_address
+          company_name
+          created_at
+        }
+      }
+    ''';
+
+    // ignore: avoid_print
+    print("🟦 AddressService.getAddressById -> $id");
+    final data = await _hasura.graphQLRequest(
+      query: query,
+      variables: {"id": id},
+    );
+
+    final address = data["user_addresses_by_pk"] as Map<String, dynamic>?;
+    // ignore: avoid_print
+    print("🟩 AddressService.getAddressById <- ${address == null ? "null" : "ok"}");
+    return address == null ? null : Map<String, dynamic>.from(address);
+  }
+
   Future<bool> addAddress({
     required String userId,
     required String addressType,
