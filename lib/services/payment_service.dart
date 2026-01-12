@@ -40,20 +40,31 @@ class PaymentService {
       final data = jsonDecode(resp.body) as Map<String, dynamic>;
       final responseCode = data["paratika"]?["data"]?["responseCode"]?.toString();
       if (responseCode != null && responseCode.isNotEmpty && responseCode != "00") {
-        final msg = data["paratika"]?["data"]?["responseMsg"]?.toString() ?? "Session reddedildi.";
-        throw Exception(msg);
+        final msg = data["paratika"]?["data"]?["errorMsg"]?.toString() ??
+            data["paratika"]?["data"]?["responseMsg"]?.toString() ??
+            "Session reddedildi.";
+        throw PaymentSessionException(msg);
       }
       final token = data["paratika"]?["data"]?["sessionToken"]?.toString();
       if (token == null || token.isEmpty) {
-        throw Exception("Session token bos dondu.");
+        throw PaymentSessionException("Session token bos dondu.");
       }
       return token;
-    } catch (e) {
-      throw Exception("Session yaniti cozulmedi: $e");
+    } on FormatException catch (e) {
+      throw PaymentSessionException("Session yaniti cozulmedi: $e");
     }
   }
 
   Uri redirectUri() => Uri.parse("$_baseUrl/payment/pay/redirect");
+}
+
+class PaymentSessionException implements Exception {
+  final String message;
+
+  const PaymentSessionException(this.message);
+
+  @override
+  String toString() => message;
 }
 
 class PaymentRedirectPayload {

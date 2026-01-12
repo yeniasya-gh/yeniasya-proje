@@ -88,6 +88,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
       final sessionPayload = _buildSessionPayload(
         user: user,
         total: payableTotal,
+        discountAmount: discountAmount,
         billing: billing,
         delivery: delivery,
         items: cart.items,
@@ -184,8 +185,12 @@ class _PaymentScreenState extends State<PaymentScreen> {
       print("🟥 PaymentScreen.submit error: $e");
       if (mounted) {
         setState(() => _loading = false);
-        final parsed = ErrorManager.parseGraphQLError(e.toString());
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(parsed)));
+        if (e is PaymentSessionException) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+        } else {
+          final parsed = ErrorManager.parseGraphQLError(e.toString());
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(parsed)));
+        }
       }
     }
   }
@@ -334,6 +339,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
   Map<String, dynamic> _buildSessionPayload({
     required AppUser user,
     required double total,
+    required double discountAmount,
     required Map<String, dynamic>? billing,
     required Map<String, dynamic>? delivery,
     required List<CartItem> items,
@@ -353,7 +359,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
             })
         .toList();
 
-    return {
+    final payload = {
       "AMOUNT": total.toStringAsFixed(2),
       "CURRENCY": "TRY",
       "MERCHANTPAYMENTID": merchantPaymentId,
@@ -377,6 +383,12 @@ class _PaymentScreenState extends State<PaymentScreen> {
       "SHIPTOPOSTALCODE": delivery?["postal_code"]?.toString() ?? "",
       "SHIPTOPHONE": user.phone ?? "",
     };
+
+    if (discountAmount > 0) {
+      payload["discountAmount"] = discountAmount.toStringAsFixed(2);
+    }
+
+    return payload;
   }
 
   String _buildMerchantPaymentId(int userId) {
