@@ -3,6 +3,8 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import '../../services/admin/admin_magazine_service.dart';
+import '../../services/admin/admin_magazine_type_price_service.dart';
+import '../../services/admin/admin_magazine_type_service.dart';
 import '../../services/error/error_manager.dart';
 import '../../services/upload_service.dart';
 import '../../utils/asset_image_picker.dart';
@@ -18,6 +20,8 @@ class AdminMagazinesPage extends StatefulWidget {
 
 class _AdminMagazinesPageState extends State<AdminMagazinesPage> {
   final AdminMagazineService _service = AdminMagazineService();
+  final AdminMagazineTypeService _typeService = AdminMagazineTypeService();
+  final AdminMagazineTypePriceService _priceService = AdminMagazineTypePriceService();
   final TextEditingController _searchCtrl = TextEditingController();
   final UploadService _uploadService = UploadService();
 
@@ -39,16 +43,6 @@ class _AdminMagazinesPageState extends State<AdminMagazinesPage> {
   double? _parsePrice(String value) {
     if (value.trim().isEmpty) return null;
     return double.tryParse(value.replaceAll(",", "."));
-  }
-
-  String _formatPrice(dynamic value) {
-    if (value == null) return "-";
-    try {
-      final d = double.parse(value.toString());
-      return "₺${d.toStringAsFixed(2)}";
-    } catch (_) {
-      return value.toString();
-    }
   }
 
   String _formatDateTime(dynamic raw) {
@@ -144,6 +138,28 @@ class _AdminMagazinesPageState extends State<AdminMagazinesPage> {
   Future<void> _showAddOrEditDialog({Map<String, dynamic>? magazine}) async {
     final isEdit = (magazine?["id"]) != null;
     final formKey = GlobalKey<FormState>();
+    final magazineId = magazine?["id"] as int?;
+    List<Map<String, dynamic>> types = [];
+    Map<int, String> priceByType = {};
+
+    try {
+      types = await _typeService.getAll();
+      if (types.isEmpty) {
+        await _showError("Dergi tipi bulunamadı. Önce dergi tipleri oluşturun.");
+        return;
+      }
+      if (isEdit && magazineId != null) {
+        final prices = await _priceService.getByMagazine(magazineId);
+        for (final p in prices) {
+          final typeId = p["magazine_type_id"] as int?;
+          if (typeId == null) continue;
+          priceByType[typeId] = (p["price"] ?? "").toString();
+        }
+      }
+    } catch (e) {
+      await _showError(e.toString());
+      return;
+    }
 
     final nameCtrl = TextEditingController(text: magazine?["name"] ?? "");
     final categoryCtrl =
@@ -152,12 +168,12 @@ class _AdminMagazinesPageState extends State<AdminMagazinesPage> {
         TextEditingController(text: magazine?["cover_image_url"] ?? "");
     final descCtrl =
         TextEditingController(text: magazine?["description"] ?? "");
-    final salePriceCtrl = TextEditingController(
-      text: magazine?["sale_price"]?.toString() ?? "",
-    );
-    final campaignPriceCtrl = TextEditingController(
-      text: magazine?["campaign_price"]?.toString() ?? "",
-    );
+    final priceControllers = <int, TextEditingController>{};
+    for (final type in types) {
+      final typeId = type["id"] as int?;
+      if (typeId == null) continue;
+      priceControllers[typeId] = TextEditingController(text: priceByType[typeId] ?? "");
+    }
     String period = _normalizePeriod(magazine?["period"]) ?? "1m";
 
     Uint8List? pickedCoverBytes;
@@ -228,42 +244,46 @@ class _AdminMagazinesPageState extends State<AdminMagazinesPage> {
                   ),
                   maxLines: 2,
                 ),
-                TextFormField(
-                  controller: salePriceCtrl,
-                  onChanged: (value) {
-                    final formatted = formatAsMoney(value);
-                    salePriceCtrl.value = TextEditingValue(
-                      text: formatted,
-                      selection: TextSelection.collapsed(offset: formatted.length),
-                    );
-                  },
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(
-                    labelText: "Satış Fiyatı (zorunlu)",
-                    prefixText: "₺ ",
-                  ),
-                  validator: (v) {
-                    final price = _parsePrice(v ?? "");
-                    if (price == null) return "Geçerli bir fiyat girin";
-                    if (price <= 0) return "Fiyat 0'dan büyük olmalı";
-                    return null;
-                  },
-                ),
-                TextFormField(
-                  controller: campaignPriceCtrl,
-                  onChanged: (value) {
-                    final formatted = formatAsMoney(value);
-                    campaignPriceCtrl.value = TextEditingValue(
-                      text: formatted,
-                      selection: TextSelection.collapsed(offset: formatted.length),
-                    );
-                  },
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(
-                    labelText: "Kampanya Fiyatı (opsiyonel)",
-                    prefixText: "₺ ",
+                const SizedBox(height: 8),
+                const Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    "Dergi Tipi Fiyatları",
+                    style: TextStyle(fontWeight: FontWeight.w700),
                   ),
                 ),
+                const SizedBox(height: 6),
+                ...types.map((type) {
+                  final typeId = type["id"] as int?;
+                  if (typeId == null || !priceControllers.containsKey(typeId)) {
+                    return const SizedBox.shrink();
+                  }
+                  final title = (type["title"] ?? "").toString();
+                  final months = type["duration_months"]?.toString() ?? "-";
+                  final ctrl = priceControllers[typeId]!;
+                  return TextFormField(
+                    controller: ctrl,
+                    onChanged: (value) {
+                      final formatted = formatAsMoney(value);
+                      ctrl.value = TextEditingValue(
+                        text: formatted,
+                        selection: TextSelection.collapsed(offset: formatted.length),
+                      );
+                    },
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    decoration: InputDecoration(
+                      labelText: title.isNotEmpty ? title : "$months ay",
+                      helperText: "$months ay",
+                      prefixText: "₺ ",
+                    ),
+                    validator: (v) {
+                      final price = _parsePrice(v ?? "");
+                      if (price == null) return "Geçerli bir fiyat girin";
+                      if (price <= 0) return "Fiyat 0'dan büyük olmalı";
+                      return null;
+                    },
+                  );
+                }),
               ],
             ),
           ),
@@ -278,6 +298,23 @@ class _AdminMagazinesPageState extends State<AdminMagazinesPage> {
             onPressed: () async {
               if (!formKey.currentState!.validate()) return;
 
+              final typePrices = <Map<String, dynamic>>[];
+              for (final type in types) {
+                final typeId = type["id"] as int?;
+                if (typeId == null || !priceControllers.containsKey(typeId)) continue;
+                final price = _parsePrice(priceControllers[typeId]!.text);
+                if (price == null || price <= 0) {
+                  await _showError("Tüm dergi tipleri için geçerli fiyat girin");
+                  return;
+                }
+                typePrices.add({
+                  "magazine_type_id": typeId,
+                  "price": price,
+                  "is_active": true,
+                  "sort_order": (type["sort_order"] as num?)?.toInt() ?? 0,
+                });
+              }
+
               final payload = {
                 "id": magazine?["id"],
                 "name": nameCtrl.text.trim(),
@@ -286,18 +323,8 @@ class _AdminMagazinesPageState extends State<AdminMagazinesPage> {
                 "cover_image_url": coverCtrl.text.trim().isEmpty
                     ? null
                     : coverCtrl.text.trim(),
-                "sale_price": _parsePrice(salePriceCtrl.text),
-                "campaign_price": _parsePrice(campaignPriceCtrl.text),
                 "description": descCtrl.text.trim(),
               };
-
-              final salePrice = payload["sale_price"] as double?;
-              final campaignPrice = payload["campaign_price"] as double?;
-
-              if (salePrice == null || salePrice <= 0) {
-                await _showError("Geçerli bir satış fiyatı girin");
-                return;
-              }
 
               Navigator.pop(context);
 
@@ -311,32 +338,38 @@ class _AdminMagazinesPageState extends State<AdminMagazinesPage> {
                   );
                 }
 
+                int savedId;
                 if (isEdit) {
+                  savedId = payload["id"] as int;
                   await _service.updateMagazine(
-                    id: payload["id"] as int,
+                    id: savedId,
                     name: payload["name"] as String,
                     category: payload["category"] as String,
                     period: payload["period"] as String,
                     coverImageUrl: coverUrl,
-                    salePrice: salePrice,
-                    campaignPrice: campaignPrice,
                     description: (payload["description"] as String).isEmpty
                         ? null
                         : payload["description"] as String,
                   );
                 } else {
-                  await _service.addMagazine(
+                  savedId = await _service.addMagazine(
                     name: payload["name"] as String,
                     category: payload["category"] as String,
                     period: payload["period"] as String,
-                    salePrice: salePrice,
-                    campaignPrice: campaignPrice,
                     coverImageUrl: coverUrl,
                     description: (payload["description"] as String).isEmpty
                         ? null
                         : payload["description"] as String,
                   );
                 }
+
+                final items = typePrices
+                    .map((p) => {
+                          "magazine_id": savedId,
+                          ...p,
+                        })
+                    .toList();
+                await _priceService.replacePrices(magazineId: savedId, prices: items);
 
                 await _loadMagazines();
               } catch (e) {
@@ -456,8 +489,6 @@ class _AdminMagazinesPageState extends State<AdminMagazinesPage> {
                               DataColumn(label: Text("Ad")),
                               DataColumn(label: Text("Kategori")),
                               DataColumn(label: Text("Periyot")),
-                              DataColumn(label: Text("Satış Fiyatı")),
-                              DataColumn(label: Text("Kampanya")),
                               DataColumn(label: Text("Oluşturma")),
                               DataColumn(label: Text("İşlem")),
                             ],
@@ -471,8 +502,6 @@ class _AdminMagazinesPageState extends State<AdminMagazinesPage> {
                                   DataCell(Text(m["name"] ?? "")),
                                   DataCell(Text(m["category"] ?? "")),
                                   DataCell(_buildPeriodChip(m["period"])),
-                                  DataCell(Text(_formatPrice(m["sale_price"]))),
-                                  DataCell(Text(_formatPrice(m["campaign_price"]))),
                                   DataCell(
                                     Text(_formatDateTime(m["created_at"])),
                                   ),

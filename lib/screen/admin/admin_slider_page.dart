@@ -7,6 +7,7 @@ import '../../services/error/error_manager.dart';
 import '../../services/upload_service.dart';
 import '../../utils/asset_image_picker.dart';
 import '../../utils/safe_image.dart';
+import 'admin_loading_indicator.dart';
 
 class AdminSliderPage extends StatefulWidget {
   const AdminSliderPage({super.key});
@@ -394,7 +395,7 @@ class _AdminSliderPageState extends State<AdminSliderPage> {
               ],
             ),
             child: _loading
-                ? const Center(child: CircularProgressIndicator())
+                ? const AdminLoadingIndicator()
                 : LayoutBuilder(
                     builder: (context, constraints) {
                       if (_filtered.isEmpty) {

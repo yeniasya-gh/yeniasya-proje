@@ -14,6 +14,7 @@ import '../order/order_list_screen.dart';
 import '../contact/contact_form.dart';
 import '../notification/notification_list_screen.dart';
 import 'pdf_viewer_screen.dart';
+import 'personal_info_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -124,7 +125,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
             const SizedBox(height: 30),
             _menuCard(
               items: [
-                _menuTile(Icons.person_outline, "Kişisel Bilgiler"),
+                _menuTile(
+                  Icons.person_outline,
+                  "Kişisel Bilgiler",
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const PersonalInfoScreen()),
+                    );
+                  },
+                ),
                 const Divider(height: 1, indent: 56),
                 _menuTile(Icons.credit_card, "Ödeme Yöntemleri"),
                 const Divider(height: 1, indent: 56),

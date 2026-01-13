@@ -242,6 +242,45 @@ class AuthProvider with ChangeNotifier {
 
     notifyListeners();
   }
+
+  Future<void> refreshUser() async {
+    final current = _user;
+    if (current == null) return;
+    final updated = await _userService.getUserById(current.id);
+    if (updated == null) return;
+    _user = updated;
+    notifyListeners();
+  }
+
+  Future<void> updateProfile({
+    required String name,
+    String? phone,
+  }) async {
+    final current = _user;
+    if (current == null) return;
+    final updated = await _userService.updateProfile(
+      id: current.id,
+      name: name,
+      phone: phone,
+    );
+    if (updated != null) {
+      _user = updated;
+      notifyListeners();
+    }
+  }
+
+  Future<bool> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    final current = _user;
+    if (current == null) return false;
+    return _userService.changePassword(
+      id: current.id,
+      currentPassword: currentPassword,
+      newPassword: newPassword,
+    );
+  }
 }
 
 class SocialDraft {

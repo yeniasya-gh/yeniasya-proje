@@ -7,6 +7,8 @@ import '../../services/error/error_manager.dart';
 import '../../services/upload_service.dart';
 import '../../utils/asset_image_picker.dart';
 import '../../utils/safe_image.dart';
+import '../../services/loading_manager.dart';
+import 'admin_loading_indicator.dart';
 
 class AdminEklerPage extends StatefulWidget {
   const AdminEklerPage({super.key});
@@ -199,9 +201,15 @@ class _AdminEklerPageState extends State<AdminEklerPage> {
                         "imageName": pickedImageName,
                       });
                     },
-              child: _saving
-                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Text("Kaydet"),
+              child: AnimatedBuilder(
+                animation: LoadingManager.instance,
+                builder: (_, __) {
+                  if (_saving && !LoadingManager.instance.loading) {
+                    return const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2));
+                  }
+                  return const Text("Kaydet");
+                },
+              ),
             ),
           ],
         ),
@@ -380,9 +388,15 @@ class _AdminEklerPageState extends State<AdminEklerPage> {
                         "id": ek["id"],
                       });
                     },
-              child: _saving
-                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Text("Güncelle"),
+              child: AnimatedBuilder(
+                animation: LoadingManager.instance,
+                builder: (_, __) {
+                  if (_saving && !LoadingManager.instance.loading) {
+                    return const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2));
+                  }
+                  return const Text("Güncelle");
+                },
+              ),
             ),
           ],
         ),
@@ -652,7 +666,7 @@ class _AdminEklerPageState extends State<AdminEklerPage> {
           Positioned.fill(
             child: Container(
               color: Colors.black.withOpacity(0.08),
-              child: const Center(child: CircularProgressIndicator()),
+              child: const AdminLoadingIndicator(),
             ),
           ),
       ],

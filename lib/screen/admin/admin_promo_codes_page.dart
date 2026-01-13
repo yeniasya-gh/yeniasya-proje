@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../services/admin/admin_promo_code_service.dart';
 import '../../services/error/error_manager.dart';
+import '../../services/loading_manager.dart';
+import 'admin_loading_indicator.dart';
 
 class AdminPromoCodesPage extends StatefulWidget {
   const AdminPromoCodesPage({super.key});
@@ -223,9 +225,19 @@ class _AdminPromoCodesPageState extends State<AdminPromoCodesPage> {
                   child: ElevatedButton(
                     onPressed: _saving ? null : _create,
                     style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
-                    child: _saving
-                        ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                        : const Text("Kaydet"),
+                    child: AnimatedBuilder(
+                      animation: LoadingManager.instance,
+                      builder: (_, __) {
+                        if (_saving && !LoadingManager.instance.loading) {
+                          return const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                          );
+                        }
+                        return const Text("Kaydet");
+                      },
+                    ),
                   ),
                 ),
               ],
@@ -238,7 +250,7 @@ class _AdminPromoCodesPageState extends State<AdminPromoCodesPage> {
 
   Widget _buildTable() {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator());
+      return const AdminLoadingIndicator();
     }
     if (_promoCodes.isEmpty) {
       return const Center(child: Text("Kayıtlı promosyon kodu yok."));

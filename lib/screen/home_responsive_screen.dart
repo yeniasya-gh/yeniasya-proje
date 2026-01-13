@@ -1,8 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:crypto/crypto.dart';
 import '../services/access_provider.dart';
 import '/screen/footer/yeni_asya_footer.dart';
 import '/services/auth/auth_provider.dart';
@@ -24,6 +27,7 @@ import '../services/user_content_access_service.dart';
 import '../services/newspaper_subscription_type_service.dart';
 import '../services/upload_service.dart';
 import '../services/access_provider.dart';
+import '../services/home_showcase_service.dart';
 import '../screen/profile/pdf_viewer_screen.dart';
 import '../utils/cart_feedback.dart';
 import '../utils/price_utils.dart';
@@ -56,6 +60,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
   final OrderService _orderService = OrderService();
   final UserContentAccessService _accessService = UserContentAccessService();
   final NewspaperSubscriptionTypeService _newsTypeService = NewspaperSubscriptionTypeService();
+  final HomeShowcaseService _homeShowcaseService = HomeShowcaseService();
 
   final PageController _sliderController = PageController();
   Timer? _sliderTimer;
@@ -66,6 +71,8 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
   List<Map<String, dynamic>> books = [];
   List<Map<String, dynamic>> newspapers = [];
   List<Map<String, dynamic>> attachments = [];
+  List<Map<String, dynamic>> homeBookEntries = [];
+  List<Map<String, dynamic>> homeMagazineEntries = [];
   bool loading = true;
   int _mobileNavIndex = 0;
   bool libraryLoading = false;
@@ -75,6 +82,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
   bool _loadingAccessSheet = false;
   bool _deepLinkHandled = false;
   AuthProvider? _authListener;
+  DateTime? _newsSelectedDate;
 
   @override
   void initState() {
@@ -89,14 +97,28 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     _loadLibraryAccess();
   }
 
-  Future<void> _loadData() async {
-    setState(() => loading = true);
+  Future<void> _loadData({bool showLoading = true}) async {
+    if (showLoading) {
+      setState(() => loading = true);
+    }
     try {
-      final mag = await _magService.getMagazines();
-      final book = await _bookService.getAllBooks();
-      final news = await _newsService.getAll();
-      final eks = await _ekService.getEkler();
-      final sliderItems = await _sliderService.getAll(onlyActive: true);
+      final results = await Future.wait([
+        _magService.getMagazines(),
+        _bookService.getAllBooks(),
+        _newsService.getAll(),
+        _ekService.getEkler(),
+        _sliderService.getAll(onlyActive: true),
+        _homeShowcaseService.getByType("book", onlyActive: true),
+        _homeShowcaseService.getByType("magazine", onlyActive: true),
+      ]);
+
+      final mag = results[0] as List<Map<String, dynamic>>;
+      final book = results[1] as List<Map<String, dynamic>>;
+      final news = results[2] as List<Map<String, dynamic>>;
+      final eks = results[3] as List<Map<String, dynamic>>;
+      final sliderItems = results[4] as List<Map<String, dynamic>>;
+      final homeBooks = results[5] as List<Map<String, dynamic>>;
+      final homeMags = results[6] as List<Map<String, dynamic>>;
       setState(() {
         sliders = sliderItems;
         _sliderIndex = 0;
@@ -104,13 +126,24 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         books = book;
         newspapers = news;
         attachments = eks;
+        homeBookEntries = homeBooks;
+        homeMagazineEntries = homeMags;
       });
       _startSliderAuto();
       await _handleInitialDeepLink();
     } catch (e) {
       debugPrint("Home load error: $e");
     }
-    setState(() => loading = false);
+    if (showLoading) {
+      setState(() => loading = false);
+    }
+  }
+
+  Future<void> _refreshHome() async {
+    await _loadData(showLoading: false);
+    await _loadLibraryOrders();
+    await _loadLibraryAccess();
+    _loadAccessIfNeeded();
   }
 
   void _startSliderAuto() {
@@ -245,6 +278,37 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
 
   double _parsePrice(dynamic value, {double fallback = 0}) {
     return double.tryParse(value?.toString() ?? "") ?? fallback;
+  }
+
+  DateTime _normalizeDate(DateTime date) => DateTime(date.year, date.month, date.day);
+
+  List<Map<String, dynamic>> _filteredNewspapers() {
+    final hasFilter = _newsSelectedDate != null;
+    if (!hasFilter) return newspapers;
+
+    final cutoff = DateTime(2026, 1, 1);
+    final targets = <DateTime>[];
+    if (_newsSelectedDate != null) {
+      targets.add(_normalizeDate(_newsSelectedDate!));
+    }
+
+    final results = <Map<String, dynamic>>[];
+    for (final date in targets) {
+      if (!date.isBefore(cutoff)) {
+        final match = newspapers.firstWhere(
+          (n) {
+            final raw = n["publish_date"]?.toString();
+            if (raw == null) return false;
+            final parsed = DateTime.tryParse(raw);
+            if (parsed == null) return false;
+            return _normalizeDate(parsed) == date;
+          },
+          orElse: () => {},
+        );
+        if (match.isNotEmpty) results.add(match);
+      }
+    }
+    return results;
   }
 
   void _openProductDetail(ProductDetail detail) {
@@ -439,35 +503,46 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
                       final title = (item["title"] ?? "").toString().trim();
                       final displayTitle =
                           title.isNotEmpty ? title : "$months Aylık Gazete Aboneliği";
+                      final cartItem = CartItem(
+                        id: "news-type-$id",
+                        title: displayTitle,
+                        subtitle: "Gazete Aboneliği",
+                        imageUrl: imageUrl,
+                        price: price,
+                        quantity: 1,
+                        type: CartItemType.newspaperSubscription,
+                        metadata: {
+                          "productId": id,
+                          "period": months,
+                          "periodMonths": months,
+                          "typeTitle": displayTitle,
+                        },
+                      );
+                      final alreadyInCart = cart.contains(cartItem);
                       return ListTile(
                         contentPadding: EdgeInsets.zero,
                         title: Text(displayTitle),
                         subtitle: Text(months > 0 ? "$months ay" : "Gazete Aboneliği"),
                         trailing: Text(
-                          "₺${price.toStringAsFixed(2)}",
-                          style: const TextStyle(fontWeight: FontWeight.w700, color: Colors.red),
+                          alreadyInCart ? "Sepette" : "₺${price.toStringAsFixed(2)}",
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: alreadyInCart ? Colors.grey : Colors.red,
+                          ),
                         ),
-                        onTap: () {
-                          cart.addOrIncrement(
-                            CartItem(
-                              id: "news-type-$id",
-                              title: displayTitle,
-                              subtitle: "Gazete Aboneliği",
-                              imageUrl: imageUrl,
-                              price: price,
-                              quantity: 1,
-                              type: CartItemType.newspaperSubscription,
-                              metadata: {
-                                "productId": id,
-                                "period": months,
-                                "periodMonths": months,
-                                "typeTitle": displayTitle,
+                        onTap: alreadyInCart
+                            ? null
+                            : () {
+                                final added = cart.addIfAbsent(cartItem);
+                                if (added) {
+                                  Navigator.pop(context);
+                                  showAddedToCartDialog(context);
+                                } else {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text("Bu ürün zaten sepette.")),
+                                  );
+                                }
                               },
-                            ),
-                          );
-                          Navigator.pop(context);
-                          showAddedToCartDialog(context);
-                        },
                       );
                     },
                   ),
@@ -663,6 +738,40 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     if (value is int) return value;
     if (value is num) return value.toInt();
     return int.tryParse(value.toString());
+  }
+
+  List<Map<String, dynamic>> _buildHomeShowcaseList({
+    required List<Map<String, dynamic>> baseItems,
+    required List<Map<String, dynamic>> selectedEntries,
+    required int maxItems,
+    required String idKey,
+    required String selectedIdKey,
+  }) {
+    if (baseItems.isEmpty) return [];
+    final selectedIds = <int>{};
+    final result = <Map<String, dynamic>>[];
+
+    for (final entry in selectedEntries) {
+      if (result.length >= maxItems) break;
+      final entryId = _toInt(entry[selectedIdKey]);
+      if (entryId == null) continue;
+      final item = baseItems.firstWhere(
+        (i) => _toInt(i[idKey]) == entryId,
+        orElse: () => {},
+      );
+      if (item.isEmpty) continue;
+      selectedIds.add(entryId);
+      result.add(item);
+    }
+
+    for (final item in baseItems) {
+      if (result.length >= maxItems) break;
+      final id = _toInt(item[idKey]);
+      if (id == null || selectedIds.contains(id)) continue;
+      result.add(item);
+    }
+
+    return result;
   }
 
   bool _hasPurchased(String type, int? itemId) {
@@ -998,22 +1107,19 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
   ProductDetail _mapMagazineDetail(Map<String, dynamic> mag) {
     final hasAccess = context.read<AccessProvider>().hasAccess("magazine", itemId: mag["id"] as int?);
   final actionLabel = hasAccess ? "E-dergiyi Gör" : "Abone Ol";
-    final price = _parsePrice(mag["campaign_price"] ?? mag["sale_price"]);
     return ProductDetail(
       id: "mag-${mag["id"]}",
       title: mag["name"] ?? "",
       subtitle: mag["category"] ?? "",
       description: mag["description"] ?? mag["category"] ?? "",
       imageUrl: mag["cover_image_url"] ?? "",
-      price: price,
+      price: 0,
       type: CartItemType.magazine,
       metadata: {
         "productId": mag["id"],
         "disableAdd": hasAccess,
         "fileUrl": mag["file_url"],
         "period": mag["period"],
-        "salePrice": mag["sale_price"],
-        "campaignPrice": mag["campaign_price"],
       },
       actionLabel: actionLabel,
     );
@@ -1244,36 +1350,40 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
             ? _libraryView(context, this)
             : Stack(
                 children: [
-                  SingleChildScrollView(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Center(
-                          child: ConstrainedBox(
-                            constraints: const BoxConstraints(maxWidth: 1600),
-                            child: Padding(
-                              padding: EdgeInsets.symmetric(
-                                horizontal: isWeb ? 64 : (isTablet ? 32 : 16),
-                                vertical: 24,
+                  RefreshIndicator(
+                    onRefresh: _refreshHome,
+                    child: SingleChildScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Center(
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 1600),
+                              child: Padding(
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: isWeb ? 64 : (isTablet ? 32 : 16),
+                                  vertical: 24,
+                                ),
+                                child: ConstrainedBox(
+                                  constraints: const BoxConstraints(minHeight: 500),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      if (_section == HomeSection.home) ...[
+                                        if (hasSlider) _buildSlider(isWeb, isTablet),
+                                        if (hasSlider) const SizedBox(height: 16),
+                                      ],
+                                      _buildBodyContent(isWeb, isTablet, cart),
+                                    ],
+                                  ),
+                                ),
                               ),
-                              child: ConstrainedBox(
-                                constraints: const BoxConstraints(minHeight: 500),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                if (_section == HomeSection.home) ...[
-                                  if (hasSlider) _buildSlider(isWeb, isTablet),
-                                  if (hasSlider) const SizedBox(height: 16),
-                                ],
-                                _buildBodyContent(isWeb, isTablet, cart),
-                              ],
                             ),
                           ),
-                        ),
-                          ),
-                        ),
-                        if (isWeb) const YeniAsyaFooter(),
-                      ],
+                          if (isWeb) const YeniAsyaFooter(),
+                        ],
+                      ),
                     ),
                   ),
                 ],
@@ -1354,15 +1464,31 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _sectionHeadingText("E-gazete"),
+            const SizedBox(height: 12),
+            _newspaperFilters(context),
             const SizedBox(height: 16),
-            _newspaperListGrid(context, isWeb),
+            _newspaperListGrid(
+              context,
+              isWeb,
+              _filteredNewspapers(),
+            ),
           ],
         );
       case HomeSection.attachments:
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _sectionHeadingText("Ekler"),
+            Row(
+              children: [
+                if (!isWeb)
+                  IconButton(
+                    onPressed: () => setState(() => _section = HomeSection.home),
+                    icon: const Icon(Icons.arrow_back),
+                    tooltip: "Geri",
+                  ),
+                _sectionHeadingText("Ekler"),
+              ],
+            ),
             const SizedBox(height: 16),
             _attachmentsList(context, this, isWeb, cart),
           ],
@@ -1374,7 +1500,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
           children: [
             _newspaperShowcase(context, isWeb, cart),
             const SizedBox(height: 32),
-            _magazineShowcase(context, isWeb, cart),
+            _magazineShowcase(context, isWeb),
             const SizedBox(height: 32),
             _booksShowcase(context, isWeb, cart),
             const SizedBox(height: 32),
@@ -1503,8 +1629,15 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     );
   }
 
-Widget _magazineShowcase(BuildContext context, bool isWeb, CartProvider cart) {
-  if (magazines.isEmpty) return const SizedBox.shrink();
+Widget _magazineShowcase(BuildContext context, bool isWeb) {
+  final displayList = _buildHomeShowcaseList(
+    baseItems: magazines,
+    selectedEntries: homeMagazineEntries,
+    maxItems: 10,
+    idKey: "id",
+    selectedIdKey: "product_id",
+  );
+  if (displayList.isEmpty) return const SizedBox.shrink();
 
   return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1525,40 +1658,19 @@ Widget _magazineShowcase(BuildContext context, bool isWeb, CartProvider cart) {
           height: isWeb ? 270 : 300,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
-            itemCount: magazines.length,
+            itemCount: displayList.length,
             separatorBuilder: (_, __) => const SizedBox(width: 14),
             itemBuilder: (_, i) => _bookCard({
-              "image": magazines[i]["cover_image_url"],
-              "title": magazines[i]["name"],
-              "author": magazines[i]["category"] ?? "",
-              "salePrice": magazines[i]["sale_price"],
-              "campaignPrice": magazines[i]["campaign_price"],
+              "image": displayList[i]["cover_image_url"],
+              "title": displayList[i]["name"],
+              "author": displayList[i]["category"] ?? "",
+              "price": isWeb ? "Fiyat için tıkla" : "",
             }, isWeb,
-                hideAction: _hasPurchased("magazine", _toInt(magazines[i]["id"])),
+                hideAction: _hasPurchased("magazine", _toInt(displayList[i]["id"])),
                 onAdd: () {
-                  final priceInfo = PriceInfo.fromRaw(
-                    magazines[i]["sale_price"],
-                    magazines[i]["campaign_price"],
-                  );
-                  _addToCart(
-                    context,
-                    cart,
-                    CartItem(
-                      id: "mag-${magazines[i]["id"]}",
-                      title: magazines[i]["name"] ?? "",
-                      subtitle: magazines[i]["category"] ?? "",
-                      imageUrl: magazines[i]["cover_image_url"] ?? "",
-                      price: priceInfo.effectivePrice,
-                      quantity: 1,
-                      type: CartItemType.magazine,
-                      metadata: {
-                        "productId": magazines[i]["id"],
-                        "period": magazines[i]["period"],
-                      },
-                    ),
-                  );
+                  _openProductDetail(_mapMagazineDetail(displayList[i]));
                 }, onTap: () {
-              _openProductDetail(_mapMagazineDetail(magazines[i]));
+              _openProductDetail(_mapMagazineDetail(displayList[i]));
             }),
           ),
         ),
@@ -1568,7 +1680,14 @@ Widget _magazineShowcase(BuildContext context, bool isWeb, CartProvider cart) {
 
 Widget _booksShowcase(BuildContext context, bool isWeb, CartProvider cart) {
     final access = context.watch<AccessProvider>();
-    if (books.isEmpty) return const SizedBox.shrink();
+    final displayList = _buildHomeShowcaseList(
+      baseItems: books,
+      selectedEntries: homeBookEntries,
+      maxItems: 10,
+      idKey: "id",
+      selectedIdKey: "product_id",
+    );
+    if (displayList.isEmpty) return const SizedBox.shrink();
 
     final showRead = access.hasAccess("newspaper_subscription");
     return Column(
@@ -1590,42 +1709,42 @@ Widget _booksShowcase(BuildContext context, bool isWeb, CartProvider cart) {
           height: isWeb ? 270 : 300,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
-            itemCount: books.length,
+            itemCount: displayList.length,
             separatorBuilder: (_, __) => const SizedBox(width: 14),
-            itemBuilder: (_, i) => _bookCard({
-              "image": books[i]["cover_url"],
-              "title": books[i]["title"],
-              "author": books[i]["author_rel"]?["name"] ?? "-",
-              "price": books[i]["price"] != null
-                  ? "₺${double.tryParse(books[i]["price"].toString())?.toStringAsFixed(2) ?? ""}"
-                  : "-",
-            }, isWeb,
-                hideAction: _hasPurchased("book", _toInt(books[i]["id"])),
-                onAdd: () {
-                  _addToCart(
-                    context,
-                    cart,
-                    CartItem(
-                      id: "book-${books[i]["id"]}",
-                      title: books[i]["title"] ?? "",
-                      subtitle: books[i]["author_rel"]?["name"] ?? "",
-                      imageUrl: books[i]["cover_url"] ?? "",
-                      price: double.tryParse(books[i]["price"]?.toString() ?? "0") ?? 0,
-                      quantity: 1,
-                      type: CartItemType.book,
-                      metadata: {"productId": books[i]["id"]},
-                    ),
-                  );
-                }, onTap: () {
-              _openProductDetail(_mapBookDetail(books[i]));
-            }),
+            itemBuilder: (_, i) {
+              final item = CartItem(
+                id: "book-${displayList[i]["id"]}",
+                title: displayList[i]["title"] ?? "",
+                subtitle: displayList[i]["author_rel"]?["name"] ?? "",
+                imageUrl: displayList[i]["cover_url"] ?? "",
+                price: double.tryParse(displayList[i]["price"]?.toString() ?? "0") ?? 0,
+                quantity: 1,
+                type: CartItemType.book,
+                metadata: {"productId": displayList[i]["id"]},
+              );
+              final alreadyInCart = cart.contains(item);
+              return _bookCard({
+                "image": displayList[i]["cover_url"],
+                "title": displayList[i]["title"],
+                "author": displayList[i]["author_rel"]?["name"] ?? "-",
+                "price": displayList[i]["price"] != null
+                    ? "₺${double.tryParse(displayList[i]["price"].toString())?.toStringAsFixed(2) ?? ""}"
+                    : "-",
+              }, isWeb,
+                  hideAction: _hasPurchased("book", _toInt(displayList[i]["id"])),
+                  onAdd: alreadyInCart
+                      ? null
+                      : () => _addToCart(context, cart, item), onTap: () {
+                _openProductDetail(_mapBookDetail(displayList[i]));
+              });
+            },
           ),
         ),
       ],
     );
   }
 
-Widget _newspaperShowcase(BuildContext context, bool isWeb, CartProvider cart) {
+  Widget _newspaperShowcase(BuildContext context, bool isWeb, CartProvider cart) {
     final access = context.watch<AccessProvider>();
     const fallbackImage = "assets/images/gazete.jpg";
     final today = DateTime.now();
@@ -1650,7 +1769,12 @@ Widget _newspaperShowcase(BuildContext context, bool isWeb, CartProvider cart) {
       if (isWeb) {
         setState(() => _section = HomeSection.newspapers);
       } else {
-        _openFullList(context, "E-gazete", (ctx) => _newspaperListGrid(ctx, false));
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => _NewspaperListScreen(homeState: this),
+          ),
+        );
       }
     }
 
@@ -1695,7 +1819,7 @@ Widget _newspaperShowcase(BuildContext context, bool isWeb, CartProvider cart) {
         const SizedBox(height: 12),
         if (items.isNotEmpty)
           SizedBox(
-            height: isWeb ? 250 : (showRead ? 230 : 210),
+            height: isWeb ? 240 : (showRead ? 220 : 200),
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               itemCount: items.length,
@@ -1703,11 +1827,59 @@ Widget _newspaperShowcase(BuildContext context, bool isWeb, CartProvider cart) {
               itemBuilder: (_, i) => _newspaperPreviewCard(
                 items[i],
                 width: 170,
+                compact: true,
+                imageHeight: showRead ? 120 : 135,
                 showRead: showRead,
                 onTap: () => _openProductDetail(_mapNewspaperDetail(items[i]["raw"] as Map<String, dynamic>)),
               ),
             ),
           ),
+      ],
+    );
+  }
+
+  Widget _newspaperFilters(BuildContext context) {
+    Future<void> pickSingleDate() async {
+      final now = DateTime.now();
+      final picked = await showDatePicker(
+        context: context,
+        initialDate: now,
+        firstDate: DateTime(2000),
+        lastDate: now.add(const Duration(days: 365 * 2)),
+      );
+      if (picked == null) return;
+      final normalized = _normalizeDate(picked);
+      final dateLabel =
+          "${normalized.day.toString().padLeft(2, "0")}.${normalized.month.toString().padLeft(2, "0")}.${normalized.year}";
+      final pdfUrl = _legacyNewspaperUrl(normalized);
+      debugPrint("E-gazete PDF URL (tarih seçimi): $pdfUrl");
+      if (!mounted) return;
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => PdfViewerScreen(
+            url: pdfUrl,
+            title: "E-gazete $dateLabel",
+            isPrivate: false,
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            OutlinedButton.icon(
+              onPressed: pickSingleDate,
+              icon: const Icon(Icons.event),
+              label: const Text("Tarih Seç"),
+            ),
+          ],
+        ),
       ],
     );
   }
@@ -1727,7 +1899,21 @@ Widget _newspaperShowcase(BuildContext context, bool isWeb, CartProvider cart) {
           children: [
             const Text("Ekler", style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
             TextButton(
-              onPressed: () => setState(() => _section = HomeSection.attachments),
+              onPressed: () {
+                if (isWeb) {
+                  setState(() => _section = HomeSection.attachments);
+                } else {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => _AttachmentListScreen(
+                        state: this,
+                        cart: cart,
+                      ),
+                    ),
+                  );
+                }
+              },
               child: const Text("Tümünü Gör", style: TextStyle(color: Colors.red, fontWeight: FontWeight.w600)),
             ),
           ],
@@ -1851,34 +2037,13 @@ Widget _magazineListGrid(BuildContext context, bool isWeb) {
               "image": magazines[i]["cover_image_url"],
               "title": magazines[i]["name"],
               "desc": magazines[i]["description"] ?? magazines[i]["category"],
-              "salePrice": magazines[i]["sale_price"],
-              "campaignPrice": magazines[i]["campaign_price"],
+              "price": "Fiyat için tıkla",
             },
                 hideAction: hideAction,
                 onAdd: hideAction
                     ? null
                     : () {
-                        final priceInfo = PriceInfo.fromRaw(
-                          magazines[i]["sale_price"],
-                          magazines[i]["campaign_price"],
-                        );
-                        _addToCart(
-                          context,
-                          cart,
-                          CartItem(
-                            id: "mag-${magazines[i]["id"]}",
-                            title: magazines[i]["name"] ?? "",
-                            subtitle: magazines[i]["category"] ?? "",
-                            imageUrl: magazines[i]["cover_image_url"] ?? "",
-                            price: priceInfo.effectivePrice,
-                            quantity: 1,
-                            type: CartItemType.magazine,
-                            metadata: {
-                              "productId": magazines[i]["id"],
-                              "period": magazines[i]["period"],
-                            },
-                          ),
-                        );
+                        _openProductDetail(_mapMagazineDetail(magazines[i]));
                       }, onTap: () {
               _openProductDetail(_mapMagazineDetail(magazines[i]));
             });
@@ -1903,43 +2068,40 @@ Widget _bookListGrid(BuildContext context, bool isWeb, bool isTablet) {
       mainAxisExtent: isWeb ? 270 : 260,
     ),
       itemCount: books.length,
-      itemBuilder: (_, i) => _bookCard({
-        "image": books[i]["cover_url"],
-        "title": books[i]["title"],
-        "author": books[i]["author_rel"]?["name"] ?? "-",
-        "price": books[i]["price"] != null
-            ? "₺${double.tryParse(books[i]["price"].toString())?.toStringAsFixed(2) ?? ""}"
-            : "-",
-      }, isWeb,
-          hideAction: _hasPurchased("book", _toInt(books[i]["id"])),
-          onAdd: () {
-        _addToCart(
-          context,
-          cart,
-          CartItem(
-            id: "book-${books[i]["id"]}",
-            title: books[i]["title"] ?? "",
-            subtitle: books[i]["author_rel"]?["name"] ?? "",
-            imageUrl: books[i]["cover_url"] ?? "",
-            price: double.tryParse(books[i]["price"]?.toString() ?? "0") ?? 0,
-            quantity: 1,
-            type: CartItemType.book,
-            metadata: {"productId": books[i]["id"]},
-          ),
+      itemBuilder: (_, i) {
+        final item = CartItem(
+          id: "book-${books[i]["id"]}",
+          title: books[i]["title"] ?? "",
+          subtitle: books[i]["author_rel"]?["name"] ?? "",
+          imageUrl: books[i]["cover_url"] ?? "",
+          price: double.tryParse(books[i]["price"]?.toString() ?? "0") ?? 0,
+          quantity: 1,
+          type: CartItemType.book,
+          metadata: {"productId": books[i]["id"]},
         );
-      }, onTap: () {
-        _openProductDetail(_mapBookDetail(books[i]));
-      }),
+        final alreadyInCart = cart.contains(item);
+        return _bookCard({
+          "image": books[i]["cover_url"],
+          "title": books[i]["title"],
+          "author": books[i]["author_rel"]?["name"] ?? "-",
+          "price": books[i]["price"] != null
+              ? "₺${double.tryParse(books[i]["price"].toString())?.toStringAsFixed(2) ?? ""}"
+              : "-",
+        }, isWeb,
+            hideAction: _hasPurchased("book", _toInt(books[i]["id"])),
+            onAdd: alreadyInCart ? null : () => _addToCart(context, cart, item), onTap: () {
+          _openProductDetail(_mapBookDetail(books[i]));
+        });
+      },
     );
   }
 
-  Widget _newspaperListGrid(BuildContext context, bool isWeb) {
-    final crossAxisCount = isWeb ? 3 : 1;
+  Widget _newspaperListGrid(BuildContext context, bool isWeb, List<Map<String, dynamic>> items) {
+    final crossAxisCount = isWeb ? 3 : 2;
     final hasSub = Provider.of<AccessProvider>(context, listen: false)
         .hasAccess("newspaper_subscription");
     return LayoutBuilder(
       builder: (context, constraints) {
-        final childAspectRatio = isWeb ? (hasSub ? 1.0 : 1.15) : (hasSub ? 1.45 : 1.6);
         return GridView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
@@ -1948,21 +2110,23 @@ Widget _bookListGrid(BuildContext context, bool isWeb, bool isTablet) {
             crossAxisCount: crossAxisCount,
             crossAxisSpacing: 14,
             mainAxisSpacing: 14,
-            childAspectRatio: childAspectRatio,
+            mainAxisExtent: isWeb ? (hasSub ? 280 : 260) : (hasSub ? 240 : 220),
           ),
-          itemCount: newspapers.length,
+          itemCount: items.length,
           itemBuilder: (_, i) {
-            final dateStr = newspapers[i]["publish_date"]?.toString() ?? "";
+            final dateStr = items[i]["publish_date"]?.toString() ?? "";
             final dt = DateTime.tryParse(dateStr);
             final label = dt != null ? _formatDateTr(dt) : dateStr;
             final title = label.isNotEmpty ? label : "Gazete";
             return _newspaperPreviewCard({
-              "image": newspapers[i]["image_url"],
+              "image": items[i]["image_url"],
               "title": title,
               "date": "Yeni Asya Gazetesi",
             },
+                compact: true,
+                imageHeight: isWeb ? (hasSub ? 150 : 140) : (hasSub ? 130 : 120),
                 showRead: context.read<AccessProvider>().hasAccess("newspaper_subscription"),
-                onTap: () => _openProductDetail(_mapNewspaperDetail(newspapers[i])));
+                onTap: () => _openProductDetail(_mapNewspaperDetail(items[i])));
           },
         );
       },
@@ -2176,7 +2340,10 @@ Widget _bookCard(Map<String, dynamic> item, bool isWeb,
                       ),
                       if (!hideAction)
                         Container(
-                          decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(8)),
+                          decoration: BoxDecoration(
+                            color: onAdd == null ? Colors.grey : Colors.red,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
                           child: IconButton(
                             icon: const Icon(Icons.add, color: Colors.white, size: 18),
                             onPressed: onAdd,
@@ -2242,11 +2409,15 @@ Widget _newspaperPreviewCard(
   Map<String, dynamic> item, {
   VoidCallback? onTap,
   double? width,
+  double? imageHeight,
+  bool compact = false,
   bool showRead = false,
 }) {
   final title = item["title"]?.toString() ?? "";
   final date = item["date"]?.toString() ?? "";
   final imageUrl = UploadService.normalizeUrl(item["image"]?.toString() ?? "");
+
+  final resolvedImageHeight = imageHeight ?? (compact ? 135 : 210);
 
   return InkWell(
     onTap: onTap,
@@ -2270,8 +2441,9 @@ Widget _newspaperPreviewCard(
         children: [
           ClipRRect(
             borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
-            child: AspectRatio(
-              aspectRatio: 4 / 3,
+            child: SizedBox(
+              height: resolvedImageHeight,
+              width: double.infinity,
               child: safeImage(
                 imageUrl,
                 fit: BoxFit.cover,
@@ -2279,43 +2451,94 @@ Widget _newspaperPreviewCard(
               ),
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.all(10),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (title.isNotEmpty)
-                  Text(
-                    title,
-                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-                  ),
-                if (date.isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    date,
-                    style: const TextStyle(color: Colors.black54, fontSize: 12),
-                  ),
-                ],
-                if (showRead) ...[
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    height: 30,
-                    child: ElevatedButton(
-                      onPressed: onTap,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        elevation: 0,
+          if (compact)
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Spacer(),
+                    if (title.isNotEmpty)
+                      Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
                       ),
-                      child: const Text("Oku"),
-                    ),
-                  ),
-                ],
-              ],
+                    if (date.isNotEmpty) ...[
+                      const SizedBox(height: 3),
+                      Text(
+                        date,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: Colors.black54, fontSize: 10),
+                      ),
+                    ],
+                    if (showRead) ...[
+                      const SizedBox(height: 4),
+                      SizedBox(
+                        height: 24,
+                        child: ElevatedButton(
+                          onPressed: onTap,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.blue,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(horizontal: 10),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            elevation: 0,
+                          ),
+                          child: const Text("Oku", style: TextStyle(fontSize: 12)),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            )
+          else
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.all(10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (title.isNotEmpty)
+                      Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                      ),
+                    if (date.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        date,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: Colors.black54, fontSize: 12),
+                      ),
+                    ],
+                    const Spacer(),
+                    if (showRead)
+                      SizedBox(
+                        height: 30,
+                        child: ElevatedButton(
+                          onPressed: onTap,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.blue,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            elevation: 0,
+                          ),
+                          child: const Text("Oku"),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
             ),
-          ),
         ],
       ),
     ),
@@ -2355,13 +2578,43 @@ String _formatDateTr(DateTime date) {
   return "$day $month $year";
 }
 
+String _formatDateIso(DateTime date) {
+  final y = date.year.toString().padLeft(4, "0");
+  final m = date.month.toString().padLeft(2, "0");
+  final d = date.day.toString().padLeft(2, "0");
+  return "$y-$m-$d";
+}
+
+String _legacyNewspaperToken(String fileName) {
+  const secret = "ya-X4qrNx9VwBK81sw2-";
+  final slice = DateTime.now().toUtc().millisecondsSinceEpoch ~/ 1000 ~/ 600;
+  final key = utf8.encode(secret + fileName);
+  final hmac = Hmac(sha256, key);
+  final bytes = ByteData(8)..setInt64(0, slice, Endian.little);
+  final digest = hmac.convert(bytes.buffer.asUint8List());
+  final hex = digest.toString().toUpperCase();
+  return hex.substring(0, 16);
+}
+
+String _legacyNewspaperUrl(DateTime date) {
+  final fileName = "${_formatDateIso(date)}.pdf";
+  final token = _legacyNewspaperToken(fileName);
+  return "https://www.yeniasya.com.tr/e-gazete/content/0/$token/$fileName";
+}
+
 int _cartCount(CartProvider cart) {
   return cart.items.fold<int>(0, (sum, item) => sum + item.quantity);
 }
 
 void _addToCart(BuildContext context, CartProvider cart, CartItem item) {
-  cart.addOrIncrement(item);
-  showAddedToCartDialog(context);
+  final added = cart.addIfAbsent(item);
+  if (added) {
+    showAddedToCartDialog(context);
+  } else {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Bu ürün zaten sepette.")),
+    );
+  }
 }
 
 Widget _libraryView(BuildContext context, _HomeResponsiveScreenState state) {
@@ -2430,21 +2683,21 @@ Widget _librarySubscriptionCard(
         _libraryMenuTile(
           Icons.menu_book_outlined,
           "Kitaplar",
-          onTap: () => state._openAccessSheet(context, "book", "Kitaplarım"),
+          onTap: () => state._openAccessSheet(context, "book", "Kitaplar"),
         ),
-        const Divider(height: 1, indent: 56),
+        const Divider(height: 1, thickness: 1),
         _libraryMenuTile(
           Icons.library_books,
-          "Dergiler",
+          "Dergi Abonelikleri",
           onTap: () => state._openAccessSheet(context, "magazine", "Dergi Abonelikleri"),
         ),
-        const Divider(height: 1, indent: 56),
+        const Divider(height: 1, thickness: 1),
         _libraryMenuTile(
           Icons.history_edu,
           "Dergi Sayıları",
-          onTap: () => state._openAccessSheet(context, "magazine_issue", "Dergi Sayılarım"),
+          onTap: () => state._openAccessSheet(context, "magazine_issue", "Dergi Sayıları"),
         ),
-        const Divider(height: 1, indent: 56),
+        const Divider(height: 1, thickness: 1),
         _libraryMenuTile(
           Icons.newspaper,
           "Gazete Aboneliği",
@@ -2779,6 +3032,97 @@ Widget _attachmentsList(
       );
     },
   );
+}
+
+class _AttachmentListScreen extends StatelessWidget {
+  final _HomeResponsiveScreenState state;
+  final CartProvider cart;
+
+  const _AttachmentListScreen({
+    required this.state,
+    required this.cart,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text("Ekler"),
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: _attachmentsList(context, state, false, cart),
+      ),
+    );
+  }
+}
+
+class _NewspaperListScreen extends StatefulWidget {
+  final _HomeResponsiveScreenState homeState;
+
+  const _NewspaperListScreen({required this.homeState});
+
+  @override
+  State<_NewspaperListScreen> createState() => _NewspaperListScreenState();
+}
+
+class _NewspaperListScreenState extends State<_NewspaperListScreen> {
+  Future<void> _pickSingleDate() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: now,
+      firstDate: DateTime(2000),
+      lastDate: now.add(const Duration(days: 365 * 2)),
+    );
+    if (picked == null) return;
+    final normalized = DateTime(picked.year, picked.month, picked.day);
+    final dateLabel =
+        "${normalized.day.toString().padLeft(2, "0")}.${normalized.month.toString().padLeft(2, "0")}.${normalized.year}";
+    final pdfUrl = _legacyNewspaperUrl(normalized);
+    debugPrint("E-gazete PDF URL (tarih seçimi - mobil): $pdfUrl");
+    if (!mounted) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PdfViewerScreen(
+          url: pdfUrl,
+          title: "E-gazete $dateLabel",
+          isPrivate: false,
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black,
+        title: const Text("E-gazete"),
+        elevation: 1,
+        actions: [
+          IconButton(
+            onPressed: _pickSingleDate,
+            icon: const Icon(Icons.event),
+            tooltip: "Tarih Seç",
+          ),
+        ],
+      ),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              widget.homeState._newspaperListGrid(context, false, widget.homeState.newspapers),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 String _statusLabel(String status) {

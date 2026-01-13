@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../services/notification_service.dart';
 import '../../services/error/error_manager.dart';
+import '../../services/loading_manager.dart';
+import 'admin_loading_indicator.dart';
 
 class AdminNotificationsPage extends StatefulWidget {
   const AdminNotificationsPage({super.key});
@@ -109,13 +111,19 @@ class _AdminNotificationsPageState extends State<AdminNotificationsPage> {
                             }
                           },
                     style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
-                    child: _sending
-                        ? const SizedBox(
+                    child: AnimatedBuilder(
+                      animation: LoadingManager.instance,
+                      builder: (_, __) {
+                        if (_sending && !LoadingManager.instance.loading) {
+                          return const SizedBox(
                             width: 18,
                             height: 18,
                             child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                          )
-                        : const Text("Gönder"),
+                          );
+                        }
+                        return const Text("Gönder");
+                      },
+                    ),
                   ),
                 ),
               ],
@@ -133,7 +141,7 @@ class _AdminNotificationsPageState extends State<AdminNotificationsPage> {
             ],
           ),
           _loadingTokens
-              ? const Center(child: Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator()))
+              ? const AdminLoadingIndicator(padding: EdgeInsets.all(16))
               : Container(
                   height: 300,
                   padding: const EdgeInsets.all(8),

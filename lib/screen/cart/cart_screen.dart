@@ -100,7 +100,6 @@ class _CartScreenState extends State<CartScreen> {
                           padding: const EdgeInsets.only(bottom: 12),
                           child: _cartItem(
                             item: item,
-                            onQtyChange: (q) => cart.updateQuantity(item.id, q),
                             onRemove: () => cart.remove(item.id),
                           ),
                         )),
@@ -122,7 +121,6 @@ class _CartScreenState extends State<CartScreen> {
 
   Widget _cartItem({
     required CartItem item,
-    required ValueChanged<int> onQtyChange,
     required VoidCallback onRemove,
   }) {
     return Container(
@@ -160,18 +158,9 @@ class _CartScreenState extends State<CartScreen> {
                   style: const TextStyle(color: Colors.black54, fontSize: 13),
                 ),
                 const SizedBox(height: 12),
-                Row(
-                  children: [
-                    _qtyButton(Icons.remove, () => onQtyChange(item.quantity - 1)),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 12.0),
-                      child: Text(
-                        item.quantity.toString(),
-                        style: const TextStyle(fontSize: 16),
-                      ),
-                    ),
-                    _qtyButton(Icons.add, () => onQtyChange(item.quantity + 1)),
-                  ],
+                const Text(
+                  "Adet: 1",
+                  style: TextStyle(fontSize: 14, color: Colors.black54),
                 ),
               ],
             ),
@@ -180,7 +169,7 @@ class _CartScreenState extends State<CartScreen> {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(
-                "₺${(item.price * item.quantity).toStringAsFixed(2)}",
+                "₺${item.price.toStringAsFixed(2)}",
                 style: const TextStyle(
                   fontSize: 17,
                   fontWeight: FontWeight.bold,
@@ -195,19 +184,6 @@ class _CartScreenState extends State<CartScreen> {
             ],
           )
         ],
-      ),
-    );
-  }
-
-  Widget _qtyButton(IconData icon, VoidCallback onTap) {
-    return Container(
-      decoration: BoxDecoration(
-        border: Border.all(color: Colors.black26),
-        shape: BoxShape.circle,
-      ),
-      child: IconButton(
-        icon: Icon(icon, size: 18),
-        onPressed: onTap,
       ),
     );
   }

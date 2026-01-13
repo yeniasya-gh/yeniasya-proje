@@ -12,13 +12,13 @@ import '../profile/pdf_viewer_screen.dart';
 import 'magazine_issues_screen.dart';
 import '../../services/upload_service.dart';
 import '../../services/newspaper_subscription_type_service.dart';
+import '../../services/magazine_type_price_service.dart';
 import '../../services/access_provider.dart';
 import '../../services/review_service.dart';
 import '../../services/auth/auth_provider.dart';
 import '../../services/secure_file_service.dart';
 import '../../services/error/error_manager.dart';
 import '../../utils/cart_feedback.dart';
-import '../../utils/price_utils.dart';
 import 'package:flutter/foundation.dart';
 
 class ProductDetail {
@@ -79,6 +79,7 @@ class ProductDetailScreen extends StatefulWidget {
 class _ProductDetailScreenState extends State<ProductDetailScreen> {
   final _reviewService = ReviewService();
   final _newsTypeService = NewspaperSubscriptionTypeService();
+  final _magazineTypePriceService = MagazineTypePriceService();
   final TextEditingController _commentCtrl = TextEditingController();
   int _rating = 5;
   bool _reviewSubmitting = false;
@@ -105,19 +106,24 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
   void _addToCart(BuildContext context) {
     final cart = context.read<CartProvider>();
-    cart.addOrIncrement(
-      CartItem(
-        id: widget.detail.id,
-        title: widget.detail.title,
-        subtitle: widget.detail.subtitle,
-        imageUrl: widget.detail.imageUrl,
-        price: widget.detail.price,
-        quantity: 1,
-        type: widget.detail.type,
-        metadata: widget.detail.metadata,
-      ),
+    final item = CartItem(
+      id: widget.detail.id,
+      title: widget.detail.title,
+      subtitle: widget.detail.subtitle,
+      imageUrl: widget.detail.imageUrl,
+      price: widget.detail.price,
+      quantity: 1,
+      type: widget.detail.type,
+      metadata: widget.detail.metadata,
     );
-    showAddedToCartDialog(context);
+    final added = cart.addIfAbsent(item);
+    if (added) {
+      showAddedToCartDialog(context);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Bu ürün zaten sepette.")),
+      );
+    }
   }
 
   Future<void> _selectNewspaperSubscriptionType(BuildContext context) async {
@@ -155,35 +161,46 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                       final title = (item["title"] ?? "").toString().trim();
                       final displayTitle =
                           title.isNotEmpty ? title : "$months Aylık Gazete Aboneliği";
+                      final cartItem = CartItem(
+                        id: "news-type-$id",
+                        title: displayTitle,
+                        subtitle: "Gazete Aboneliği",
+                        imageUrl: widget.detail.imageUrl,
+                        price: price,
+                        quantity: 1,
+                        type: CartItemType.newspaperSubscription,
+                        metadata: {
+                          "productId": id,
+                          "period": months,
+                          "periodMonths": months,
+                          "typeTitle": displayTitle,
+                        },
+                      );
+                      final alreadyInCart = cart.contains(cartItem);
                       return ListTile(
                         contentPadding: EdgeInsets.zero,
                         title: Text(displayTitle),
                         subtitle: Text(months > 0 ? "$months ay" : "Gazete Aboneliği"),
                         trailing: Text(
-                          "₺${price.toStringAsFixed(2)}",
-                          style: const TextStyle(fontWeight: FontWeight.w700, color: Colors.red),
+                          alreadyInCart ? "Sepette" : "₺${price.toStringAsFixed(2)}",
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: alreadyInCart ? Colors.grey : Colors.red,
+                          ),
                         ),
-                        onTap: () {
-                          cart.addOrIncrement(
-                            CartItem(
-                              id: "news-type-$id",
-                              title: displayTitle,
-                              subtitle: "Gazete Aboneliği",
-                              imageUrl: widget.detail.imageUrl,
-                              price: price,
-                              quantity: 1,
-                              type: CartItemType.newspaperSubscription,
-                              metadata: {
-                                "productId": id,
-                                "period": months,
-                                "periodMonths": months,
-                                "typeTitle": displayTitle,
+                        onTap: alreadyInCart
+                            ? null
+                            : () {
+                                final added = cart.addIfAbsent(cartItem);
+                                if (added) {
+                                  Navigator.pop(context);
+                                  showAddedToCartDialog(context);
+                                } else {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text("Bu ürün zaten sepette.")),
+                                  );
+                                }
                               },
-                            ),
-                          );
-                          Navigator.pop(context);
-                          showAddedToCartDialog(context);
-                        },
                       );
                     },
                   ),
@@ -201,6 +218,99 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     }
   }
 
+  Future<void> _selectMagazineSubscriptionType(BuildContext context, int magazineId) async {
+    try {
+      final list = await _magazineTypePriceService.getActiveByMagazine(magazineId);
+      if (!mounted) return;
+      if (list.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Dergi abonelik tipi bulunamadı.")),
+        );
+        return;
+      }
+      final cart = context.read<CartProvider>();
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        builder: (_) => Padding(
+          padding: const EdgeInsets.all(16),
+          child: SizedBox(
+            height: 420,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text("Dergi Aboneliği Seç", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 12),
+                Expanded(
+                  child: ListView.separated(
+                    itemCount: list.length,
+                    separatorBuilder: (_, __) => const Divider(height: 1),
+                    itemBuilder: (_, i) {
+                      final item = list[i];
+                      final type = item["magazine_type"] as Map<String, dynamic>? ?? {};
+                      final typeId = int.tryParse(type["id"]?.toString() ?? "") ?? 0;
+                      final months = int.tryParse(type["duration_months"]?.toString() ?? "") ?? 0;
+                      final price = double.tryParse(item["price"]?.toString() ?? "") ?? 0;
+                      final title = (type["title"] ?? "").toString().trim();
+                      final displayTitle = title.isNotEmpty ? title : "$months Aylık Dergi Aboneliği";
+                      final cartItem = CartItem(
+                        id: "mag-$magazineId-type-$typeId",
+                        title: widget.detail.title,
+                        subtitle: displayTitle,
+                        imageUrl: widget.detail.imageUrl,
+                        price: price,
+                        quantity: 1,
+                        type: CartItemType.magazine,
+                        metadata: {
+                          "productId": magazineId,
+                          "magazineTypeId": typeId,
+                          "magazineTypePriceId": item["id"],
+                          "periodMonths": months,
+                          "typeTitle": displayTitle,
+                        },
+                      );
+                      final alreadyInCart = cart.contains(cartItem);
+                      return ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(displayTitle),
+                        subtitle: Text(months > 0 ? "$months ay" : "Dergi Aboneliği"),
+                        trailing: Text(
+                          alreadyInCart ? "Sepette" : "₺${price.toStringAsFixed(2)}",
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: alreadyInCart ? Colors.grey : Colors.red,
+                          ),
+                        ),
+                        onTap: alreadyInCart
+                            ? null
+                            : () {
+                                final added = cart.addIfAbsent(cartItem);
+                                if (added) {
+                                  Navigator.pop(context);
+                                  showAddedToCartDialog(context);
+                                } else {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text("Bu ürün zaten sepette.")),
+                                  );
+                                }
+                              },
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Dergi abonelik tipleri alınamadı: $e")),
+      );
+    }
+  }
+
   bool _hasContentAccess(BuildContext context) {
     if (widget.detail.forceAccess) return true;
     if (_hasLocalCopy) return true;
@@ -214,6 +324,24 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       itemId: target["productId"] as int?,
     );
     return hasAccess;
+  }
+
+  CartItem? _directCartItem() {
+    if (widget.detail.type != CartItemType.book &&
+        widget.detail.type != CartItemType.magazineIssue &&
+        widget.detail.type != CartItemType.supplement) {
+      return null;
+    }
+    return CartItem(
+      id: widget.detail.id,
+      title: widget.detail.title,
+      subtitle: widget.detail.subtitle,
+      imageUrl: widget.detail.imageUrl,
+      price: widget.detail.price,
+      quantity: 1,
+      type: widget.detail.type,
+      metadata: widget.detail.metadata,
+    );
   }
 
   String _shareText() {
@@ -626,6 +754,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     final magazineId = widget.detail.type == CartItemType.magazine
         ? int.tryParse(widget.detail.metadata?["productId"]?.toString() ?? "")
         : null;
+    final cart = context.watch<CartProvider>();
+    final directItem = _directCartItem();
+    final alreadyInCart = directItem != null && cart.contains(directItem);
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -694,45 +825,48 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                   const SizedBox(height: 6),
                   Text(widget.detail.subtitle!, style: const TextStyle(color: Colors.black54, fontSize: 14)),
                 ],
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: _shareGeneral,
-                        icon: const Icon(Icons.share),
-                        label: const Text("Sosyal Medyada Paylaş"),
+                if (widget.detail.type != CartItemType.newspaperSubscription) ...[
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _shareGeneral,
+                          icon: const Icon(Icons.share),
+                          label: const Text("Sosyal Medyada Paylaş"),
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: _shareWhatsApp,
-                        icon: const Icon(FontAwesomeIcons.whatsapp, color: Colors.green),
-                        label: const Text("WhatsApp"),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _shareWhatsApp,
+                          icon: const Icon(FontAwesomeIcons.whatsapp, color: Colors.green),
+                          label: const Text("WhatsApp"),
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 Text(
                   widget.detail.description.isNotEmpty ? widget.detail.description : "Açıklama yakında.",
                   style: const TextStyle(fontSize: 15, height: 1.5),
                 ),
-                Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF7F8FA),
-                    borderRadius: BorderRadius.circular(12),
+                if (widget.detail.type != CartItemType.newspaperSubscription)
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF7F8FA),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text("Fiyat", style: TextStyle(fontSize: 15, color: Colors.black54)),
+                        _priceDisplay(),
+                      ],
+                    ),
                   ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text("Fiyat", style: TextStyle(fontSize: 15, color: Colors.black54)),
-                      _priceDisplay(),
-                    ],
-                  ),
-                ),
                 if (widget.detail.type == CartItemType.magazine && magazineId != null) ...[
                   const SizedBox(height: 12),
                   SizedBox(
@@ -757,34 +891,40 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         child: SizedBox(
           height: 54,
           child: ElevatedButton(
-            onPressed: () {
-              final hasAccess = _hasContentAccess(context);
+            onPressed: (alreadyInCart && !_hasContentAccess(context))
+                ? null
+                : () {
+                    final hasAccess = _hasContentAccess(context);
 
-              if (hasAccess) {
-                if (_openingBook) return;
-                if (widget.detail.type == CartItemType.magazine && magazineId != null) {
-                  _openMagazineIssues(context, magazineId);
-                  return;
-                }
-                final fileUrl = _currentFileUrl();
-                if (fileUrl != null && fileUrl.isNotEmpty) {
-                  setState(() => _openingBook = true);
-                  _openPdf(context, fileUrl).whenComplete(() {
-                    if (mounted) setState(() => _openingBook = false);
-                  });
-                } else {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text("Bu içerik için indirme bağlantısı bulunamadı.")),
-                  );
-                }
-                return;
-              }
-              if (widget.detail.type == CartItemType.newspaperSubscription) {
-                _selectNewspaperSubscriptionType(context);
-                return;
-              }
-              _addToCart(context);
-            },
+                    if (hasAccess) {
+                      if (_openingBook) return;
+                      if (widget.detail.type == CartItemType.magazine && magazineId != null) {
+                        _openMagazineIssues(context, magazineId);
+                        return;
+                      }
+                      final fileUrl = _currentFileUrl();
+                      if (fileUrl != null && fileUrl.isNotEmpty) {
+                        setState(() => _openingBook = true);
+                        _openPdf(context, fileUrl).whenComplete(() {
+                          if (mounted) setState(() => _openingBook = false);
+                        });
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text("Bu içerik için indirme bağlantısı bulunamadı.")),
+                        );
+                      }
+                      return;
+                    }
+                    if (widget.detail.type == CartItemType.newspaperSubscription) {
+                      _selectNewspaperSubscriptionType(context);
+                      return;
+                    }
+                    if (widget.detail.type == CartItemType.magazine && magazineId != null) {
+                      _selectMagazineSubscriptionType(context, magazineId);
+                      return;
+                    }
+                    _addToCart(context);
+                  },
             style: ElevatedButton.styleFrom(
               backgroundColor: _hasContentAccess(context) ? Colors.blue : Colors.red,
               foregroundColor: Colors.white,
@@ -793,9 +933,11 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             child: Builder(
               builder: (context) {
                 final hasAccess = _hasContentAccess(context);
-                final label = (hasAccess && widget.detail.type == CartItemType.book)
-                    ? "Kitabı Görüntüle"
-                    : _buttonLabel(widget.detail, hasAccess);
+                final label = (alreadyInCart && !hasAccess)
+                    ? "Sepette"
+                    : (hasAccess && widget.detail.type == CartItemType.book)
+                        ? "Kitabı Görüntüle"
+                        : _buttonLabel(widget.detail, hasAccess);
                 return Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   mainAxisSize: MainAxisSize.min,
@@ -892,20 +1034,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Colors.red),
       );
     }
-    final info = PriceInfo.fromRaw(
-      widget.detail.metadata?["salePrice"],
-      widget.detail.metadata?["campaignPrice"],
-    );
-    if (!info.hasAnyPrice) {
-      return const Text(
-        "Fiyat bilgisi yakında",
-        style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Colors.red),
-      );
-    }
-    return buildPriceText(
-      info: info,
-      saleStyle: const TextStyle(fontSize: 14, color: Colors.black54, fontWeight: FontWeight.w600),
-      campaignStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Colors.red),
+    return const Text(
+      "Abonelik seçeneklerinde gösterilir",
+      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.red),
     );
   }
 

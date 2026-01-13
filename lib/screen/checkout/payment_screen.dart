@@ -303,7 +303,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         case CartItemType.magazine:
           itemType = "magazine";
           itemId = parsedProductId;
-          expiresAt = _computeExpiry(item.metadata?["period"]);
+          expiresAt = _computeExpiry(item.metadata?["periodMonths"] ?? item.metadata?["period"]);
           break;
         case CartItemType.magazineIssue:
           itemType = "magazine_issue";
@@ -312,7 +312,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         case CartItemType.newspaperSubscription:
           itemType = "newspaper_subscription";
           itemId = parsedProductId == 0 ? null : parsedProductId;
-          expiresAt = _computeExpiry(item.metadata?["period"]);
+          expiresAt = _computeExpiry(item.metadata?["periodMonths"] ?? item.metadata?["period"]);
           break;
         case CartItemType.supplement:
           itemType = "ek";

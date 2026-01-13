@@ -24,18 +24,32 @@ class CartProvider with ChangeNotifier {
     return total;
   }
 
-  void addOrIncrement(CartItem incoming) {
-    final index = _items.indexWhere(
-      (e) => e.type == incoming.type && e.metadata?['productId'] == incoming.metadata?['productId'],
+  int _matchIndex(CartItem incoming) {
+    return _items.indexWhere(
+      (e) {
+        if (e.type != incoming.type) return false;
+        if (e.metadata?['productId'] != incoming.metadata?['productId']) return false;
+        if (e.type == CartItemType.magazine) {
+          return e.metadata?['magazineTypeId'] == incoming.metadata?['magazineTypeId'];
+        }
+        return true;
+      },
     );
+  }
 
-    if (index >= 0) {
-      final existing = _items[index];
-      _items[index] = existing.copyWith(quantity: existing.quantity + incoming.quantity);
-    } else {
-      _items.add(incoming);
-    }
+  bool contains(CartItem incoming) => _matchIndex(incoming) >= 0;
+
+  bool addIfAbsent(CartItem incoming) {
+    final index = _matchIndex(incoming);
+    if (index >= 0) return false;
+    _items.add(incoming.copyWith(quantity: 1));
     notifyListeners();
+    return true;
+  }
+
+  @Deprecated('Use addIfAbsent instead.')
+  void addOrIncrement(CartItem incoming) {
+    addIfAbsent(incoming);
   }
 
   void updateQuantity(String id, int quantity) {
@@ -44,7 +58,7 @@ class CartProvider with ChangeNotifier {
     if (quantity <= 0) {
       _items.removeAt(idx);
     } else {
-      _items[idx] = _items[idx].copyWith(quantity: quantity);
+      _items[idx] = _items[idx].copyWith(quantity: 1);
     }
     if (_items.isEmpty) {
       _promoCode = null;

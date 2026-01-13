@@ -88,7 +88,7 @@ class NotificationService {
   Future<List<Map<String, dynamic>>> getUserNotifications(int userId) async {
     const query = r'''
       query GetUserNotifications($user_id: bigint!) {
-        user_notifications(where: {user_id: {_eq: $user_id}}, order_by: {created_at: desc}) {
+        notifications(where: {user_id: {_eq: $user_id}}, order_by: {created_at: desc}) {
           id
           title
           body
@@ -98,13 +98,13 @@ class NotificationService {
       }
     ''';
     final data = await _hasura.graphQLRequest(query: query, variables: {"user_id": userId});
-    return List<Map<String, dynamic>>.from(data["user_notifications"] ?? []);
+    return List<Map<String, dynamic>>.from(data["notifications"] ?? []);
   }
 
   Future<Map<String, dynamic>?> getNotificationDetail(int id) async {
     const query = r'''
       query GetNotificationDetail($id: bigint!) {
-        user_notifications_by_pk(id: $id) {
+        notifications_by_pk(id: $id) {
           id
           title
           body
@@ -114,14 +114,14 @@ class NotificationService {
       }
     ''';
     final data = await _hasura.graphQLRequest(query: query, variables: {"id": id});
-    return data["user_notifications_by_pk"] as Map<String, dynamic>?;
+    return data["notifications_by_pk"] as Map<String, dynamic>?;
   }
 
   Future<bool> sendNotification({required String title, required String body, int? userId}) async {
     // Backend tarafında FCM gönderimini tetiklemek için kayıt
     const mutation = r'''
       mutation InsertNotification($title: String!, $body: String!, $user_id: bigint) {
-        insert_user_notifications_one(object: {
+        insert_notifications_one(object: {
           title: $title,
           body: $body,
           user_id: $user_id

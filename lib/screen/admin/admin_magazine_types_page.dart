@@ -1,19 +1,19 @@
 import 'package:flutter/material.dart';
 
-import '../../services/admin/admin_newspaper_subscription_type_service.dart';
+import '../../services/admin/admin_magazine_type_service.dart';
 import '../../services/error/error_manager.dart';
 import '../../services/loading_manager.dart';
 import 'admin_loading_indicator.dart';
 
-class AdminNewspaperSubscriptionTypesPage extends StatefulWidget {
-  const AdminNewspaperSubscriptionTypesPage({super.key});
+class AdminMagazineTypesPage extends StatefulWidget {
+  const AdminMagazineTypesPage({super.key});
 
   @override
-  State<AdminNewspaperSubscriptionTypesPage> createState() => _AdminNewspaperSubscriptionTypesPageState();
+  State<AdminMagazineTypesPage> createState() => _AdminMagazineTypesPageState();
 }
 
-class _AdminNewspaperSubscriptionTypesPageState extends State<AdminNewspaperSubscriptionTypesPage> {
-  final _service = AdminNewspaperSubscriptionTypeService();
+class _AdminMagazineTypesPageState extends State<AdminMagazineTypesPage> {
+  final _service = AdminMagazineTypeService();
 
   bool _loading = true;
   bool _saving = false;
@@ -43,8 +43,43 @@ class _AdminNewspaperSubscriptionTypesPageState extends State<AdminNewspaperSubs
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(parsed)));
       }
+    } finally {
+      if (mounted) setState(() => _loading = false);
     }
-    setState(() => _loading = false);
+  }
+
+  Future<void> _delete(int id) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text("Sil"),
+        content: const Text("Bu dergi tipini silmek istiyor musunuz?"),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text("Vazgeç"),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text("Sil", style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+    setState(() => _saving = true);
+    try {
+      await _service.delete(id);
+      await _load();
+    } catch (e) {
+      final parsed = ErrorManager.parseGraphQLError(e.toString());
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(parsed)));
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   Future<void> _openEditor({Map<String, dynamic>? initial}) async {
@@ -56,10 +91,8 @@ class _AdminNewspaperSubscriptionTypesPageState extends State<AdminNewspaperSubs
                 .reduce((a, b) => a > b ? a : b)) +
             1;
     final titleCtrl = TextEditingController(text: initial?["title"]?.toString() ?? "");
-    final durationCtrl =
-        TextEditingController(text: initial?["duration_months"]?.toString() ?? "");
-    final priceCtrl = TextEditingController(
-      text: initial?["price"]?.toString() ?? "",
+    final durationCtrl = TextEditingController(
+      text: initial?["duration_months"]?.toString() ?? "",
     );
     final sortCtrl = TextEditingController(
       text: initial?["sort_order"]?.toString() ?? nextSortOrder.toString(),
@@ -69,11 +102,10 @@ class _AdminNewspaperSubscriptionTypesPageState extends State<AdminNewspaperSubs
     Future<void> submit(BuildContext sheetContext) async {
       final title = titleCtrl.text.trim();
       final duration = int.tryParse(durationCtrl.text.trim());
-      final price = double.tryParse(priceCtrl.text.trim());
       final sortOrder = int.tryParse(sortCtrl.text.trim()) ?? 0;
-      if (title.isEmpty || duration == null || price == null) {
+      if (title.isEmpty || duration == null) {
         ScaffoldMessenger.of(rootContext).showSnackBar(
-          const SnackBar(content: Text("Başlık, süre (ay) ve fiyat zorunlu")),
+          const SnackBar(content: Text("Başlık ve süre (ay) zorunlu")),
         );
         return;
       }
@@ -85,7 +117,6 @@ class _AdminNewspaperSubscriptionTypesPageState extends State<AdminNewspaperSubs
           await _service.create(
             title: title,
             durationMonths: duration,
-            price: price,
             isActive: isActive,
             sortOrder: sortOrder,
           );
@@ -94,7 +125,6 @@ class _AdminNewspaperSubscriptionTypesPageState extends State<AdminNewspaperSubs
             id: initial["id"] as int,
             title: title,
             durationMonths: duration,
-            price: price,
             isActive: isActive,
             sortOrder: sortOrder,
           );
@@ -128,7 +158,7 @@ class _AdminNewspaperSubscriptionTypesPageState extends State<AdminNewspaperSubs
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    initial == null ? "Gazete Tipi Ekle" : "Gazete Tipini Düzenle",
+                    initial == null ? "Dergi Tipi Ekle" : "Dergi Tipini Düzenle",
                     style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
                   ),
                   IconButton(
@@ -137,57 +167,36 @@ class _AdminNewspaperSubscriptionTypesPageState extends State<AdminNewspaperSubs
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 8),
               TextField(
                 controller: titleCtrl,
                 decoration: const InputDecoration(labelText: "Başlık"),
               ),
-              const SizedBox(height: 10),
               TextField(
                 controller: durationCtrl,
                 keyboardType: TextInputType.number,
                 decoration: const InputDecoration(labelText: "Süre (ay)"),
               ),
-              const SizedBox(height: 10),
-              TextField(
-                controller: priceCtrl,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: "Fiyat"),
-              ),
-              const SizedBox(height: 10),
               TextField(
                 controller: sortCtrl,
                 keyboardType: TextInputType.number,
                 decoration: const InputDecoration(labelText: "Sıra"),
               ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  const Text("Aktif"),
-                  const Spacer(),
-                  Switch(
-                    value: isActive,
-                    onChanged: (val) => setSheetState(() => isActive = val),
-                  ),
-                ],
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                value: isActive,
+                onChanged: (val) => setSheetState(() => isActive = val),
+                title: const Text("Aktif"),
               ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.pop(sheetContext),
-                      child: const Text("İptal"),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: () => submit(sheetContext),
-                      child: const Text("Kaydet"),
-                    ),
-                  ),
-                ],
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                height: 44,
+                child: ElevatedButton(
+                  onPressed: _saving ? null : () => submit(sheetContext),
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                  child: const Text("Kaydet", style: TextStyle(color: Colors.white)),
+                ),
               ),
               const SizedBox(height: 16),
             ],
@@ -195,21 +204,6 @@ class _AdminNewspaperSubscriptionTypesPageState extends State<AdminNewspaperSubs
         ),
       ),
     );
-  }
-
-  Future<void> _delete(int id) async {
-    try {
-      await _service.delete(id);
-      await _load();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Silindi")));
-      }
-    } catch (e) {
-      final parsed = ErrorManager.parseGraphQLError(e.toString());
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(parsed)));
-      }
-    }
   }
 
   @override
@@ -222,7 +216,7 @@ class _AdminNewspaperSubscriptionTypesPageState extends State<AdminNewspaperSubs
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text("Gazete Tipleri", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                const Text("Dergi Tipleri", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
                 Row(
                   children: [
                     IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
@@ -246,7 +240,6 @@ class _AdminNewspaperSubscriptionTypesPageState extends State<AdminNewspaperSubs
                         final item = _types[i];
                         final title = item["title"]?.toString() ?? "-";
                         final duration = item["duration_months"]?.toString() ?? "-";
-                        final price = double.tryParse(item["price"]?.toString() ?? "0") ?? 0;
                         final active = item["is_active"] == true;
                         return Container(
                           padding: const EdgeInsets.all(14),
@@ -273,11 +266,6 @@ class _AdminNewspaperSubscriptionTypesPageState extends State<AdminNewspaperSubs
                                   ],
                                 ),
                               ),
-                              Text(
-                                "₺${price.toStringAsFixed(2)}",
-                                style: const TextStyle(fontWeight: FontWeight.w700, color: Colors.red),
-                              ),
-                              const SizedBox(width: 12),
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                 decoration: BoxDecoration(

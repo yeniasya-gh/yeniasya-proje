@@ -2,6 +2,8 @@ import '../../services/auth/auth_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:fluttertoast/fluttertoast.dart';
+import 'package:flutter/services.dart';
+import '../../utils/phone_formatter.dart';
 
 class RegisterBottomSheet extends StatefulWidget {
   const RegisterBottomSheet({super.key});
@@ -58,9 +60,14 @@ class _RegisterBottomSheetState extends State<RegisterBottomSheet> {
                   controller: phoneCtrl,
                   keyboardType: TextInputType.phone,
                   decoration: _input("Telefon", Icons.phone),
-                  validator: (v) => v == null || v.trim().length < 10
-                      ? "Geçerli bir telefon giriniz"
-                      : null,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                    LengthLimitingTextInputFormatter(10),
+                  ],
+                  validator: (v) {
+                    final digits = v?.replaceAll(RegExp(r'\D'), '') ?? "";
+                    return digits.length < 10 ? "Geçerli bir telefon giriniz" : null;
+                  },
                 ),
                 const SizedBox(height: 16),
 
@@ -123,7 +130,7 @@ class _RegisterBottomSheetState extends State<RegisterBottomSheet> {
 
                             final newUser = await auth.register(
                               name: nameCtrl.text,
-                              phone: phoneCtrl.text,
+                              phone: normalizePhoneNumber(phoneCtrl.text),
                               email: emailCtrl.text,
                               password: passCtrl.text,
                             );

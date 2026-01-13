@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../services/address_service.dart';
 import '../../services/admin/admin_user_service.dart';
 import '../../services/order_service.dart';
+import 'admin_loading_indicator.dart';
 
 class AdminUserDetailPage extends StatefulWidget {
   final Map<String, dynamic> user;
@@ -59,7 +60,7 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
         title: Text("${user["name"] ?? "Kullanıcı"} Detay"),
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const AdminLoadingIndicator()
           : ListView(
               padding: const EdgeInsets.all(16),
               children: [

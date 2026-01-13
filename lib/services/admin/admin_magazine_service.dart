@@ -13,8 +13,6 @@ class AdminMagazineService {
         cover_image_url
         period
         description
-        sale_price
-        campaign_price
         created_at
         }
       }
@@ -34,8 +32,6 @@ class AdminMagazineService {
         cover_image_url
         period
         description
-        sale_price
-        campaign_price
         created_at
         }
       }
@@ -49,12 +45,10 @@ class AdminMagazineService {
     return data["magazine_by_pk"] as Map<String, dynamic>?;
   }
 
-  Future<bool> addMagazine({
+  Future<int> addMagazine({
     required String name,
     required String category,
     required String period,
-    required double salePrice,
-    double? campaignPrice,
     String? description,
     String? coverImageUrl,
   }) async {
@@ -63,8 +57,6 @@ class AdminMagazineService {
         $name: String!,
         $category: String!,
         $period: magazine_period!,
-        $sale_price: numeric!,
-        $campaign_price: numeric,
         $description: String,
         $cover_image_url: String
       ) {
@@ -72,8 +64,6 @@ class AdminMagazineService {
           name: $name,
           category: $category,
           period: $period,
-          sale_price: $sale_price,
-          campaign_price: $campaign_price,
           description: $description,
           cover_image_url: $cover_image_url
         }) {
@@ -82,20 +72,18 @@ class AdminMagazineService {
       }
     ''';
 
-    await _hasura.graphQLRequest(
+    final data = await _hasura.graphQLRequest(
       query: mutation,
       variables: {
         "name": name,
         "category": category,
         "period": period,
-        "sale_price": salePrice,
-        "campaign_price": campaignPrice,
         "description": description,
         "cover_image_url": coverImageUrl,
       },
     );
 
-    return true;
+    return (data["insert_magazine_one"]?["id"] as int?) ?? 0;
   }
 
   Future<bool> updateMagazine({
@@ -103,8 +91,6 @@ class AdminMagazineService {
     required String name,
     required String category,
     required String period,
-    required double salePrice,
-    double? campaignPrice,
     String? description,
     String? coverImageUrl,
   }) async {
@@ -114,8 +100,6 @@ class AdminMagazineService {
         $name: String!,
         $category: String!,
         $period: magazine_period!,
-        $sale_price: numeric!,
-        $campaign_price: numeric,
         $description: String,
         $cover_image_url: String
       ) {
@@ -125,8 +109,6 @@ class AdminMagazineService {
             name: $name,
             category: $category,
           period: $period,
-          sale_price: $sale_price,
-          campaign_price: $campaign_price,
           description: $description,
           cover_image_url: $cover_image_url
         }
@@ -143,8 +125,6 @@ class AdminMagazineService {
         "name": name,
         "category": category,
         "period": period,
-        "sale_price": salePrice,
-        "campaign_price": campaignPrice,
         "description": description,
         "cover_image_url": coverImageUrl,
       },
@@ -176,8 +156,6 @@ class AdminMagazineService {
           issue_number
           file_url
           photo_url
-          sale_price
-          campaign_price
           added_at
         }
       }
@@ -196,25 +174,19 @@ class AdminMagazineService {
     required int issueNumber,
     required String fileUrl,
     String? photoUrl,
-    double salePrice = 0,
-    double? campaignPrice,
   }) async {
     const mutation = r'''
       mutation AddIssue(
         $magazine_id: Int!,
         $issue_number: Int!,
         $file_url: String!,
-        $photo_url: String,
-        $sale_price: numeric,
-        $campaign_price: numeric
+        $photo_url: String
       ) {
         insert_magazine_issue_one(object: {
           magazine_id: $magazine_id,
           issue_number: $issue_number,
           file_url: $file_url,
-          photo_url: $photo_url,
-          sale_price: $sale_price,
-          campaign_price: $campaign_price
+          photo_url: $photo_url
         }) { id }
       }
     ''';
@@ -226,8 +198,6 @@ class AdminMagazineService {
         "issue_number": issueNumber,
         "file_url": fileUrl,
         "photo_url": photoUrl,
-        "sale_price": salePrice,
-        "campaign_price": campaignPrice,
       },
     );
 
@@ -239,26 +209,20 @@ class AdminMagazineService {
     required int issueNumber,
     required String fileUrl,
     String? photoUrl,
-    double? salePrice,
-    double? campaignPrice,
   }) async {
     const mutation = r'''
       mutation UpdateIssue(
         $id: Int!,
         $issue_number: Int!,
         $file_url: String!,
-        $photo_url: String,
-        $sale_price: numeric,
-        $campaign_price: numeric
+        $photo_url: String
       ) {
         update_magazine_issue_by_pk(
           pk_columns: {id: $id},
           _set: {
             issue_number: $issue_number,
             file_url: $file_url,
-            photo_url: $photo_url,
-            sale_price: $sale_price,
-            campaign_price: $campaign_price
+            photo_url: $photo_url
           }
         ) { id }
       }
@@ -271,8 +235,6 @@ class AdminMagazineService {
         "issue_number": issueNumber,
         "file_url": fileUrl,
         "photo_url": photoUrl,
-        "sale_price": salePrice,
-        "campaign_price": campaignPrice,
       },
     );
 
@@ -299,8 +261,6 @@ class AdminMagazineService {
           issue_number
           file_url
           photo_url
-          sale_price
-          campaign_price
           added_at
           magazine {
             id

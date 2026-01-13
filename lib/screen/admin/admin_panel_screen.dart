@@ -13,6 +13,8 @@ import 'admin_reviews_page.dart';
 import 'admin_ekler_page.dart';
 import 'admin_slider_page.dart';
 import 'admin_newspaper_subscription_types_page.dart';
+import 'admin_home_showcase_page.dart';
+import 'admin_magazine_types_page.dart';
 import '../../services/loading_manager.dart';
 
 enum AdminPage {
@@ -20,6 +22,7 @@ enum AdminPage {
   users,
   books,
   magazines,
+  magazineTypes,
   newspapers,
   newspaperTypes,
   notifications,
@@ -30,6 +33,7 @@ enum AdminPage {
   authorCategory,
   ekler,
   sliders,
+  homeShowcase,
   settings,
 }
 
@@ -80,6 +84,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
                     _menuItem("Kullanıcılar", Icons.people, AdminPage.users),
                     _menuItem("Kitaplar", Icons.menu_book, AdminPage.books),
                     _menuItem("Dergiler", Icons.menu_book, AdminPage.magazines),
+                    _menuItem("Dergi Tipleri", Icons.bookmarks, AdminPage.magazineTypes),
                     _menuItem("Gazeteler", Icons.article, AdminPage.newspapers),
                     _menuItem("Gazete Tipleri", Icons.newspaper, AdminPage.newspaperTypes),
                     _menuItem("Bildirimler", Icons.notifications, AdminPage.notifications),
@@ -90,6 +95,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
                     _menuItem("Yazar & Kategori", Icons.list, AdminPage.authorCategory),
                     _menuItem("Ekler", Icons.file_present, AdminPage.ekler),
                     _menuItem("Sliderlar", Icons.slideshow, AdminPage.sliders),
+                    _menuItem("Anasayfa Gösterimi", Icons.home, AdminPage.homeShowcase),
                     _menuItem("Ayarlar", Icons.settings, AdminPage.settings),
                     const SizedBox(height: 16),
                   ],
@@ -156,6 +162,8 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
       return const AdminBooksPage();
     case AdminPage.magazines:
       return const AdminMagazinesPage();
+    case AdminPage.magazineTypes:
+      return const AdminMagazineTypesPage();
     case AdminPage.newspapers:
       return const AdminNewspapersPage();
     case AdminPage.newspaperTypes:
@@ -176,6 +184,8 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
       return const AdminEklerPage();
     case AdminPage.sliders:
       return const AdminSliderPage();
+    case AdminPage.homeShowcase:
+      return const AdminHomeShowcasePage();
     case AdminPage.settings:
       return const Center(child: Text("Ayarlar Sayfası"));
     default:

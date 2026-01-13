@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../services/admin/admin_reports_service.dart';
 import '../../services/error/error_manager.dart';
+import 'admin_loading_indicator.dart';
 
 class AdminReportsPage extends StatefulWidget {
   const AdminReportsPage({super.key});
@@ -108,7 +109,7 @@ class _AdminReportsPageState extends State<AdminReportsPage> {
               child: Text(_error!, style: const TextStyle(color: Colors.red)),
             ),
           if (_loading)
-            const Center(child: Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator()))
+            const AdminLoadingIndicator()
           else if (_report != null)
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,

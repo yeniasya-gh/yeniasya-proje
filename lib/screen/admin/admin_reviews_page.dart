@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../services/admin/admin_review_service.dart';
 import '../../services/error/error_manager.dart';
+import 'admin_loading_indicator.dart';
 
 class AdminReviewsPage extends StatefulWidget {
   const AdminReviewsPage({super.key});
@@ -77,7 +78,7 @@ class _AdminReviewsPageState extends State<AdminReviewsPage> {
         const SizedBox(height: 12),
         Expanded(
           child: _loading
-              ? const Center(child: CircularProgressIndicator())
+              ? const AdminLoadingIndicator()
               : _reviews.isEmpty
                   ? const Center(child: Text("Yorum bulunamadı."))
                   : _table(),

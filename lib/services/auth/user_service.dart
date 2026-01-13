@@ -143,4 +143,67 @@ class UserService {
 
   return AppUser.fromJson(json);
 }
+
+  Future<AppUser?> updateProfile({
+    required int id,
+    required String name,
+    String? phone,
+  }) async {
+    const mutation = r'''
+      mutation UpdateProfile($id: bigint!, $name: String!, $phone: String) {
+        update_users_by_pk(
+          pk_columns: {id: $id},
+          _set: {name: $name, phone: $phone}
+        ) {
+          id
+          name
+          phone
+          email
+          role_id
+          role { id name }
+        }
+      }
+    ''';
+
+    final data = await _hasura.graphQLRequest(
+      query: mutation,
+      variables: {"id": id, "name": name, "phone": phone},
+    );
+
+    final json = data["update_users_by_pk"];
+    if (json == null) return null;
+    return AppUser.fromJson(json);
+  }
+
+  Future<bool> changePassword({
+    required int id,
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    final currentHashed = HashHelper.hashPassword(currentPassword);
+    final newHashed = HashHelper.hashPassword(newPassword);
+
+    const mutation = r'''
+      mutation ChangePassword($id: bigint!, $current: String!, $next: String!) {
+        update_users(
+          where: {id: {_eq: $id}, password: {_eq: $current}},
+          _set: {password: $next}
+        ) {
+          affected_rows
+        }
+      }
+    ''';
+
+    final data = await _hasura.graphQLRequest(
+      query: mutation,
+      variables: {
+        "id": id,
+        "current": currentHashed,
+        "next": newHashed,
+      },
+    );
+
+    final rows = data["update_users"]?["affected_rows"] as int? ?? 0;
+    return rows > 0;
+  }
 }

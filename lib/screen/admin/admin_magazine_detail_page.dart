@@ -5,9 +5,11 @@ import '../../services/admin/admin_magazine_service.dart';
 import '../../services/error/error_manager.dart';
 import '../../services/upload_service.dart';
 import '../../services/admin/admin_review_service.dart';
+import '../../services/loading_manager.dart';
 import '../../utils/asset_image_picker.dart';
 import '../../utils/safe_image.dart';
 import '../../services/upload_service.dart';
+import 'admin_loading_indicator.dart';
 
 class AdminMagazineDetailPage extends StatefulWidget {
   final Map<String, dynamic> magazine;
@@ -31,16 +33,6 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
   List<Map<String, dynamic>> _reviews = [];
   double _avgRating = 0;
   int _reviewCount = 0;
-
-  String _formatPrice(dynamic value) {
-    if (value == null) return "-";
-    try {
-      final d = double.parse(value.toString());
-      return "₺${d.toStringAsFixed(2)}";
-    } catch (_) {
-      return value.toString();
-    }
-  }
 
   @override
   void initState() {
@@ -102,8 +94,6 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
     final formKey = GlobalKey<FormState>();
     final issueCtrl = TextEditingController();
     final fileCtrl = TextEditingController();
-    final saleCtrl = TextEditingController();
-    final campaignCtrl = TextEditingController();
     final photoCtrl = TextEditingController();
 
     Uint8List? pickedPdfBytes;
@@ -188,45 +178,16 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
                       ),
                     ),
                   ),
-                  TextFormField(
-                    controller: saleCtrl,
-                    onChanged: (value) {
-                      final formatted = formatAsMoney(value);
-                      saleCtrl.value = TextEditingValue(
-                        text: formatted,
-                        selection: TextSelection.collapsed(offset: formatted.length),
-                      );
-                    },
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
-                    decoration:
-                        const InputDecoration(labelText: "Satış Fiyatı (zorunlu)"),
-                    validator: (v) {
-                      final price = _parsePrice(v ?? "");
-                      if (price == null || price <= 0) {
-                        return "Geçerli bir fiyat girin";
-                      }
-                      return null;
-                    },
-                  ),
-                  TextFormField(
-                    controller: campaignCtrl,
-                    onChanged: (value) {
-                      final formatted = formatAsMoney(value);
-                      campaignCtrl.value = TextEditingValue(
-                        text: formatted,
-                        selection: TextSelection.collapsed(offset: formatted.length),
-                      );
-                    },
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
-                    decoration:
-                        const InputDecoration(labelText: "Kampanya Fiyatı (opsiyonel)"),
-                  ),
                   if (_submitting)
-                    const Padding(
-                      padding: EdgeInsets.only(top: 12),
-                      child: Center(child: CircularProgressIndicator()),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 12),
+                      child: AnimatedBuilder(
+                        animation: LoadingManager.instance,
+                        builder: (_, __) {
+                          if (LoadingManager.instance.loading) return const SizedBox.shrink();
+                          return const Center(child: CircularProgressIndicator());
+                        },
+                      ),
                     ),
                 ],
               ),
@@ -248,9 +209,6 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
                       setStateDialog(() {});
 
                       final issueNumber = int.parse(issueCtrl.text.trim());
-                      final salePrice = _parsePrice(saleCtrl.text) ?? 0;
-                      final campaignPrice = _parsePrice(campaignCtrl.text);
-
                       try {
                         String fileUrl = fileCtrl.text.trim();
                         if (pickedPdfBytes != null && pickedPdfName != null) {
@@ -277,8 +235,6 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
                           issueNumber: issueNumber,
                           fileUrl: fileUrl,
                           photoUrl: photoUrl,
-                          salePrice: salePrice,
-                          campaignPrice: campaignPrice,
                         );
                         if (!mounted) return;
                         Navigator.pop(context);
@@ -303,13 +259,6 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
     final issueCtrl = TextEditingController(text: issue["issue_number"]?.toString() ?? "");
     final fileCtrl = TextEditingController(text: issue["file_url"] ?? "");
     final photoCtrl = TextEditingController(text: issue["photo_url"] ?? "");
-    final saleCtrl = TextEditingController(
-      text: issue["sale_price"]?.toString() ?? "",
-    );
-    final campaignCtrl = TextEditingController(
-      text: issue["campaign_price"]?.toString() ?? "",
-    );
-
     Uint8List? pickedPdfBytes;
     String? pickedPdfName;
     Uint8List? pickedPhotoBytes;
@@ -388,42 +337,16 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
                       ),
                     ),
                   ),
-                  TextFormField(
-                    controller: saleCtrl,
-                    onChanged: (value) {
-                      final formatted = formatAsMoney(value);
-                      saleCtrl.value = TextEditingValue(
-                        text: formatted,
-                        selection: TextSelection.collapsed(offset: formatted.length),
-                      );
-                    },
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
-                    decoration: const InputDecoration(labelText: "Satış Fiyatı (zorunlu)"),
-                    validator: (v) {
-                      final price = _parsePrice(v ?? "");
-                      if (price == null || price <= 0) return "Geçerli bir fiyat girin";
-                      return null;
-                    },
-                  ),
-                  TextFormField(
-                    controller: campaignCtrl,
-                    onChanged: (value) {
-                      final formatted = formatAsMoney(value);
-                      campaignCtrl.value = TextEditingValue(
-                        text: formatted,
-                        selection: TextSelection.collapsed(offset: formatted.length),
-                      );
-                    },
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
-                    decoration:
-                        const InputDecoration(labelText: "Kampanya Fiyatı (opsiyonel)"),
-                  ),
                   if (submitting)
-                    const Padding(
-                      padding: EdgeInsets.only(top: 12),
-                      child: Center(child: CircularProgressIndicator()),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 12),
+                      child: AnimatedBuilder(
+                        animation: LoadingManager.instance,
+                        builder: (_, __) {
+                          if (LoadingManager.instance.loading) return const SizedBox.shrink();
+                          return const Center(child: CircularProgressIndicator());
+                        },
+                      ),
                     ),
                 ],
               ),
@@ -443,9 +366,6 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
                       setStateDialog(() => submitting = true);
 
                       final issueNumber = int.parse(issueCtrl.text.trim());
-                      final salePrice = _parsePrice(saleCtrl.text) ?? 0;
-                      final campaignPrice = _parsePrice(campaignCtrl.text);
-
                       try {
                         String fileUrl = fileCtrl.text.trim();
                         if (pickedPdfBytes != null && pickedPdfName != null) {
@@ -472,8 +392,6 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
                           issueNumber: issueNumber,
                           fileUrl: fileUrl,
                           photoUrl: photoUrl,
-                          salePrice: salePrice,
-                          campaignPrice: campaignPrice,
                         );
                         if (!mounted) return;
                         Navigator.pop(context);
@@ -490,11 +408,6 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
         ),
       ),
     );
-  }
-
-  double? _parsePrice(String? value) {
-    if (value == null || value.trim().isEmpty) return null;
-    return double.tryParse(value.replaceAll(",", "."));
   }
 
   String _formatDateTime(dynamic raw) {
@@ -537,18 +450,6 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
         ),
       );
     }
-  }
-
-  String formatAsMoney(String raw) {
-    final digits = raw.replaceAll(RegExp(r'[^0-9]'), '');
-    if (digits.isEmpty) return "";
-    final padded = digits.padLeft(3, "0");
-    final l = padded.length;
-    String integerPart = padded.substring(0, l - 2);
-    final decimalPart = padded.substring(l - 2);
-    integerPart = integerPart.replaceFirst(RegExp(r'^0+'), '');
-    if (integerPart.isEmpty) integerPart = "0";
-    return "$integerPart.$decimalPart";
   }
 
   Future<void> _pickPdf({
@@ -662,7 +563,7 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
                   ],
                 ),
                 child: _loading
-                    ? const Center(child: Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator()))
+                    ? const AdminLoadingIndicator()
                     : _issues.isEmpty
                         ? const Center(child: Padding(padding: EdgeInsets.all(12), child: Text("Henüz sayı eklenmemiş.")))
                         : ListView.separated(
@@ -681,20 +582,6 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
                                   children: [
                                     Text(
                                       "Eklendi: ${_formatDateTime(issue["added_at"])}",
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Row(
-                                      children: [
-                                        Text(
-                                          "Satış: ${_formatPrice(issue["sale_price"])}",
-                                          style: const TextStyle(fontWeight: FontWeight.w600),
-                                        ),
-                                        const SizedBox(width: 10),
-                                        Text(
-                                          "Kampanya: ${_formatPrice(issue["campaign_price"])}",
-                                          style: const TextStyle(color: Colors.red),
-                                        ),
-                                      ],
                                     ),
                                   ],
                                 ),
@@ -768,19 +655,6 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
                       "Oluşturma: ${_formatDateTime(magazine["created_at"])}",
                       style: const TextStyle(color: Colors.black54),
                     ),
-                    const SizedBox(width: 12),
-                    Text(
-                      "Satış: ${_formatPrice(magazine["sale_price"])}",
-                      style: const TextStyle(color: Colors.black87),
-                    ),
-                    if (magazine["campaign_price"] != null)
-                      Padding(
-                        padding: const EdgeInsets.only(left: 8.0),
-                        child: Text(
-                          "Kampanya: ${_formatPrice(magazine["campaign_price"])}",
-                          style: const TextStyle(color: Colors.red),
-                        ),
-                      ),
                   ],
                 ),
               ],
@@ -823,7 +697,7 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
           ),
           const SizedBox(height: 8),
           _loadingReviews
-              ? const Center(child: Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator()))
+              ? const AdminLoadingIndicator(padding: EdgeInsets.all(16))
               : _reviews.isEmpty
                   ? const Padding(
                       padding: EdgeInsets.all(8.0),

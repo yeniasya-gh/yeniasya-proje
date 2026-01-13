@@ -1,15 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../models/cart_item.dart';
 import '../../services/admin/admin_magazine_service.dart';
-import '../../services/cart/cart_provider.dart';
 import '../../services/access_provider.dart';
 import '../../services/error/error_manager.dart';
 import '../../services/secure_file_service.dart';
 import '../../services/upload_service.dart';
-import '../../utils/cart_feedback.dart';
 import '../../utils/safe_image.dart';
-import '../../utils/price_utils.dart';
 import '../profile/pdf_viewer_screen.dart';
 
 class MagazineIssuesScreen extends StatefulWidget {
@@ -58,37 +54,6 @@ class _MagazineIssuesScreenState extends State<MagazineIssuesScreen> {
     }
   }
 
-  void _addIssueToCart(BuildContext context, Map<String, dynamic> issue, double price) {
-    final cart = context.read<CartProvider>();
-    final issueId = issue["id"] as int?;
-    final issueNumber = issue["issue_number"]?.toString() ?? "";
-    if (issueId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Sayı bilgisi bulunamadı.")),
-      );
-      return;
-    }
-    cart.addOrIncrement(
-      CartItem(
-        id: "mag-issue-$issueId",
-        title: "${widget.magazineTitle} - Sayı $issueNumber",
-        subtitle: null,
-        imageUrl: issue["photo_url"]?.toString() ?? "",
-        price: price,
-        quantity: 1,
-        type: CartItemType.magazineIssue,
-        metadata: {
-          "productId": issueId,
-          "magazineId": issue["magazine_id"],
-          "fileUrl": issue["file_url"],
-          "photoUrl": issue["photo_url"],
-          "issueNumber": issueNumber,
-        },
-      ),
-    );
-    showAddedToCartDialog(context);
-  }
-
   @override
   Widget build(BuildContext context) {
     final access = context.watch<AccessProvider>();
@@ -120,8 +85,6 @@ class _MagazineIssuesScreenState extends State<MagazineIssuesScreen> {
               final issueNumber = issue["issue_number"]?.toString() ?? "";
               final imageUrl = issue["photo_url"]?.toString() ?? widget.magazineCoverUrl ?? "";
               final fileUrl = issue["file_url"]?.toString() ?? "";
-              final priceInfo = PriceInfo.fromRaw(issue["sale_price"], issue["campaign_price"]);
-              final displayPrice = priceInfo.effectivePrice;
               final hasAccess = access.hasAccess("magazine_issue", itemId: issueId);
 
               return Card(
@@ -151,10 +114,9 @@ class _MagazineIssuesScreenState extends State<MagazineIssuesScreen> {
                               style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
                             ),
                             const SizedBox(height: 6),
-                            buildPriceText(
-                              info: priceInfo,
-                              saleStyle: const TextStyle(fontSize: 12, color: Colors.black54),
-                              campaignStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.red),
+                            const Text(
+                              "Abonelik ile erişilir",
+                              style: TextStyle(fontSize: 12, color: Colors.black54),
                             ),
                             if (hasAccess)
                               const Padding(
@@ -185,12 +147,16 @@ class _MagazineIssuesScreenState extends State<MagazineIssuesScreen> {
                                     : const Text("Görüntüle"),
                               )
                             : ElevatedButton(
-                                onPressed: () => _addIssueToCart(context, issue, displayPrice),
+                                onPressed: () {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text("Abonelik için dergi detayından Abone Ol'a basın.")),
+                                  );
+                                },
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: Colors.red,
                                   padding: EdgeInsets.zero,
                                 ),
-                                child: const Icon(Icons.add, color: Colors.white, size: 18),
+                                child: const Text("Abone Ol", style: TextStyle(color: Colors.white)),
                               ),
                       ),
                     ],

@@ -19,9 +19,27 @@ class EkDetailScreen extends StatelessWidget {
     final price = _price(ek["fiyat"]);
     final isFree = price == 0;
     final access = context.watch<AccessProvider>();
+    final cart = context.watch<CartProvider>();
     final hasAccess = access.hasAccess("ek", itemId: _id(ek));
 
     final imageUrl = UploadService.normalizeUrl(ek["photo_url"]?.toString() ?? "");
+    final item = CartItem(
+      id: "ek-${_id(ek)}",
+      title: ek["ad"]?.toString() ?? "Ek",
+      subtitle: ek["aciklama"]?.toString(),
+      imageUrl: ek["photo_url"]?.toString() ?? "",
+      price: price,
+      quantity: 1,
+      type: CartItemType.supplement,
+      metadata: {
+        "productId": _id(ek),
+        "pdf_url": ek["pdf_url"],
+        "photo_url": ek["photo_url"],
+        "title": ek["ad"],
+        "is_public": ek["is_public"],
+      },
+    );
+    final alreadyInCart = cart.contains(item);
 
     return Scaffold(
       appBar: AppBar(title: const Text("Ek Detayı")),
@@ -78,19 +96,23 @@ class EkDetailScreen extends StatelessWidget {
           width: double.infinity,
           height: 50,
           child: ElevatedButton(
-            onPressed: () {
-              if (isFree || hasAccess) {
-                _openPdf(context, ek["pdf_url"]?.toString() ?? "", isFree: isFree);
-              } else {
-                _addToCart(context, ek, price);
-              }
-            },
+            onPressed: (alreadyInCart && !(isFree || hasAccess))
+                ? null
+                : () {
+                    if (isFree || hasAccess) {
+                      _openPdf(context, ek["pdf_url"]?.toString() ?? "", isFree: isFree);
+                    } else {
+                      _addToCart(context, ek, price);
+                    }
+                  },
             style: ElevatedButton.styleFrom(
               backgroundColor: (isFree || hasAccess) ? Colors.blue : Colors.red,
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             ),
-            child: Text((isFree || hasAccess) ? "Görüntüle" : "Sepete Ekle"),
+            child: Text(
+              (isFree || hasAccess) ? "Görüntüle" : (alreadyInCart ? "Sepette" : "Sepete Ekle"),
+            ),
           ),
         ),
       ),
@@ -134,8 +156,14 @@ class EkDetailScreen extends StatelessWidget {
         "is_public": ek["is_public"],
       },
     );
-    cart.addOrIncrement(item);
-    showAddedToCartDialog(context);
+    final added = cart.addIfAbsent(item);
+    if (added) {
+      showAddedToCartDialog(context);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Bu ürün zaten sepette.")),
+      );
+    }
   }
 
   Widget _chip(String label, Color color) {

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter/services.dart';
 import '../../services/auth/auth_provider.dart';
+import '../../utils/phone_formatter.dart';
 
 class SocialRegisterBottomSheet extends StatefulWidget {
   final SocialDraft draft;
@@ -63,6 +65,10 @@ class _SocialRegisterBottomSheetState extends State<SocialRegisterBottomSheet> {
                   controller: phoneCtrl,
                   keyboardType: TextInputType.phone,
                   decoration: _input("Telefon", Icons.phone),
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                    LengthLimitingTextInputFormatter(10),
+                  ],
                 ),
                 const SizedBox(height: 24),
                 SizedBox(
@@ -83,7 +89,9 @@ class _SocialRegisterBottomSheetState extends State<SocialRegisterBottomSheet> {
                             final user = await auth.registerSocialUser(
                               email: widget.draft.email,
                               name: nameCtrl.text,
-                              phone: phoneCtrl.text.isEmpty ? null : phoneCtrl.text,
+                              phone: phoneCtrl.text.isEmpty
+                                  ? null
+                                  : normalizePhoneNumber(phoneCtrl.text),
                             );
                             setState(() => loading = false);
                             if (!mounted) return;
