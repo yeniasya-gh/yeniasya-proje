@@ -2037,7 +2037,7 @@ Widget _magazineListGrid(BuildContext context, bool isWeb) {
               "image": magazines[i]["cover_image_url"],
               "title": magazines[i]["name"],
               "desc": magazines[i]["description"] ?? magazines[i]["category"],
-              "price": "Fiyat için tıkla",
+              "price": "",
             },
                 hideAction: hideAction,
                 onAdd: hideAction
@@ -2345,7 +2345,9 @@ Widget _bookCard(Map<String, dynamic> item, bool isWeb,
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: IconButton(
-                            icon: const Icon(Icons.add, color: Colors.white, size: 18),
+                            icon: const Icon(Icons.add, color: Colors.white, size: 16),
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                             onPressed: onAdd,
                           ),
                         ),
@@ -2644,7 +2646,7 @@ Widget _libraryView(BuildContext context, _HomeResponsiveScreenState state) {
       await state._loadLibraryOrders();
     },
     child: ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(vertical: 16),
       children: [
         const Text(
           "Abonelikler / İçerikler",

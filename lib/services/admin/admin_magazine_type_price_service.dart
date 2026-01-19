@@ -16,11 +16,6 @@ class AdminMagazineTypePriceService {
           price
           is_active
           sort_order
-          magazine_type {
-            id
-            title
-            duration_months
-          }
         }
       }
     ''';
@@ -29,7 +24,37 @@ class AdminMagazineTypePriceService {
       query: query,
       variables: {"magazine_id": magazineId},
     );
-    return List<Map<String, dynamic>>.from(data["magazine_type_price"] ?? []);
+    final prices = List<Map<String, dynamic>>.from(data["magazine_type_price"] ?? []);
+    final typeIds = prices
+        .map((item) => int.tryParse(item["magazine_type_id"]?.toString() ?? ""))
+        .whereType<int>()
+        .toSet()
+        .toList();
+    if (typeIds.isEmpty) return prices;
+
+    const typeQuery = r'''
+      query GetMagazineTypesByIds($ids: [Int!]!) {
+        magazine_type(where: {id: {_in: $ids}}) {
+          id
+          title
+          duration_months
+        }
+      }
+    ''';
+    final typeData = await _hasura.graphQLRequest(
+      query: typeQuery,
+      variables: {"ids": typeIds},
+    );
+    final types = List<Map<String, dynamic>>.from(typeData["magazine_type"] ?? []);
+    final typeById = {
+      for (final t in types)
+        int.tryParse(t["id"]?.toString() ?? "") ?? -1: t,
+    };
+    for (final item in prices) {
+      final id = int.tryParse(item["magazine_type_id"]?.toString() ?? "") ?? -1;
+      item["magazine_type"] = typeById[id] ?? {};
+    }
+    return prices;
   }
 
   Future<void> replacePrices({

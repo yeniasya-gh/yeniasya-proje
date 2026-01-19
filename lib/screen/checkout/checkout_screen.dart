@@ -4,6 +4,7 @@ import '../../services/address_service.dart';
 import '../../services/error/error_manager.dart';
 import '../../services/auth/auth_provider.dart';
 import '../../services/cart/cart_provider.dart';
+import '../../models/cart_item.dart';
 import '../address/address_form_screen.dart';
 import 'payment_screen.dart';
 
@@ -257,7 +258,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text("Teslimat Adresi", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+          const Text("Adres", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
           const SizedBox(height: 8),
           DropdownButtonFormField<int>(
             value: _deliveryId,
@@ -271,12 +272,17 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 .toList(),
             onChanged: (v) => setState(() => _deliveryId = v),
           ),
+          const SizedBox(height: 6),
+          const Text(
+            "*Ürününüz dijital olarak hesabınıza tanımlanacaktır.",
+            style: TextStyle(fontSize: 12, color: Colors.black54),
+          ),
           const SizedBox(height: 12),
           CheckboxListTile(
             contentPadding: EdgeInsets.zero,
             value: _sameBilling,
             onChanged: (v) => setState(() => _sameBilling = v ?? true),
-            title: const Text("Fatura adresi teslimat adresi ile aynı"),
+            title: const Text("Fatura adresi adres ile aynı"),
           ),
           if (!_sameBilling) ...[
             const SizedBox(height: 8),

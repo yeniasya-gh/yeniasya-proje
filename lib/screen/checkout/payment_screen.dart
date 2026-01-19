@@ -137,6 +137,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
             payload: redirectPayload,
             redirectUri: _paymentService.redirectUri(),
             returnUrl: PaymentConfig.returnUrl,
+            orderId: orderId,
           ),
         ),
       );
