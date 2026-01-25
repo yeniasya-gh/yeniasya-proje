@@ -40,42 +40,47 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
   int _pollAttempts = 0;
   PaymentWindowHandle? _paymentWindow;
   final _orderService = OrderService();
+  bool _pollingStarted = false;
+  bool _seenRedirectOnce = false;
 
   @override
   void initState() {
     super.initState();
 
-    if (!kIsWeb) {
-      _controller = WebViewController();
-      _controller.setJavaScriptMode(JavaScriptMode.unrestricted);
-      _controller.setNavigationDelegate(
-        NavigationDelegate(
-          onPageStarted: (url) {
-            _setLoading(true);
-          },
-          onPageFinished: (url) {
-            _setLoading(false);
-            if (_awaitingResult && _isReturnUrl(url)) {
-              _processReturnUrl();
-            }
-          },
-          onWebResourceError: (error) {
-            if (!_completed && mounted) {
-              _completed = true;
-              Navigator.pop(context, const PaymentResult(false, "Odeme sayfasi yuklenemedi."));
-            }
-          },
-          onNavigationRequest: (request) {
-            if (_isReturnUrl(request.url)) {
-              _awaitingResult = true;
-              _setLoading(true);
-              return NavigationDecision.navigate;
-            }
+    _controller = WebViewController();
+    _controller.setJavaScriptMode(JavaScriptMode.unrestricted);
+    _controller.setNavigationDelegate(
+      NavigationDelegate(
+        onPageStarted: (url) {
+          _setLoading(true);
+        },
+        onPageFinished: (url) {
+          _setLoading(false);
+          if (_isReturnUrl(url)) {
+            _awaitingResult = true;
+            _processReturnUrl(url);
+          }
+        },
+        onWebResourceError: (error) {
+          // Bazı alt kaynaklar (örn. analitik, css) yüklenemese bile işlemi sonlandırma.
+          _setLoading(false);
+        },
+        onNavigationRequest: (request) {
+          final url = request.url;
+          if (!_seenRedirectOnce && url.startsWith(widget.redirectUri.toString())) {
+            _seenRedirectOnce = true;
             return NavigationDecision.navigate;
-          },
-        ),
-      );
-    }
+          }
+          if (_isReturnUrl(url)) {
+            _awaitingResult = true;
+            _setLoading(true);
+            _processReturnUrl(url);
+            return NavigationDecision.navigate;
+          }
+          return NavigationDecision.navigate;
+        },
+      ),
+    );
 
     _loadRedirect();
   }
@@ -88,25 +93,34 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
   }
 
   bool _isReturnUrl(String url) {
+    final uri = Uri.tryParse(url);
+    if (uri != null) {
+      final path = uri.path;
+      if (path.contains("/payment/pay/success") || path.contains("/payment/pay/error")) {
+        return true;
+      }
+    }
     final target = widget.returnUrl;
-    if (url == target) return true;
-    return url.startsWith(target);
+    if (url == target || url.startsWith(target)) return true;
+    final redirect = widget.redirectUri.toString();
+    if (_seenRedirectOnce && url.startsWith(redirect)) return true;
+    return false;
   }
 
-  Future<void> _processReturnUrl() async {
+  Future<void> _processReturnUrl(String url) async {
     if (_completed || !mounted) return;
     _awaitingResult = true;
     _setLoading(true);
     try {
+      final fromUrl = _parseResultFromUrl(url);
+      if (fromUrl != null) {
+        _finishWithResult(PaymentResult.fromJson(fromUrl));
+        return;
+      }
       final data = await _readJsonFromPage();
-      final result = PaymentResult.fromJson(data);
-      _completed = true;
-      _awaitingResult = false;
-      Navigator.pop(context, result);
+      _finishWithResult(PaymentResult.fromJson(data));
     } catch (e) {
-      _completed = true;
-      _awaitingResult = false;
-      Navigator.pop(context, const PaymentResult(false, "Odeme sonucu alinmadi."));
+      _finishWithResult(const PaymentResult(false, "Odeme sonucu alinmadi."));
     }
   }
 
@@ -143,42 +157,43 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
     throw Exception("Odeme sonucu json degil");
   }
 
+  Map<String, dynamic>? _parseResultFromUrl(String url) {
+    final uri = Uri.tryParse(url);
+    if (uri == null) return null;
+    final qp = uri.queryParameters;
+    if (qp.isEmpty) return null;
+    final map = Map<String, dynamic>.from(qp);
+    // Normalize expected keys
+    map["approved"] = qp["approved"] == "true" || qp["responseCode"] == "00";
+    map["responseCode"] = qp["responseCode"] ?? qp["code"];
+    map["responseMsg"] = qp["responseMsg"] ?? qp["message"];
+    map["errorCode"] = qp["errorCode"];
+    map["errorMsg"] = qp["errorMsg"];
+    map["merchantPaymentId"] = qp["merchantPaymentId"] ?? qp["pgOrderId"];
+    return map;
+  }
+
   Future<void> _loadRedirect() async {
     final payload = widget.payload.toJson();
     // ignore: avoid_print
     print("🟦 PaymentWebViewScreen.loadRedirect -> ${widget.redirectUri}");
     // ignore: avoid_print
     print("🟦 PaymentWebViewScreen payload: ${jsonEncode(payload)}");
-    if (kIsWeb) {
-      _paymentWindow = openPaymentWindow();
-      final resp = await http
-          .post(
-            widget.redirectUri,
-            headers: {
-              "content-type": "application/json",
-              "x-api-key": PaymentConfig.apiKey,
-            },
-            body: jsonEncode(payload),
-          )
-          .timeout(const Duration(seconds: 20));
-      if (resp.statusCode < 200 || resp.statusCode >= 300) {
-        throw Exception("Redirect yüklenemedi (${resp.statusCode})");
+    // Tüm platformlarda aynı: WebView içinde yükle, header düşmesin diye Android'de http.post + loadHtmlString.
+    if (kIsWeb || Platform.isAndroid) {
+      final resp = await http.post(
+        widget.redirectUri,
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": PaymentConfig.apiKey,
+        },
+        body: jsonEncode(payload),
+      );
+      final location = resp.headers["location"];
+      if (resp.isRedirect && location != null) {
+        _processReturnUrl(location);
+        return;
       }
-      await loadPaymentHtml(_paymentWindow, resp.body);
-      _startWebPolling();
-      return;
-    }
-    if (Platform.isAndroid) {
-      final resp = await http
-          .post(
-            widget.redirectUri,
-            headers: {
-              "content-type": "application/json",
-              "x-api-key": PaymentConfig.apiKey,
-            },
-            body: jsonEncode(payload),
-          )
-          .timeout(const Duration(seconds: 20));
       if (resp.statusCode < 200 || resp.statusCode >= 300) {
         throw Exception("Redirect yüklenemedi (${resp.statusCode})");
       }
@@ -187,6 +202,7 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
         baseUrl: widget.redirectUri.toString(),
       );
     } else {
+      // iOS: doğrudan loadRequest
       final body = Uint8List.fromList(utf8.encode(jsonEncode(payload)));
       await _controller.loadRequest(
         widget.redirectUri,
@@ -198,17 +214,15 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
         body: body,
       );
     }
-    if (kIsWeb) {
-      _setLoading(false);
-    }
   }
 
-  void _startWebPolling() {
-    if (_completed) return;
+  void _startOrderPolling() {
+    if (_completed || _pollingStarted) return;
     if (widget.orderId == null) {
       _setLoading(false);
       return;
     }
+    _pollingStarted = true;
     _setLoading(true);
     _pollTimer?.cancel();
     _pollAttempts = 0;
@@ -223,8 +237,6 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
         final status = (detail?["status"] ?? "").toString().toLowerCase();
         if (status == "paid") {
           _finishWithResult(const PaymentResult(true, null));
-        } else if (status == "payment_failed" || status == "cancelled") {
-          _finishWithResult(const PaymentResult(false, "Odeme basarisiz."));
         }
       } catch (_) {
         // keep polling on transient errors
@@ -237,42 +249,12 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
     _completed = true;
     _awaitingResult = false;
     _pollTimer?.cancel();
+    _pollingStarted = false;
     Navigator.pop(context, result);
   }
 
   @override
   Widget build(BuildContext context) {
-    if (kIsWeb) {
-      return Scaffold(
-        appBar: AppBar(
-          title: const Text("Guvenli Odeme"),
-          centerTitle: true,
-        ),
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24.0),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const CircularProgressIndicator(),
-                const SizedBox(height: 16),
-                const Text(
-                  "Odeme sayfasi yeni pencerede acildi. Lütfen islemi tamamlayin.",
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 8),
-                TextButton(
-                  onPressed: () {
-                    _paymentWindow = openPaymentWindow();
-                  },
-                  child: const Text("Odeme penceresini yeniden ac"),
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
     return Scaffold(
       appBar: AppBar(
         title: const Text("Guvenli Odeme"),

@@ -66,7 +66,7 @@ class _SafeNetworkImage extends StatefulWidget {
 class _SafeNetworkImageState extends State<_SafeNetworkImage> {
   late String _currentUrl;
   int _attempt = 0;
-  static const int _maxAttempts = 50;
+  static const int _maxAttempts = 2;
 
   @override
   void initState() {

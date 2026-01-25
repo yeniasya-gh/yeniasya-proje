@@ -4,8 +4,10 @@ import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 import 'package:crypto/crypto.dart';
+import '../models/app_flags.dart';
 import '../services/access_provider.dart';
 import '/screen/footer/yeni_asya_footer.dart';
 import '/services/auth/auth_provider.dart';
@@ -28,6 +30,7 @@ import '../services/newspaper_subscription_type_service.dart';
 import '../services/upload_service.dart';
 import '../services/access_provider.dart';
 import '../services/home_showcase_service.dart';
+import '../services/app_flag_service.dart';
 import '../screen/profile/pdf_viewer_screen.dart';
 import '../utils/cart_feedback.dart';
 import '../utils/price_utils.dart';
@@ -59,8 +62,10 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
   final EkService _ekService = EkService();
   final OrderService _orderService = OrderService();
   final UserContentAccessService _accessService = UserContentAccessService();
-  final NewspaperSubscriptionTypeService _newsTypeService = NewspaperSubscriptionTypeService();
+  final NewspaperSubscriptionTypeService _newsTypeService =
+      NewspaperSubscriptionTypeService();
   final HomeShowcaseService _homeShowcaseService = HomeShowcaseService();
+  final AppFlagService _appFlagService = AppFlagService();
 
   final PageController _sliderController = PageController();
   Timer? _sliderTimer;
@@ -81,8 +86,14 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
   List<Map<String, dynamic>> libraryAccess = [];
   bool _loadingAccessSheet = false;
   bool _deepLinkHandled = false;
+  bool _flagsLoaded = false;
   AuthProvider? _authListener;
   DateTime? _newsSelectedDate;
+  AppFlags _appFlags = AppFlags.defaults;
+
+  bool get _hideMagazines => _appFlags.hideMagazines;
+  bool get _hideNewspapers => _appFlags.hideNewspapers;
+  bool get _storeFlagEnabled => _hideMagazines || _hideNewspapers;
 
   @override
   void initState() {
@@ -91,6 +102,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
       _authListener = context.read<AuthProvider>();
       _authListener?.addListener(_onAuthChange);
     });
+    _loadAppFlags();
     _loadData();
     _loadAccessIfNeeded();
     _loadLibraryOrders();
@@ -139,10 +151,39 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     }
   }
 
+  Future<void> _loadAppFlags() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      final build = info.buildNumber;
+      final version = build.isNotEmpty
+          ? "${info.version}+$build"
+          : info.version;
+      final flags = await _appFlagService.fetchFlags(version: version);
+      if (!mounted) return;
+      setState(() {
+        _appFlags = flags;
+        _flagsLoaded = true;
+        if (_hideMagazines && _section == HomeSection.magazines) {
+          _section = HomeSection.home;
+        }
+        if (_hideNewspapers && _section == HomeSection.newspapers) {
+          _section = HomeSection.home;
+        }
+      });
+    } catch (e) {
+      debugPrint("App flag load error: $e");
+      if (!mounted) return;
+      setState(() {
+        _flagsLoaded = true;
+      });
+    }
+  }
+
   Future<void> _refreshHome() async {
     await _loadData(showLoading: false);
     await _loadLibraryOrders();
     await _loadLibraryAccess();
+    await _loadAppFlags();
     _loadAccessIfNeeded();
   }
 
@@ -219,6 +260,11 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     final uri = widget.initialUri!;
     final type = uri.queryParameters["type"];
     final id = int.tryParse(uri.queryParameters["id"] ?? "");
+    if ((_hideMagazines && type == "magazine") ||
+        (_hideNewspapers &&
+            (type == "newspaper" || type == "newspaper_subscription"))) {
+      return;
+    }
     if (type == null || id == null) return;
 
     ProductDetail? detail;
@@ -228,17 +274,26 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         if (data.isNotEmpty) detail = _mapBookDetail(data);
         break;
       case "magazine":
-        final data = magazines.firstWhere((m) => m["id"] == id, orElse: () => {});
+        final data = magazines.firstWhere(
+          (m) => m["id"] == id,
+          orElse: () => {},
+        );
         if (data.isNotEmpty) detail = _mapMagazineDetail(data);
         break;
       case "magazine_issue":
         break;
       case "newspaper_subscription":
-        final data = newspapers.firstWhere((n) => n["id"] == id, orElse: () => {});
+        final data = newspapers.firstWhere(
+          (n) => n["id"] == id,
+          orElse: () => {},
+        );
         if (data.isNotEmpty) detail = _mapNewspaperDetail(data);
         break;
       case "ek":
-        final data = attachments.firstWhere((n) => n["id"] == id, orElse: () => {});
+        final data = attachments.firstWhere(
+          (n) => n["id"] == id,
+          orElse: () => {},
+        );
         if (data.isNotEmpty) {
           _deepLinkHandled = true;
           WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -280,7 +335,8 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     return double.tryParse(value?.toString() ?? "") ?? fallback;
   }
 
-  DateTime _normalizeDate(DateTime date) => DateTime(date.year, date.month, date.day);
+  DateTime _normalizeDate(DateTime date) =>
+      DateTime(date.year, date.month, date.day);
 
   List<Map<String, dynamic>> _filteredNewspapers() {
     final hasFilter = _newsSelectedDate != null;
@@ -295,16 +351,13 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     final results = <Map<String, dynamic>>[];
     for (final date in targets) {
       if (!date.isBefore(cutoff)) {
-        final match = newspapers.firstWhere(
-          (n) {
-            final raw = n["publish_date"]?.toString();
-            if (raw == null) return false;
-            final parsed = DateTime.tryParse(raw);
-            if (parsed == null) return false;
-            return _normalizeDate(parsed) == date;
-          },
-          orElse: () => {},
-        );
+        final match = newspapers.firstWhere((n) {
+          final raw = n["publish_date"]?.toString();
+          if (raw == null) return false;
+          final parsed = DateTime.tryParse(raw);
+          if (parsed == null) return false;
+          return _normalizeDate(parsed) == date;
+        }, orElse: () => {});
         if (match.isNotEmpty) results.add(match);
       }
     }
@@ -325,9 +378,15 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     );
   }
 
-  void _openPdfDirect(String url, {required String title, required bool isPublic}) {
+  void _openPdfDirect(
+    String url, {
+    required String title,
+    required bool isPublic,
+  }) {
     if (url.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("PDF bulunamadı")));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("PDF bulunamadı")));
       return;
     }
     Navigator.push(
@@ -352,7 +411,9 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     if (trimmed.startsWith("?")) {
       return Uri.tryParse("https://local/$trimmed");
     }
-    if (trimmed.contains("type=") && trimmed.contains("id=") && !trimmed.contains("://")) {
+    if (trimmed.contains("type=") &&
+        trimmed.contains("id=") &&
+        !trimmed.contains("://")) {
       return Uri.tryParse("https://local/?$trimmed");
     }
     return Uri.tryParse(trimmed);
@@ -372,7 +433,9 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     }
     if (uri == null || !(uri.scheme == "http" || uri.scheme == "https")) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Link açılamadı.")));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("Link açılamadı.")));
       return;
     }
     Navigator.push(
@@ -399,6 +462,11 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
   }
 
   bool _openSliderTarget(String type, int id) {
+    if ((_hideMagazines && type == "magazine") ||
+        (_hideNewspapers &&
+            (type == "newspaper_subscription" || type == "newspaper"))) {
+      return false;
+    }
     switch (type) {
       case "book":
         final data = books.firstWhere((b) => b["id"] == id, orElse: () => {});
@@ -408,7 +476,10 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         }
         return false;
       case "magazine":
-        final data = magazines.firstWhere((m) => m["id"] == id, orElse: () => {});
+        final data = magazines.firstWhere(
+          (m) => m["id"] == id,
+          orElse: () => {},
+        );
         if (data.isNotEmpty) {
           _openProductDetail(_mapMagazineDetail(data));
           return true;
@@ -416,14 +487,20 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         return false;
       case "newspaper_subscription":
       case "newspaper":
-        final data = newspapers.firstWhere((n) => n["id"] == id, orElse: () => {});
+        final data = newspapers.firstWhere(
+          (n) => n["id"] == id,
+          orElse: () => {},
+        );
         if (data.isNotEmpty) {
           _openProductDetail(_mapNewspaperDetail(data));
           return true;
         }
         return false;
       case "ek":
-        final data = attachments.firstWhere((e) => e["id"] == id, orElse: () => {});
+        final data = attachments.firstWhere(
+          (e) => e["id"] == id,
+          orElse: () => {},
+        );
         if (data.isNotEmpty) {
           _openEkDetail(data);
           return true;
@@ -440,10 +517,12 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
       MaterialPageRoute(
         builder: (_) => SearchScreen(
           books: books,
-          magazines: magazines,
-          newspapers: newspapers,
+          magazines: _hideMagazines ? [] : magazines,
+          newspapers: _hideNewspapers ? [] : newspapers,
           attachments: attachments,
           initialQuery: initialQuery,
+          hideMagazines: _hideMagazines,
+          hideNewspapers: _hideNewspapers,
         ),
         fullscreenDialog: true,
       ),
@@ -489,7 +568,10 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text("Gazete Aboneliği Seç", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                const Text(
+                  "Gazete Aboneliği Seç",
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                ),
                 const SizedBox(height: 12),
                 Expanded(
                   child: ListView.separated(
@@ -501,8 +583,9 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
                       final months = _toInt(item["duration_months"]) ?? 0;
                       final price = _parsePrice(item["price"]);
                       final title = (item["title"] ?? "").toString().trim();
-                      final displayTitle =
-                          title.isNotEmpty ? title : "$months Aylık Gazete Aboneliği";
+                      final displayTitle = title.isNotEmpty
+                          ? title
+                          : "$months Aylık Gazete Aboneliği";
                       final cartItem = CartItem(
                         id: "news-type-$id",
                         title: displayTitle,
@@ -522,9 +605,13 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
                       return ListTile(
                         contentPadding: EdgeInsets.zero,
                         title: Text(displayTitle),
-                        subtitle: Text(months > 0 ? "$months ay" : "Gazete Aboneliği"),
+                        subtitle: Text(
+                          months > 0 ? "$months ay" : "Gazete Aboneliği",
+                        ),
                         trailing: Text(
-                          alreadyInCart ? "Sepette" : "₺${price.toStringAsFixed(2)}",
+                          alreadyInCart
+                              ? "Sepette"
+                              : "₺${price.toStringAsFixed(2)}",
                           style: TextStyle(
                             fontWeight: FontWeight.w700,
                             color: alreadyInCart ? Colors.grey : Colors.red,
@@ -539,7 +626,9 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
                                   showAddedToCartDialog(context);
                                 } else {
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text("Bu ürün zaten sepette.")),
+                                    const SnackBar(
+                                      content: Text("Bu ürün zaten sepette."),
+                                    ),
                                   );
                                 }
                               },
@@ -563,8 +652,14 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
   void _openFromOrderItem(Map<String, dynamic> item) {
     final type = (item["product_type"] ?? "").toString();
     final meta = item["metadata"] as Map<String, dynamic>? ?? {};
-    final productId = item["id"] ?? item["product_id"] ?? item["productId"] ?? meta["product_id"] ?? meta["id"];
-    final fallbackFileUrl = meta["file_url"] ??
+    final productId =
+        item["id"] ??
+        item["product_id"] ??
+        item["productId"] ??
+        meta["product_id"] ??
+        meta["id"];
+    final fallbackFileUrl =
+        meta["file_url"] ??
         meta["pdf_url"] ??
         meta["book_url"] ??
         item["file_url"] ??
@@ -572,18 +667,16 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         item["book_url"];
     final mergedMeta = <String, dynamic>{
       ...meta,
-      if (fallbackFileUrl != null && fallbackFileUrl.toString().isNotEmpty) "fileUrl": fallbackFileUrl,
+      if (fallbackFileUrl != null && fallbackFileUrl.toString().isNotEmpty)
+        "fileUrl": fallbackFileUrl,
     };
 
     Future<void> openPdf(String url, String title) async {
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => PdfViewerScreen(
-            url: url,
-            title: title,
-            isPrivate: true,
-          ),
+          builder: (_) =>
+              PdfViewerScreen(url: url, title: title, isPrivate: true),
         ),
       );
     }
@@ -593,15 +686,15 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     switch (type) {
       case "book":
         if (pid != null) {
-          final local = books.firstWhere((b) => b["id"] == pid, orElse: () => {});
+          final local = books.firstWhere(
+            (b) => b["id"] == pid,
+            orElse: () => {},
+          );
           if (local.isNotEmpty) {
             final baseDetail = _mapBookDetail(local);
             final detail = baseDetail.copyWith(
               forceAccess: true,
-              metadata: {
-                ...(baseDetail.metadata ?? {}),
-                ...mergedMeta,
-              },
+              metadata: {...(baseDetail.metadata ?? {}), ...mergedMeta},
             );
             _openProductDetail(detail);
             return;
@@ -610,10 +703,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
             final baseDetail = _mapBookDetail(book ?? {});
             final detail = baseDetail.copyWith(
               forceAccess: true,
-              metadata: {
-                ...(baseDetail.metadata ?? {}),
-                ...mergedMeta,
-              },
+              metadata: {...(baseDetail.metadata ?? {}), ...mergedMeta},
             );
             _openProductDetail(detail);
           });
@@ -629,19 +719,18 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
                 final baseDetail = _mapMagazineDetail(mag ?? {});
                 final detail = baseDetail.copyWith(
                   forceAccess: true,
-                  metadata: {
-                    ...(baseDetail.metadata ?? {}),
-                    ...mergedMeta,
-                  },
+                  metadata: {...(baseDetail.metadata ?? {}), ...mergedMeta},
                 );
                 _openProductDetail(detail);
               });
               return;
             }
-            final name = issue?["magazine"]?["name"]?.toString() ?? "Dergi Sayısı";
+            final name =
+                issue?["magazine"]?["name"]?.toString() ?? "Dergi Sayısı";
             final issueNo = issue?["issue_number"]?.toString();
             final title = issueNo != null ? "$name - $issueNo" : name;
-            final url = issue?["file_url"]?.toString() ?? meta["file_url"]?.toString();
+            final url =
+                issue?["file_url"]?.toString() ?? meta["file_url"]?.toString();
             if (url != null && url.isNotEmpty) {
               openPdf(url, title);
             }
@@ -651,15 +740,15 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         break;
       case "magazine":
         if (pid != null) {
-          final local = magazines.firstWhere((m) => m["id"] == pid, orElse: () => {});
+          final local = magazines.firstWhere(
+            (m) => m["id"] == pid,
+            orElse: () => {},
+          );
           if (local.isNotEmpty) {
             final baseDetail = _mapMagazineDetail(local);
             final detail = baseDetail.copyWith(
               forceAccess: true,
-              metadata: {
-                ...(baseDetail.metadata ?? {}),
-                ...mergedMeta,
-              },
+              metadata: {...(baseDetail.metadata ?? {}), ...mergedMeta},
             );
             _openProductDetail(detail);
             return;
@@ -668,10 +757,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
             final baseDetail = _mapMagazineDetail(mag ?? {});
             final detail = baseDetail.copyWith(
               forceAccess: true,
-              metadata: {
-                ...(baseDetail.metadata ?? {}),
-                ...mergedMeta,
-              },
+              metadata: {...(baseDetail.metadata ?? {}), ...mergedMeta},
             );
             _openProductDetail(detail);
           });
@@ -681,15 +767,15 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
       case "newspaper_subscription":
       case "newspaper":
         if (pid != null) {
-          final nw = newspapers.firstWhere((n) => n["id"] == pid, orElse: () => {});
+          final nw = newspapers.firstWhere(
+            (n) => n["id"] == pid,
+            orElse: () => {},
+          );
           if (nw.isNotEmpty) {
             final baseDetail = _mapNewspaperDetail(nw);
             final detail = baseDetail.copyWith(
               forceAccess: true,
-              metadata: {
-                ...(baseDetail.metadata ?? {}),
-                ...mergedMeta,
-              },
+              metadata: {...(baseDetail.metadata ?? {}), ...mergedMeta},
             );
             _openProductDetail(detail);
             return;
@@ -699,10 +785,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
           final baseDetail = _mapNewspaperDetail(newspapers.first);
           final detail = baseDetail.copyWith(
             forceAccess: true,
-            metadata: {
-              ...(baseDetail.metadata ?? {}),
-              ...mergedMeta,
-            },
+            metadata: {...(baseDetail.metadata ?? {}), ...mergedMeta},
           );
           _openProductDetail(detail);
           return;
@@ -720,13 +803,13 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
       id: "item-$productId",
       title: item["title"] ?? meta["title"] ?? "Ürün",
       description: meta["description"]?.toString() ?? "",
-      imageUrl: meta["cover_image_url"]?.toString() ?? meta["cover_url"]?.toString() ?? "",
+      imageUrl:
+          meta["cover_image_url"]?.toString() ??
+          meta["cover_url"]?.toString() ??
+          "",
       price: _parsePrice(item["unit_price"] ?? item["line_total"]),
       type: CartItemType.book,
-      metadata: {
-        "productId": productId,
-        ...mergedMeta,
-      },
+      metadata: {"productId": productId, ...mergedMeta},
       actionLabel: "Görüntüle",
       forceAccess: true,
     );
@@ -780,18 +863,25 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     if (access.hasAccess(type, itemId: itemId)) return true;
     if (libraryOrders.isEmpty) return false;
     final items = libraryOrders
-        .expand<Map<String, dynamic>>((o) => List<Map<String, dynamic>>.from(o["order_items"] ?? []))
+        .expand<Map<String, dynamic>>(
+          (o) => List<Map<String, dynamic>>.from(o["order_items"] ?? []),
+        )
         .toList();
     return items.any((i) {
       final itemType = (i["product_type"] ?? "").toString();
       if (itemType != type) return false;
       final meta = i["metadata"] as Map<String, dynamic>? ?? {};
-      final pid = _toInt(meta["product_id"] ?? meta["id"] ?? i["product_id"] ?? i["id"]);
+      final pid = _toInt(
+        meta["product_id"] ?? meta["id"] ?? i["product_id"] ?? i["id"],
+      );
       return pid == itemId;
     });
   }
 
-  Future<_AccessItem> _resolveAccessItem(String type, Map<String, dynamic> entry) async {
+  Future<_AccessItem> _resolveAccessItem(
+    String type,
+    Map<String, dynamic> entry,
+  ) async {
     final itemId = entry["item_id"];
     switch (type) {
       case "book":
@@ -861,11 +951,17 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
           onTap: null,
         );
       default:
-        return _AccessItem(title: "Bilinmeyen içerik", icon: _iconForType(type));
+        return _AccessItem(
+          title: "Bilinmeyen içerik",
+          icon: _iconForType(type),
+        );
     }
   }
 
-  Future<void> _openMagazineIssuesFromLibrary(int magazineId, String name) async {
+  Future<void> _openMagazineIssuesFromLibrary(
+    int magazineId,
+    String name,
+  ) async {
     final issues = await _magService.getIssues(magazineId);
     if (!mounted) return;
     final access = context.read<AccessProvider>();
@@ -892,7 +988,13 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text("$name Sayıları", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                    Text(
+                      "$name Sayıları",
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                     IconButton(
                       icon: const Icon(Icons.close),
                       onPressed: () => Navigator.pop(context),
@@ -912,7 +1014,9 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
                           final title = "Sayı ${issue["issue_number"]}";
                           return ListTile(
                             title: Text(title),
-                            subtitle: Text("Eklenme: ${issue["added_at"] ?? ''}"),
+                            subtitle: Text(
+                              "Eklenme: ${issue["added_at"] ?? ''}",
+                            ),
                             trailing: const Icon(Icons.chevron_right),
                             onTap: () {
                               final url = issue["file_url"]?.toString();
@@ -957,7 +1061,11 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     }).toList();
   }
 
-  Future<void> _openAccessSheet(BuildContext context, String itemType, String title) async {
+  Future<void> _openAccessSheet(
+    BuildContext context,
+    String itemType,
+    String title,
+  ) async {
     if (_loadingAccessSheet) return;
     final userId = context.read<AuthProvider>().user?.id;
     if (userId == null) return;
@@ -965,12 +1073,15 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     setState(() => _loadingAccessSheet = true);
     List<Map<String, dynamic>> entries = [];
     try {
-      entries = await _accessService.getAccess(userId: userId, itemType: itemType);
+      entries = await _accessService.getAccess(
+        userId: userId,
+        itemType: itemType,
+      );
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Erişim alınamadı: $e")),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text("Erişim alınamadı: $e")));
       }
     } finally {
       if (mounted) setState(() => _loadingAccessSheet = false);
@@ -997,7 +1108,13 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                     IconButton(
                       icon: const Icon(Icons.close),
                       onPressed: () => Navigator.pop(context),
@@ -1010,43 +1127,49 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
                 child: _loadingAccessSheet
                     ? const Center(child: CircularProgressIndicator())
                     : entries.isEmpty
-                        ? const Center(child: Text("Kayıt bulunamadı"))
-                        : ListView.separated(
-                            itemCount: entries.length,
-                            separatorBuilder: (_, __) => const Divider(height: 1),
-                            itemBuilder: (_, i) {
-                              final entry = entries[i];
-                              return FutureBuilder<_AccessItem>(
-                                future: _resolveAccessItem(itemType, entry),
-                                builder: (_, snap) {
-                                  if (!snap.hasData) {
-                                    return const ListTile(
-                                      title: Text("Yükleniyor..."),
-                                      trailing: SizedBox(
-                                        width: 20,
-                                        height: 20,
-                                        child: CircularProgressIndicator(strokeWidth: 2),
-                                      ),
-                                    );
-                                  }
-                                  final data = snap.data!;
-                                  return ListTile(
-                                    leading: CircleAvatar(
-                                      backgroundColor: Colors.red.shade100,
-                                      foregroundColor: Colors.red,
-                                      child: Icon(data.icon ?? _iconForType(itemType)),
+                    ? const Center(child: Text("Kayıt bulunamadı"))
+                    : ListView.separated(
+                        itemCount: entries.length,
+                        separatorBuilder: (_, __) => const Divider(height: 1),
+                        itemBuilder: (_, i) {
+                          final entry = entries[i];
+                          return FutureBuilder<_AccessItem>(
+                            future: _resolveAccessItem(itemType, entry),
+                            builder: (_, snap) {
+                              if (!snap.hasData) {
+                                return const ListTile(
+                                  title: Text("Yükleniyor..."),
+                                  trailing: SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
                                     ),
-                                    title: Text(data.title),
-                                    subtitle: data.subtitle != null ? Text(data.subtitle!) : null,
-                                    trailing: data.onTap != null
-                                        ? const Icon(Icons.chevron_right)
-                                        : const SizedBox.shrink(),
-                                    onTap: data.onTap,
-                                  );
-                                },
+                                  ),
+                                );
+                              }
+                              final data = snap.data!;
+                              return ListTile(
+                                leading: CircleAvatar(
+                                  backgroundColor: Colors.red.shade100,
+                                  foregroundColor: Colors.red,
+                                  child: Icon(
+                                    data.icon ?? _iconForType(itemType),
+                                  ),
+                                ),
+                                title: Text(data.title),
+                                subtitle: data.subtitle != null
+                                    ? Text(data.subtitle!)
+                                    : null,
+                                trailing: data.onTap != null
+                                    ? const Icon(Icons.chevron_right)
+                                    : const SizedBox.shrink(),
+                                onTap: data.onTap,
                               );
                             },
-                          ),
+                          );
+                        },
+                      ),
               ),
             ],
           ),
@@ -1098,15 +1221,18 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Dergi sayıları alınamadı: $e")),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Dergi sayıları alınamadı: $e")));
     }
   }
 
   ProductDetail _mapMagazineDetail(Map<String, dynamic> mag) {
-    final hasAccess = context.read<AccessProvider>().hasAccess("magazine", itemId: mag["id"] as int?);
-  final actionLabel = hasAccess ? "E-dergiyi Gör" : "Abone Ol";
+    final hasAccess = context.read<AccessProvider>().hasAccess(
+      "magazine",
+      itemId: mag["id"] as int?,
+    );
+    final actionLabel = hasAccess ? "E-dergiyi Gör" : "Abone Ol";
     return ProductDetail(
       id: "mag-${mag["id"]}",
       title: mag["name"] ?? "",
@@ -1126,7 +1252,10 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
   }
 
   ProductDetail _mapBookDetail(Map<String, dynamic> book) {
-    final hasAccess = context.read<AccessProvider>().hasAccess("book", itemId: book["id"] as int?);
+    final hasAccess = context.read<AccessProvider>().hasAccess(
+      "book",
+      itemId: book["id"] as int?,
+    );
     final actionLabel = hasAccess ? "Kitabı Gör" : "Sepete Ekle";
     final price = _parsePrice(book["price"]);
     return ProductDetail(
@@ -1148,14 +1277,18 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
 
   ProductDetail _mapNewspaperDetail(Map<String, dynamic> news) {
     final dateStr = news["publish_date"]?.toString() ?? "";
-    final hasSub = context.read<AccessProvider>().hasAccess("newspaper_subscription");
+    final hasSub = context.read<AccessProvider>().hasAccess(
+      "newspaper_subscription",
+    );
     final title = "Gündem Gazetesi";
     final fileUrl = news["file_url"]?.toString();
     return ProductDetail(
       id: "news-${news["id"] ?? "subscription"}",
       title: title,
       subtitle: dateStr,
-      description: dateStr.isNotEmpty ? "Yayın tarihi: $dateStr" : "Günlük gazete aboneliği.",
+      description: dateStr.isNotEmpty
+          ? "Yayın tarihi: $dateStr"
+          : "Günlük gazete aboneliği.",
       imageUrl: news["image_url"] ?? "",
       price: 1.0,
       type: CartItemType.newspaperSubscription,
@@ -1180,7 +1313,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     final isTablet = screenWidth > 600 && screenWidth <= 900;
     final hasSlider = sliders.isNotEmpty;
 
-    if (loading) {
+    if (loading || !_flagsLoaded) {
       return const Scaffold(
         backgroundColor: Colors.white,
         body: Center(child: CircularProgressIndicator()),
@@ -1216,9 +1349,11 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
                         Row(
                           children: [
                             _menuItem("Anasayfa", HomeSection.home),
-                            _menuItem("E-Dergi", HomeSection.magazines),
+                            if (!_hideMagazines)
+                              _menuItem("E-Dergi", HomeSection.magazines),
                             _menuItem("E-Kitap", HomeSection.books),
-                            _menuItem("E-Gazete", HomeSection.newspapers),
+                            if (!_hideNewspapers)
+                              _menuItem("E-Gazete", HomeSection.newspapers),
                             _menuItem("Ekler", HomeSection.attachments),
                           ],
                         ),
@@ -1235,10 +1370,16 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
                               prefixIcon: const Icon(Icons.search),
                               filled: true,
                               fillColor: Colors.grey.shade100,
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 0,
+                              ),
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(10),
-                                borderSide: BorderSide(color: Colors.grey.shade400, width: 0.5),
+                                borderSide: BorderSide(
+                                  color: Colors.grey.shade400,
+                                  width: 0.5,
+                                ),
                               ),
                             ),
                             onSubmitted: (q) => _openSearch(initialQuery: q),
@@ -1258,7 +1399,10 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
                                 ),
                               );
                             },
-                            icon: const Icon(Icons.shopping_cart_outlined, color: Colors.black87),
+                            icon: const Icon(
+                              Icons.shopping_cart_outlined,
+                              color: Colors.black87,
+                            ),
                           ),
                           Positioned(
                             right: 6,
@@ -1266,12 +1410,17 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
                             child: Container(
                               padding: const EdgeInsets.all(3),
                               decoration: BoxDecoration(
-                                color: _cartCount(cart) > 0 ? Colors.red : Colors.grey,
+                                color: _cartCount(cart) > 0
+                                    ? Colors.red
+                                    : Colors.grey,
                                 shape: BoxShape.circle,
                               ),
                               child: Text(
                                 _cartCount(cart).toString(),
-                                style: const TextStyle(color: Colors.white, fontSize: 10),
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                ),
                               ),
                             ),
                           ),
@@ -1337,11 +1486,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
               ),
             ),
             if (!isWeb)
-              const Divider(
-                height: 1,
-                thickness: 1,
-                color: Color(0xFFEEEEEE),
-              ),
+              const Divider(height: 1, thickness: 1, color: Color(0xFFEEEEEE)),
           ],
         ),
       ),
@@ -1366,13 +1511,18 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
                                   vertical: 24,
                                 ),
                                 child: ConstrainedBox(
-                                  constraints: const BoxConstraints(minHeight: 500),
+                                  constraints: const BoxConstraints(
+                                    minHeight: 500,
+                                  ),
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       if (_section == HomeSection.home) ...[
-                                        if (hasSlider) _buildSlider(isWeb, isTablet),
-                                        if (hasSlider) const SizedBox(height: 16),
+                                        if (hasSlider)
+                                          _buildSlider(isWeb, isTablet),
+                                        if (hasSlider)
+                                          const SizedBox(height: 16),
                                       ],
                                       _buildBodyContent(isWeb, isTablet, cart),
                                     ],
@@ -1426,9 +1576,18 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
                 }
               },
               items: [
-                const BottomNavigationBarItem(icon: Icon(Icons.home), label: "Ana Sayfa"),
-                const BottomNavigationBarItem(icon: Icon(Icons.search), label: "Ara"),
-                const BottomNavigationBarItem(icon: Icon(Icons.library_books_outlined), label: "Kütüphanem"),
+                const BottomNavigationBarItem(
+                  icon: Icon(Icons.home),
+                  label: "Ana Sayfa",
+                ),
+                const BottomNavigationBarItem(
+                  icon: Icon(Icons.search),
+                  label: "Ara",
+                ),
+                const BottomNavigationBarItem(
+                  icon: Icon(Icons.library_books_outlined),
+                  label: "Kütüphanem",
+                ),
                 BottomNavigationBarItem(
                   icon: const Icon(Icons.person_outline),
                   label: auth.isLoggedIn ? "Profil" : "Giriş Yap",
@@ -1441,6 +1600,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
   Widget _buildBodyContent(bool isWeb, bool isTablet, CartProvider cart) {
     switch (_section) {
       case HomeSection.magazines:
+        if (_hideMagazines) return const SizedBox.shrink();
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1460,6 +1620,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
           ],
         );
       case HomeSection.newspapers:
+        if (_hideNewspapers) return const SizedBox.shrink();
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1467,11 +1628,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
             const SizedBox(height: 12),
             _newspaperFilters(context),
             const SizedBox(height: 16),
-            _newspaperListGrid(
-              context,
-              isWeb,
-              _filteredNewspapers(),
-            ),
+            _newspaperListGrid(context, isWeb, _filteredNewspapers()),
           ],
         );
       case HomeSection.attachments:
@@ -1482,7 +1639,8 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
               children: [
                 if (!isWeb)
                   IconButton(
-                    onPressed: () => setState(() => _section = HomeSection.home),
+                    onPressed: () =>
+                        setState(() => _section = HomeSection.home),
                     icon: const Icon(Icons.arrow_back),
                     tooltip: "Geri",
                   ),
@@ -1495,18 +1653,74 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         );
       case HomeSection.home:
       default:
+        final hasNewspaperShowcase = !_hideNewspapers && newspapers.isNotEmpty;
+        final hasMagazineShowcase =
+            !_hideMagazines &&
+            _buildHomeShowcaseList(
+              baseItems: magazines,
+              selectedEntries: homeMagazineEntries,
+              maxItems: 10,
+              idKey: "id",
+              selectedIdKey: "product_id",
+            ).isNotEmpty;
+        final hasBookShowcase =
+            _buildHomeShowcaseList(
+              baseItems: books,
+              selectedEntries: homeBookEntries,
+              maxItems: 10,
+              idKey: "id",
+              selectedIdKey: "product_id",
+            ).isNotEmpty;
+        final hasEkSection = attachments.isNotEmpty;
+        final hasAnyContent =
+            sliders.isNotEmpty ||
+            hasNewspaperShowcase ||
+            hasMagazineShowcase ||
+            hasBookShowcase ||
+            hasEkSection;
+
+        if (!hasAnyContent) {
+          return const Padding(
+            padding: EdgeInsets.symmetric(vertical: 64),
+            child: Center(
+              child: Text(
+                "İçerik bulunmamaktadır.",
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.black54,
+                ),
+              ),
+            ),
+          );
+        }
+
+        final children = <Widget>[];
+        void addSection(Widget widget) {
+          if (children.isNotEmpty) {
+            children.add(const SizedBox(height: 32));
+          }
+          children.add(widget);
+        }
+
+        if (hasNewspaperShowcase) {
+          addSection(_newspaperShowcase(context, isWeb, cart));
+        }
+        if (hasMagazineShowcase) {
+          addSection(_magazineShowcase(context, isWeb));
+        }
+        if (hasBookShowcase) {
+          addSection(_booksShowcase(context, isWeb, cart));
+        }
+        if (hasEkSection) {
+          addSection(_homeEkSection(context, isWeb, cart));
+        }
+
+        if (children.isEmpty) return const SizedBox.shrink();
+
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _newspaperShowcase(context, isWeb, cart),
-            const SizedBox(height: 32),
-            _magazineShowcase(context, isWeb),
-            const SizedBox(height: 32),
-            _booksShowcase(context, isWeb, cart),
-            const SizedBox(height: 32),
-            _homeEkSection(context, isWeb, cart),
-            const SizedBox(height: 32),
-          ],
+          children: children,
         );
     }
   }
@@ -1539,7 +1753,9 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
   }
 
   Widget _sliderSlide(Map<String, dynamic> slide) {
-    final imageUrl = UploadService.normalizeUrl(slide["image_url"]?.toString() ?? "");
+    final imageUrl = UploadService.normalizeUrl(
+      slide["image_url"]?.toString() ?? "",
+    );
     final title = slide["title"]?.toString() ?? "";
     final subtitle = slide["subtitle"]?.toString() ?? "";
     final hasOverlay = title.isNotEmpty || subtitle.isNotEmpty;
@@ -1551,18 +1767,17 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            safeImage(
-              imageUrl,
-              fit: BoxFit.cover,
-              fallbackIcon: Icons.image,
-            ),
+            safeImage(imageUrl, fit: BoxFit.cover, fallbackIcon: Icons.image),
             if (hasOverlay)
               Positioned(
                 left: 0,
                 right: 0,
                 bottom: 0,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 18,
+                    vertical: 14,
+                  ),
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       begin: Alignment.bottomCenter,
@@ -1580,14 +1795,21 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
                       if (title.isNotEmpty)
                         Text(
                           title,
-                          style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       if (subtitle.isNotEmpty)
                         Padding(
                           padding: const EdgeInsets.only(top: 4),
                           child: Text(
                             subtitle,
-                            style: const TextStyle(color: Colors.white70, fontSize: 14),
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 14,
+                            ),
                           ),
                         ),
                     ],
@@ -1629,17 +1851,18 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     );
   }
 
-Widget _magazineShowcase(BuildContext context, bool isWeb) {
-  final displayList = _buildHomeShowcaseList(
-    baseItems: magazines,
-    selectedEntries: homeMagazineEntries,
-    maxItems: 10,
-    idKey: "id",
-    selectedIdKey: "product_id",
-  );
-  if (displayList.isEmpty) return const SizedBox.shrink();
+  Widget _magazineShowcase(BuildContext context, bool isWeb) {
+    if (_hideMagazines) return const SizedBox.shrink();
+    final displayList = _buildHomeShowcaseList(
+      baseItems: magazines,
+      selectedEntries: homeMagazineEntries,
+      maxItems: 10,
+      idKey: "id",
+      selectedIdKey: "product_id",
+    );
+    if (displayList.isEmpty) return const SizedBox.shrink();
 
-  return Column(
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _sectionHeader(
@@ -1648,8 +1871,11 @@ Widget _magazineShowcase(BuildContext context, bool isWeb) {
             if (isWeb) {
               setState(() => _section = HomeSection.magazines);
             } else {
-              _openFullList(context, "E-dergi",
-                  (ctx) => _magazineListGrid(ctx, false));
+              _openFullList(
+                context,
+                "E-dergi",
+                (ctx) => _magazineListGrid(ctx, false),
+              );
             }
           },
         ),
@@ -1660,25 +1886,32 @@ Widget _magazineShowcase(BuildContext context, bool isWeb) {
             scrollDirection: Axis.horizontal,
             itemCount: displayList.length,
             separatorBuilder: (_, __) => const SizedBox(width: 14),
-            itemBuilder: (_, i) => _bookCard({
-              "image": displayList[i]["cover_image_url"],
-              "title": displayList[i]["name"],
-              "author": displayList[i]["category"] ?? "",
-              "price": isWeb ? "Fiyat için tıkla" : "",
-            }, isWeb,
-                hideAction: _hasPurchased("magazine", _toInt(displayList[i]["id"])),
-                onAdd: () {
-                  _openProductDetail(_mapMagazineDetail(displayList[i]));
-                }, onTap: () {
-              _openProductDetail(_mapMagazineDetail(displayList[i]));
-            }),
+            itemBuilder: (_, i) => _bookCard(
+              {
+                "image": displayList[i]["cover_image_url"],
+                "title": displayList[i]["name"],
+                "author": displayList[i]["category"] ?? "",
+                "price": isWeb ? "Fiyat için tıkla" : "",
+              },
+              isWeb,
+              hideAction: _hasPurchased(
+                "magazine",
+                _toInt(displayList[i]["id"]),
+              ),
+              onAdd: () {
+                _openProductDetail(_mapMagazineDetail(displayList[i]));
+              },
+              onTap: () {
+                _openProductDetail(_mapMagazineDetail(displayList[i]));
+              },
+            ),
           ),
         ),
       ],
     );
-}
+  }
 
-Widget _booksShowcase(BuildContext context, bool isWeb, CartProvider cart) {
+  Widget _booksShowcase(BuildContext context, bool isWeb, CartProvider cart) {
     final access = context.watch<AccessProvider>();
     final displayList = _buildHomeShowcaseList(
       baseItems: books,
@@ -1699,8 +1932,11 @@ Widget _booksShowcase(BuildContext context, bool isWeb, CartProvider cart) {
             if (isWeb) {
               setState(() => _section = HomeSection.books);
             } else {
-              _openFullList(context, "E-kitap",
-                  (ctx) => _bookListGrid(ctx, false, false));
+              _openFullList(
+                context,
+                "E-kitap",
+                (ctx) => _bookListGrid(ctx, false, false),
+              );
             }
           },
         ),
@@ -1717,26 +1953,34 @@ Widget _booksShowcase(BuildContext context, bool isWeb, CartProvider cart) {
                 title: displayList[i]["title"] ?? "",
                 subtitle: displayList[i]["author_rel"]?["name"] ?? "",
                 imageUrl: displayList[i]["cover_url"] ?? "",
-                price: double.tryParse(displayList[i]["price"]?.toString() ?? "0") ?? 0,
+                price:
+                    double.tryParse(
+                      displayList[i]["price"]?.toString() ?? "0",
+                    ) ??
+                    0,
                 quantity: 1,
                 type: CartItemType.book,
                 metadata: {"productId": displayList[i]["id"]},
               );
               final alreadyInCart = cart.contains(item);
-              return _bookCard({
-                "image": displayList[i]["cover_url"],
-                "title": displayList[i]["title"],
-                "author": displayList[i]["author_rel"]?["name"] ?? "-",
-                "price": displayList[i]["price"] != null
-                    ? "₺${double.tryParse(displayList[i]["price"].toString())?.toStringAsFixed(2) ?? ""}"
-                    : "-",
-              }, isWeb,
-                  hideAction: _hasPurchased("book", _toInt(displayList[i]["id"])),
-                  onAdd: alreadyInCart
-                      ? null
-                      : () => _addToCart(context, cart, item), onTap: () {
-                _openProductDetail(_mapBookDetail(displayList[i]));
-              });
+              return _bookCard(
+                {
+                  "image": displayList[i]["cover_url"],
+                  "title": displayList[i]["title"],
+                  "author": displayList[i]["author_rel"]?["name"] ?? "-",
+                  "price": displayList[i]["price"] != null
+                      ? "₺${double.tryParse(displayList[i]["price"].toString())?.toStringAsFixed(2) ?? ""}"
+                      : "-",
+                },
+                isWeb,
+                hideAction: _hasPurchased("book", _toInt(displayList[i]["id"])),
+                onAdd: alreadyInCart
+                    ? null
+                    : () => _addToCart(context, cart, item),
+                onTap: () {
+                  _openProductDetail(_mapBookDetail(displayList[i]));
+                },
+              );
             },
           ),
         ),
@@ -1744,7 +1988,13 @@ Widget _booksShowcase(BuildContext context, bool isWeb, CartProvider cart) {
     );
   }
 
-  Widget _newspaperShowcase(BuildContext context, bool isWeb, CartProvider cart) {
+  Widget _newspaperShowcase(
+    BuildContext context,
+    bool isWeb,
+    CartProvider cart,
+  ) {
+    if (_hideNewspapers) return const SizedBox.shrink();
+    if (newspapers.isEmpty) return const SizedBox.shrink();
     final access = context.watch<AccessProvider>();
     const fallbackImage = "assets/images/gazete.jpg";
     final today = DateTime.now();
@@ -1762,8 +2012,9 @@ Widget _booksShowcase(BuildContext context, bool isWeb, CartProvider cart) {
     }).toList();
 
     final showRead = access.hasAccess("newspaper_subscription");
-    final subscriptionImage =
-        items.isNotEmpty ? (items.first["image"] as String? ?? fallbackImage) : fallbackImage;
+    final subscriptionImage = items.isNotEmpty
+        ? (items.first["image"] as String? ?? fallbackImage)
+        : fallbackImage;
 
     void openList() {
       if (isWeb) {
@@ -1784,7 +2035,10 @@ Widget _booksShowcase(BuildContext context, bool isWeb, CartProvider cart) {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text("E-gazete", style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+            const Text(
+              "E-gazete",
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+            ),
             Row(
               children: [
                 if (!showRead)
@@ -1799,8 +2053,13 @@ Widget _booksShowcase(BuildContext context, bool isWeb, CartProvider cart) {
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.red,
                       foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 10,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
                     ),
                     child: const Text("Abone Ol"),
                   ),
@@ -1809,7 +2068,10 @@ Widget _booksShowcase(BuildContext context, bool isWeb, CartProvider cart) {
                   onPressed: openList,
                   child: const Text(
                     "Tümünü Gör",
-                    style: TextStyle(color: Colors.red, fontWeight: FontWeight.w600),
+                    style: TextStyle(
+                      color: Colors.red,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ],
@@ -1830,7 +2092,9 @@ Widget _booksShowcase(BuildContext context, bool isWeb, CartProvider cart) {
                 compact: true,
                 imageHeight: showRead ? 120 : 135,
                 showRead: showRead,
-                onTap: () => _openProductDetail(_mapNewspaperDetail(items[i]["raw"] as Map<String, dynamic>)),
+                onTap: () => _openProductDetail(
+                  _mapNewspaperDetail(items[i]["raw"] as Map<String, dynamic>),
+                ),
               ),
             ),
           ),
@@ -1897,7 +2161,10 @@ Widget _booksShowcase(BuildContext context, bool isWeb, CartProvider cart) {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text("Ekler", style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+            const Text(
+              "Ekler",
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+            ),
             TextButton(
               onPressed: () {
                 if (isWeb) {
@@ -1906,15 +2173,19 @@ Widget _booksShowcase(BuildContext context, bool isWeb, CartProvider cart) {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => _AttachmentListScreen(
-                        state: this,
-                        cart: cart,
-                      ),
+                      builder: (_) =>
+                          _AttachmentListScreen(state: this, cart: cart),
                     ),
                   );
                 }
               },
-              child: const Text("Tümünü Gör", style: TextStyle(color: Colors.red, fontWeight: FontWeight.w600)),
+              child: const Text(
+                "Tümünü Gör",
+                style: TextStyle(
+                  color: Colors.red,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
           ],
         ),
@@ -1930,7 +2201,9 @@ Widget _booksShowcase(BuildContext context, bool isWeb, CartProvider cart) {
               final price = _parsePrice(ek["fiyat"]);
               final title = (ek["ad"] ?? "").toString();
               final desc = (ek["aciklama"] ?? "").toString();
-              final imageUrl = UploadService.normalizeUrl(ek["photo_url"]?.toString() ?? "");
+              final imageUrl = UploadService.normalizeUrl(
+                ek["photo_url"]?.toString() ?? "",
+              );
               final isFree = price == 0;
               return SizedBox(
                 width: isWeb ? 320 : 260,
@@ -1951,43 +2224,54 @@ Widget _booksShowcase(BuildContext context, bool isWeb, CartProvider cart) {
                         ),
                       ],
                     ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: AspectRatio(
-                            aspectRatio: 4 / 3,
-                            child: safeImage(
-                              imageUrl,
-                              fit: BoxFit.cover,
-                              fallbackIcon: Icons.broken_image,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: AspectRatio(
+                              aspectRatio: 4 / 3,
+                              child: safeImage(
+                                imageUrl,
+                                fit: BoxFit.cover,
+                                fallbackIcon: Icons.broken_image,
+                              ),
                             ),
                           ),
                         ),
-                      ),
                         const SizedBox(height: 10),
                         Text(
                           title.isNotEmpty ? title : "Ek",
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                         const SizedBox(height: 4),
                         Text(
                           desc.isNotEmpty ? desc : "Ek açıklaması",
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(color: Colors.black54, fontSize: 13),
+                          style: const TextStyle(
+                            color: Colors.black54,
+                            fontSize: 13,
+                          ),
                         ),
                         const Spacer(),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Text(
-                              isFree ? "Ücretsiz" : "₺${price.toStringAsFixed(2)}",
-                              style: const TextStyle(color: Colors.red, fontWeight: FontWeight.w700),
+                              isFree
+                                  ? "Ücretsiz"
+                                  : "₺${price.toStringAsFixed(2)}",
+                              style: const TextStyle(
+                                color: Colors.red,
+                                fontWeight: FontWeight.w700,
+                              ),
                             ),
                             OutlinedButton(
                               onPressed: () => _openEkDetail(ek),
@@ -2011,15 +2295,17 @@ Widget _booksShowcase(BuildContext context, bool isWeb, CartProvider cart) {
     );
   }
 
-Widget _magazineListGrid(BuildContext context, bool isWeb) {
-  final cart = Provider.of<CartProvider>(context, listen: false);
-  final access = Provider.of<AccessProvider>(context, listen: false);
-  final crossAxisCount = isWeb ? 4 : (isTabletLayout(context) ? 2 : 1);
+  Widget _magazineListGrid(BuildContext context, bool isWeb) {
+    if (_hideMagazines) return const SizedBox.shrink();
+    final cart = Provider.of<CartProvider>(context, listen: false);
+    final access = Provider.of<AccessProvider>(context, listen: false);
+    final crossAxisCount = isWeb ? 4 : (isTabletLayout(context) ? 2 : 1);
     return LayoutBuilder(
       builder: (context, constraints) {
         final itemWidth = constraints.maxWidth / crossAxisCount;
-        final cardHeight =
-            isWeb ? 290.0 : (itemWidth * 1.0).clamp(0, 320).toDouble();
+        final cardHeight = isWeb
+            ? 290.0
+            : (itemWidth * 1.0).clamp(0, 320).toDouble();
         return GridView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
@@ -2032,41 +2318,47 @@ Widget _magazineListGrid(BuildContext context, bool isWeb) {
           ),
           itemCount: magazines.length,
           itemBuilder: (_, i) {
-            final hideAction = _hasPurchased("magazine", _toInt(magazines[i]["id"]));
-            return _magazineCard({
-              "image": magazines[i]["cover_image_url"],
-              "title": magazines[i]["name"],
-              "desc": magazines[i]["description"] ?? magazines[i]["category"],
-              "price": "",
-            },
-                hideAction: hideAction,
-                onAdd: hideAction
-                    ? null
-                    : () {
-                        _openProductDetail(_mapMagazineDetail(magazines[i]));
-                      }, onTap: () {
-              _openProductDetail(_mapMagazineDetail(magazines[i]));
-            });
+            final hideAction = _hasPurchased(
+              "magazine",
+              _toInt(magazines[i]["id"]),
+            );
+            return _magazineCard(
+              {
+                "image": magazines[i]["cover_image_url"],
+                "title": magazines[i]["name"],
+                "desc": magazines[i]["description"] ?? magazines[i]["category"],
+                "price": "",
+              },
+              hideAction: hideAction,
+              onAdd: hideAction
+                  ? null
+                  : () {
+                      _openProductDetail(_mapMagazineDetail(magazines[i]));
+                    },
+              onTap: () {
+                _openProductDetail(_mapMagazineDetail(magazines[i]));
+              },
+            );
           },
         );
       },
     );
   }
 
-Widget _bookListGrid(BuildContext context, bool isWeb, bool isTablet) {
-  final cart = Provider.of<CartProvider>(context, listen: false);
-  final access = context.watch<AccessProvider>();
-  final crossAxisCount = isWeb ? 4 : (isTablet ? 3 : 2);
-  return GridView.builder(
-    shrinkWrap: true,
-    physics: const NeverScrollableScrollPhysics(),
-    padding: EdgeInsets.zero,
-    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-      crossAxisCount: crossAxisCount,
-      crossAxisSpacing: 14,
-      mainAxisSpacing: 14,
-      mainAxisExtent: isWeb ? 270 : 260,
-    ),
+  Widget _bookListGrid(BuildContext context, bool isWeb, bool isTablet) {
+    final cart = Provider.of<CartProvider>(context, listen: false);
+    final access = context.watch<AccessProvider>();
+    final crossAxisCount = isWeb ? 4 : (isTablet ? 3 : 2);
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      padding: EdgeInsets.zero,
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: crossAxisCount,
+        crossAxisSpacing: 14,
+        mainAxisSpacing: 14,
+        mainAxisExtent: isWeb ? 270 : 260,
+      ),
       itemCount: books.length,
       itemBuilder: (_, i) {
         final item = CartItem(
@@ -2080,26 +2372,37 @@ Widget _bookListGrid(BuildContext context, bool isWeb, bool isTablet) {
           metadata: {"productId": books[i]["id"]},
         );
         final alreadyInCart = cart.contains(item);
-        return _bookCard({
-          "image": books[i]["cover_url"],
-          "title": books[i]["title"],
-          "author": books[i]["author_rel"]?["name"] ?? "-",
-          "price": books[i]["price"] != null
-              ? "₺${double.tryParse(books[i]["price"].toString())?.toStringAsFixed(2) ?? ""}"
-              : "-",
-        }, isWeb,
-            hideAction: _hasPurchased("book", _toInt(books[i]["id"])),
-            onAdd: alreadyInCart ? null : () => _addToCart(context, cart, item), onTap: () {
-          _openProductDetail(_mapBookDetail(books[i]));
-        });
+        return _bookCard(
+          {
+            "image": books[i]["cover_url"],
+            "title": books[i]["title"],
+            "author": books[i]["author_rel"]?["name"] ?? "-",
+            "price": books[i]["price"] != null
+                ? "₺${double.tryParse(books[i]["price"].toString())?.toStringAsFixed(2) ?? ""}"
+                : "-",
+          },
+          isWeb,
+          hideAction: _hasPurchased("book", _toInt(books[i]["id"])),
+          onAdd: alreadyInCart ? null : () => _addToCart(context, cart, item),
+          onTap: () {
+            _openProductDetail(_mapBookDetail(books[i]));
+          },
+        );
       },
     );
   }
 
-  Widget _newspaperListGrid(BuildContext context, bool isWeb, List<Map<String, dynamic>> items) {
+  Widget _newspaperListGrid(
+    BuildContext context,
+    bool isWeb,
+    List<Map<String, dynamic>> items,
+  ) {
+    if (_hideNewspapers) return const SizedBox.shrink();
     final crossAxisCount = isWeb ? 3 : 2;
-    final hasSub = Provider.of<AccessProvider>(context, listen: false)
-        .hasAccess("newspaper_subscription");
+    final hasSub = Provider.of<AccessProvider>(
+      context,
+      listen: false,
+    ).hasAccess("newspaper_subscription");
     return LayoutBuilder(
       builder: (context, constraints) {
         return GridView.builder(
@@ -2118,15 +2421,19 @@ Widget _bookListGrid(BuildContext context, bool isWeb, bool isTablet) {
             final dt = DateTime.tryParse(dateStr);
             final label = dt != null ? _formatDateTr(dt) : dateStr;
             final title = label.isNotEmpty ? label : "Gazete";
-            return _newspaperPreviewCard({
-              "image": items[i]["image_url"],
-              "title": title,
-              "date": "Yeni Asya Gazetesi",
-            },
-                compact: true,
-                imageHeight: isWeb ? (hasSub ? 150 : 140) : (hasSub ? 130 : 120),
-                showRead: context.read<AccessProvider>().hasAccess("newspaper_subscription"),
-                onTap: () => _openProductDetail(_mapNewspaperDetail(items[i])));
+            return _newspaperPreviewCard(
+              {
+                "image": items[i]["image_url"],
+                "title": title,
+                "date": "Yeni Asya Gazetesi",
+              },
+              compact: true,
+              imageHeight: isWeb ? (hasSub ? 150 : 140) : (hasSub ? 130 : 120),
+              showRead: context.read<AccessProvider>().hasAccess(
+                "newspaper_subscription",
+              ),
+              onTap: () => _openProductDetail(_mapNewspaperDetail(items[i])),
+            );
           },
         );
       },
@@ -2181,10 +2488,16 @@ Widget _sectionHeader(String title, {VoidCallback? onViewAll}) {
   return Row(
     mainAxisAlignment: MainAxisAlignment.spaceBetween,
     children: [
-      Text(title, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+      Text(
+        title,
+        style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+      ),
       TextButton(
         onPressed: onViewAll,
-        child: const Text("Tümünü Gör", style: TextStyle(color: Colors.red, fontWeight: FontWeight.w600)),
+        child: const Text(
+          "Tümünü Gör",
+          style: TextStyle(color: Colors.red, fontWeight: FontWeight.w600),
+        ),
       ),
     ],
   );
@@ -2216,7 +2529,12 @@ Widget _priceWidgetForItem(
   return Text(fallback, style: campaignStyle);
 }
 
-Widget _magazineCard(Map<String, dynamic> item, {VoidCallback? onAdd, VoidCallback? onTap, bool hideAction = false}) {
+Widget _magazineCard(
+  Map<String, dynamic> item, {
+  VoidCallback? onAdd,
+  VoidCallback? onTap,
+  bool hideAction = false,
+}) {
   return InkWell(
     onTap: onTap,
     borderRadius: BorderRadius.circular(14),
@@ -2245,7 +2563,13 @@ Widget _magazineCard(Map<String, dynamic> item, {VoidCallback? onAdd, VoidCallba
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(item["title"] ?? "", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                Text(
+                  item["title"] ?? "",
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
                 const SizedBox(height: 4),
                 Text(
                   item["desc"] ?? "",
@@ -2259,8 +2583,16 @@ Widget _magazineCard(Map<String, dynamic> item, {VoidCallback? onAdd, VoidCallba
                   children: [
                     _priceWidgetForItem(
                       item,
-                      saleStyle: const TextStyle(color: Colors.black54, fontWeight: FontWeight.w600, fontSize: 12),
-                      campaignStyle: const TextStyle(color: Colors.red, fontWeight: FontWeight.w700, fontSize: 15),
+                      saleStyle: const TextStyle(
+                        color: Colors.black54,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 12,
+                      ),
+                      campaignStyle: const TextStyle(
+                        color: Colors.red,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 15,
+                      ),
                     ),
                     if (!hideAction && onAdd != null)
                       ElevatedButton(
@@ -2268,8 +2600,13 @@ Widget _magazineCard(Map<String, dynamic> item, {VoidCallback? onAdd, VoidCallba
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.red,
                           foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 8,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
                         ),
                         child: const Text("Abone Ol"),
                       ),
@@ -2284,8 +2621,13 @@ Widget _magazineCard(Map<String, dynamic> item, {VoidCallback? onAdd, VoidCallba
   );
 }
 
-Widget _bookCard(Map<String, dynamic> item, bool isWeb,
-    {VoidCallback? onAdd, VoidCallback? onTap, bool hideAction = false}) {
+Widget _bookCard(
+  Map<String, dynamic> item,
+  bool isWeb, {
+  VoidCallback? onAdd,
+  VoidCallback? onTap,
+  bool hideAction = false,
+}) {
   return InkWell(
     onTap: onTap,
     borderRadius: BorderRadius.circular(14),
@@ -2320,7 +2662,10 @@ Widget _bookCard(Map<String, dynamic> item, bool isWeb,
                     item["title"] ?? "",
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   const SizedBox(height: 4),
                   Text(
@@ -2335,8 +2680,15 @@ Widget _bookCard(Map<String, dynamic> item, bool isWeb,
                     children: [
                       _priceWidgetForItem(
                         item,
-                        saleStyle: const TextStyle(color: Colors.black54, fontWeight: FontWeight.w600, fontSize: 11),
-                        campaignStyle: const TextStyle(color: Colors.red, fontWeight: FontWeight.w700),
+                        saleStyle: const TextStyle(
+                          color: Colors.black54,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 11,
+                        ),
+                        campaignStyle: const TextStyle(
+                          color: Colors.red,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                       if (!hideAction)
                         Container(
@@ -2345,9 +2697,16 @@ Widget _bookCard(Map<String, dynamic> item, bool isWeb,
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: IconButton(
-                            icon: const Icon(Icons.add, color: Colors.white, size: 16),
+                            icon: const Icon(
+                              Icons.add,
+                              color: Colors.white,
+                              size: 16,
+                            ),
                             padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                            constraints: const BoxConstraints(
+                              minWidth: 32,
+                              minHeight: 32,
+                            ),
                             onPressed: onAdd,
                           ),
                         ),
@@ -2466,7 +2825,10 @@ Widget _newspaperPreviewCard(
                         title,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     if (date.isNotEmpty) ...[
                       const SizedBox(height: 3),
@@ -2474,7 +2836,10 @@ Widget _newspaperPreviewCard(
                         date,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(color: Colors.black54, fontSize: 10),
+                        style: const TextStyle(
+                          color: Colors.black54,
+                          fontSize: 10,
+                        ),
                       ),
                     ],
                     if (showRead) ...[
@@ -2487,10 +2852,15 @@ Widget _newspaperPreviewCard(
                             backgroundColor: Colors.blue,
                             foregroundColor: Colors.white,
                             padding: const EdgeInsets.symmetric(horizontal: 10),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
                             elevation: 0,
                           ),
-                          child: const Text("Oku", style: TextStyle(fontSize: 12)),
+                          child: const Text(
+                            "Oku",
+                            style: TextStyle(fontSize: 12),
+                          ),
                         ),
                       ),
                     ],
@@ -2510,7 +2880,10 @@ Widget _newspaperPreviewCard(
                         title,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     if (date.isNotEmpty) ...[
                       const SizedBox(height: 4),
@@ -2518,7 +2891,10 @@ Widget _newspaperPreviewCard(
                         date,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(color: Colors.black54, fontSize: 12),
+                        style: const TextStyle(
+                          color: Colors.black54,
+                          fontSize: 12,
+                        ),
                       ),
                     ],
                     const Spacer(),
@@ -2531,7 +2907,9 @@ Widget _newspaperPreviewCard(
                             backgroundColor: Colors.blue,
                             foregroundColor: Colors.white,
                             padding: const EdgeInsets.symmetric(horizontal: 12),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
                             elevation: 0,
                           ),
                           child: const Text("Oku"),
@@ -2572,7 +2950,7 @@ String _formatDateTr(DateTime date) {
     "Eylül",
     "Ekim",
     "Kasım",
-    "Aralık"
+    "Aralık",
   ];
   final day = date.day.toString().padLeft(2, '0');
   final month = months[date.month - 1];
@@ -2613,9 +2991,9 @@ void _addToCart(BuildContext context, CartProvider cart, CartItem item) {
   if (added) {
     showAddedToCartDialog(context);
   } else {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Bu ürün zaten sepette.")),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text("Bu ürün zaten sepette.")));
   }
 }
 
@@ -2636,9 +3014,13 @@ Widget _libraryView(BuildContext context, _HomeResponsiveScreenState state) {
   }
 
   final orderItems = state.libraryOrders
-      .expand<Map<String, dynamic>>((o) => List<Map<String, dynamic>>.from(o["order_items"] ?? []))
+      .expand<Map<String, dynamic>>(
+        (o) => List<Map<String, dynamic>>.from(o["order_items"] ?? []),
+      )
       .toList();
-  final eks = orderItems.where((i) => (i["product_type"] ?? "") == "ek").toList();
+  final eks = orderItems
+      .where((i) => (i["product_type"] ?? "") == "ek")
+      .toList();
 
   return RefreshIndicator(
     onRefresh: () async {
@@ -2648,9 +3030,14 @@ Widget _libraryView(BuildContext context, _HomeResponsiveScreenState state) {
     child: ListView(
       padding: const EdgeInsets.symmetric(vertical: 16),
       children: [
-        const Text(
-          "Abonelikler / İçerikler",
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Text(
+            state._storeFlagEnabled
+                ? "İçerikler"
+                : "Aboneliklerim / İçeriklerim",
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+          ),
         ),
         const SizedBox(height: 12),
         _librarySubscriptionCard(context, state),
@@ -2671,58 +3058,77 @@ Widget _librarySubscriptionCard(
   BuildContext context,
   _HomeResponsiveScreenState state,
 ) {
+  final showMag = !state._hideMagazines;
+  final showNews = !state._hideNewspapers;
+  final tiles = <Widget>[
+    _libraryMenuTile(
+      Icons.menu_book_outlined,
+      "Kitaplar",
+      onTap: () => state._openAccessSheet(context, "book", "Kitaplar"),
+    ),
+    const Divider(height: 1, thickness: 1),
+    _libraryMenuTile(
+      Icons.file_present,
+      "Ekler",
+      onTap: () => state._openAccessSheet(context, "ek", "Ekler"),
+    ),
+  ];
+  if (showMag) {
+    tiles.addAll([
+      const Divider(height: 1, thickness: 1),
+      _libraryMenuTile(
+        Icons.library_books,
+        "Dergi Abonelikleri",
+        onTap: () =>
+            state._openAccessSheet(context, "magazine", "Dergi Abonelikleri"),
+      ),
+      const Divider(height: 1, thickness: 1),
+      _libraryMenuTile(
+        Icons.history_edu,
+        "Dergi Sayıları",
+        onTap: () =>
+            state._openAccessSheet(context, "magazine_issue", "Dergi Sayıları"),
+      ),
+    ]);
+  }
+  if (showNews) {
+    tiles.addAll([
+      const Divider(height: 1, thickness: 1),
+      _libraryMenuTile(
+        Icons.newspaper,
+        "Gazete Aboneliği",
+        onTap: () => state._openAccessSheet(
+          context,
+          "newspaper_subscription",
+          "Gazete Aboneliği",
+        ),
+      ),
+    ]);
+  }
+
   return Container(
     padding: const EdgeInsets.all(16),
     decoration: BoxDecoration(
       color: Colors.white,
       borderRadius: BorderRadius.circular(14),
       boxShadow: [
-        BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8, offset: const Offset(0, 4)),
-      ],
-    ),
-    child: Column(
-      children: [
-        _libraryMenuTile(
-          Icons.menu_book_outlined,
-          "Kitaplar",
-          onTap: () => state._openAccessSheet(context, "book", "Kitaplar"),
-        ),
-        const Divider(height: 1, thickness: 1),
-        _libraryMenuTile(
-          Icons.library_books,
-          "Dergi Abonelikleri",
-          onTap: () => state._openAccessSheet(context, "magazine", "Dergi Abonelikleri"),
-        ),
-        const Divider(height: 1, thickness: 1),
-        _libraryMenuTile(
-          Icons.history_edu,
-          "Dergi Sayıları",
-          onTap: () => state._openAccessSheet(context, "magazine_issue", "Dergi Sayıları"),
-        ),
-        const Divider(height: 1, thickness: 1),
-        _libraryMenuTile(
-          Icons.newspaper,
-          "Gazete Aboneliği",
-          onTap: () => state._openAccessSheet(context, "newspaper_subscription", "Gazete Aboneliği"),
+        BoxShadow(
+          color: Colors.black.withOpacity(0.05),
+          blurRadius: 8,
+          offset: const Offset(0, 4),
         ),
       ],
     ),
+    child: Column(children: tiles),
   );
 }
 
-Widget _libraryMenuTile(
-  IconData icon,
-  String text, {
-  VoidCallback? onTap,
-}) {
+Widget _libraryMenuTile(IconData icon, String text, {VoidCallback? onTap}) {
   return ListTile(
     leading: Icon(icon, color: Colors.black54),
     title: Text(
       text,
-      style: const TextStyle(
-        fontSize: 15,
-        fontWeight: FontWeight.w500,
-      ),
+      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
     ),
     trailing: const Icon(Icons.chevron_right),
     onTap: onTap ?? () {},
@@ -2751,7 +3157,11 @@ Widget _libraryOrderCard(BuildContext context, Map<String, dynamic> order) {
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8, offset: const Offset(0, 4)),
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
         ],
       ),
       child: Column(
@@ -2760,28 +3170,53 @@ Widget _libraryOrderCard(BuildContext context, Map<String, dynamic> order) {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text("Sipariş #$id", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              Text(
+                "Sipariş #$id",
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.blue.shade50,
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Text(
                   _statusLabel(status),
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.blue),
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.blue,
+                  ),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 6),
-          Text(date, style: const TextStyle(color: Colors.black54, fontSize: 13)),
+          Text(
+            date,
+            style: const TextStyle(color: Colors.black54, fontSize: 13),
+          ),
           const SizedBox(height: 8),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text("Toplam", style: TextStyle(fontWeight: FontWeight.w600)),
-              Text("₺$total", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
+              const Text(
+                "Toplam",
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
+              Text(
+                "₺$total",
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.red,
+                ),
+              ),
             ],
           ),
         ],
@@ -2790,20 +3225,32 @@ Widget _libraryOrderCard(BuildContext context, Map<String, dynamic> order) {
   );
 }
 
-Widget _librarySection(BuildContext context, _HomeResponsiveScreenState state, String title, List<Map<String, dynamic>> items) {
+Widget _librarySection(
+  BuildContext context,
+  _HomeResponsiveScreenState state,
+  String title,
+  List<Map<String, dynamic>> items,
+) {
   return Container(
     padding: const EdgeInsets.all(16),
     decoration: BoxDecoration(
       color: Colors.white,
       borderRadius: BorderRadius.circular(14),
       boxShadow: [
-        BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8, offset: const Offset(0, 4)),
+        BoxShadow(
+          color: Colors.black.withOpacity(0.05),
+          blurRadius: 8,
+          offset: const Offset(0, 4),
+        ),
       ],
     ),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+        Text(
+          title,
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+        ),
         const SizedBox(height: 8),
         if (items.isEmpty)
           const Text("Bulunamadı.", style: TextStyle(color: Colors.black54))
@@ -2814,9 +3261,15 @@ Widget _librarySection(BuildContext context, _HomeResponsiveScreenState state, S
               leading: CircleAvatar(
                 backgroundColor: Colors.grey.shade100,
                 foregroundColor: Colors.red.shade400,
-                child: Icon(state._iconForType((i["product_type"] ?? "").toString())),
+                child: Icon(
+                  state._iconForType((i["product_type"] ?? "").toString()),
+                ),
               ),
-              title: Text(i["title"] ?? "-", maxLines: 2, overflow: TextOverflow.ellipsis),
+              title: Text(
+                i["title"] ?? "-",
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
               trailing: const Icon(Icons.chevron_right),
               onTap: () {
                 state._openFromOrderItem(i);
@@ -2828,11 +3281,18 @@ Widget _librarySection(BuildContext context, _HomeResponsiveScreenState state, S
   );
 }
 
-Widget _libraryEkGallery(BuildContext context, _HomeResponsiveScreenState state, List<Map<String, dynamic>> items) {
+Widget _libraryEkGallery(
+  BuildContext context,
+  _HomeResponsiveScreenState state,
+  List<Map<String, dynamic>> items,
+) {
   return Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      const Text("Ekler", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+      const Text(
+        "Ekler",
+        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+      ),
       const SizedBox(height: 12),
       SizedBox(
         height: 210,
@@ -2842,21 +3302,48 @@ Widget _libraryEkGallery(BuildContext context, _HomeResponsiveScreenState state,
           separatorBuilder: (_, __) => const SizedBox(width: 14),
           itemBuilder: (context, index) {
             final item = items[index];
-            final metadata = Map<String, dynamic>.from(item["metadata"] as Map<String, dynamic>? ?? {});
-            final name = (metadata["title"] ?? metadata["name"] ?? metadata["ad"] ?? item["title"] ?? item["ad"])
+            final metadata = Map<String, dynamic>.from(
+              item["metadata"] as Map<String, dynamic>? ?? {},
+            );
+            final name =
+                (metadata["title"] ??
+                        metadata["name"] ??
+                        metadata["ad"] ??
+                        item["title"] ??
+                        item["ad"])
+                    .toString();
+            final desc = (metadata["description"] ?? metadata["aciklama"] ?? "")
                 .toString();
-            final desc = (metadata["description"] ?? metadata["aciklama"] ?? "").toString();
             final cover = UploadService.normalizeUrl(
-              (metadata["photo_url"] ?? metadata["photoUrl"] ?? item["photo_url"] ?? item["image_url"] ?? "")
+              (metadata["photo_url"] ??
+                      metadata["photoUrl"] ??
+                      item["photo_url"] ??
+                      item["image_url"] ??
+                      "")
                   .toString(),
             );
-            final priceVal = double.tryParse(
-                  (metadata["price"] ?? metadata["fiyat"] ?? item["price"] ?? item["unit_price"] ?? 0).toString(),
+            final priceVal =
+                double.tryParse(
+                  (metadata["price"] ??
+                          metadata["fiyat"] ??
+                          item["price"] ??
+                          item["unit_price"] ??
+                          0)
+                      .toString(),
                 ) ??
                 0;
-            final pdfUrl = (metadata["pdf_url"] ?? metadata["file_url"] ?? item["pdf_url"] ?? "").toString();
+            final pdfUrl =
+                (metadata["pdf_url"] ??
+                        metadata["file_url"] ??
+                        item["pdf_url"] ??
+                        "")
+                    .toString();
             final ekData = {
-              "id": metadata["productId"] ?? metadata["product_id"] ?? item["product_id"] ?? item["id"],
+              "id":
+                  metadata["productId"] ??
+                  metadata["product_id"] ??
+                  item["product_id"] ??
+                  item["id"],
               "ad": name,
               "aciklama": desc,
               "fiyat": priceVal,
@@ -2902,28 +3389,41 @@ Widget _libraryEkGallery(BuildContext context, _HomeResponsiveScreenState state,
                       name,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       desc.isNotEmpty ? desc : "Ek içerik",
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(color: Colors.black54, fontSize: 13),
+                      style: const TextStyle(
+                        color: Colors.black54,
+                        fontSize: 13,
+                      ),
                     ),
                     const Spacer(),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text(
-                          priceVal == 0 ? "Ücretsiz" : "₺${priceVal.toStringAsFixed(2)}",
-                          style: const TextStyle(color: Colors.red, fontWeight: FontWeight.w700),
+                          priceVal == 0
+                              ? "Ücretsiz"
+                              : "₺${priceVal.toStringAsFixed(2)}",
+                          style: const TextStyle(
+                            color: Colors.red,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                         ElevatedButton(
                           onPressed: () => state._openEkDetail(ekData),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.blue,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
                           ),
                           child: const Text("Görüntüle"),
                         ),
@@ -2974,14 +3474,22 @@ Widget _attachmentsList(
       final isFree = price == 0;
       final ekId = state._toInt(ek["id"]);
       final hasAccess = ekId != null && access.hasAccess("ek", itemId: ekId);
-      final imageUrl = UploadService.normalizeUrl(ek["photo_url"]?.toString() ?? "");
+      final imageUrl = UploadService.normalizeUrl(
+        ek["photo_url"]?.toString() ?? "",
+      );
 
       return Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(12),
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8, offset: const Offset(0, 4))],
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 8,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
         child: Row(
           children: [
@@ -3000,10 +3508,18 @@ Widget _attachmentsList(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(ek["ad"]?.toString() ?? "-", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+                  Text(
+                    ek["ad"]?.toString() ?? "-",
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                   const SizedBox(height: 4),
                   Text(
-                    (ek["aciklama"] ?? "").toString().isEmpty ? "Açıklama yok" : (ek["aciklama"] ?? "").toString(),
+                    (ek["aciklama"] ?? "").toString().isEmpty
+                        ? "Açıklama yok"
+                        : (ek["aciklama"] ?? "").toString(),
                     maxLines: 3,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(color: Colors.black87),
@@ -3011,7 +3527,10 @@ Widget _attachmentsList(
                   const Spacer(),
                   Row(
                     children: [
-                      _statusChip(isFree ? "Ücretsiz" : "Ücretli", isFree ? Colors.green : Colors.red),
+                      _statusChip(
+                        isFree ? "Ücretsiz" : "Ücretli",
+                        isFree ? Colors.green : Colors.red,
+                      ),
                       if (!isFree) ...[
                         const SizedBox(width: 10),
                         Text(
@@ -3040,17 +3559,12 @@ class _AttachmentListScreen extends StatelessWidget {
   final _HomeResponsiveScreenState state;
   final CartProvider cart;
 
-  const _AttachmentListScreen({
-    required this.state,
-    required this.cart,
-  });
+  const _AttachmentListScreen({required this.state, required this.cart});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Ekler"),
-      ),
+      appBar: AppBar(title: const Text("Ekler")),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: _attachmentsList(context, state, false, cart),
@@ -3118,7 +3632,11 @@ class _NewspaperListScreenState extends State<_NewspaperListScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              widget.homeState._newspaperListGrid(context, false, widget.homeState.newspapers),
+              widget.homeState._newspaperListGrid(
+                context,
+                false,
+                widget.homeState.newspapers,
+              ),
             ],
           ),
         ),
@@ -3177,8 +3695,14 @@ void _openFullList(
 Widget _statusChip(String label, Color color) {
   return Container(
     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-    decoration: BoxDecoration(color: color.withOpacity(0.12), borderRadius: BorderRadius.circular(12)),
-    child: Text(label, style: TextStyle(color: color, fontWeight: FontWeight.w600)),
+    decoration: BoxDecoration(
+      color: color.withOpacity(0.12),
+      borderRadius: BorderRadius.circular(12),
+    ),
+    child: Text(
+      label,
+      style: TextStyle(color: color, fontWeight: FontWeight.w600),
+    ),
   );
 }
 
@@ -3188,10 +3712,5 @@ class _AccessItem {
   final IconData? icon;
   final VoidCallback? onTap;
 
-  _AccessItem({
-    required this.title,
-    this.subtitle,
-    this.icon,
-    this.onTap,
-  });
+  _AccessItem({required this.title, this.subtitle, this.icon, this.onTap});
 }

@@ -9,6 +9,7 @@ import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import 'logging_service.dart';
 import 'upload_service.dart';
 
 /// Basit bir şifreli dosya cache yöneticisi.
@@ -17,6 +18,7 @@ import 'upload_service.dart';
 class SecureFileService {
   SecureFileService._internal();
   static final SecureFileService instance = SecureFileService._internal();
+  final LoggingService _logger = LoggingService();
 
   static const _keyStorage = FlutterSecureStorage();
   static const _keyName = "secure_file_aes_key";
@@ -37,12 +39,16 @@ class SecureFileService {
     final file = File(p.join(dir.path, filename));
 
     if (await file.exists()) {
+      var cacheValid = false;
       try {
         final encrypted = await file.readAsBytes();
         final decrypted = await _decrypt(encrypted);
-        if (decrypted.isNotEmpty) return decrypted;
+        cacheValid = _looksLikePdf(decrypted);
+        if (cacheValid) return decrypted;
       } catch (_) {
         // bozuk dosya, silip tekrar indir
+      }
+      if (!cacheValid) {
         try {
           await file.delete();
         } catch (_) {}
@@ -50,6 +56,21 @@ class SecureFileService {
     }
 
     final raw = await _downloadRaw(normalized, isPrivate: isPrivate);
+    if (!_looksLikePdf(raw)) {
+      await _logger.logError(
+        service: "SecureFileService",
+        operation: "getPdfBytes",
+        message: "Downloaded content is not a PDF",
+        payload: {
+          "url": normalized,
+          "isPrivate": isPrivate,
+          "bytes": raw.length,
+          "head": _previewBytes(raw),
+          "platform": defaultTargetPlatform.toString(),
+        },
+      );
+      throw Exception("PDF içeriği alınamadı.");
+    }
     final encrypted = await _encrypt(raw);
     await file.writeAsBytes(encrypted, flush: true);
     return raw;
@@ -58,7 +79,9 @@ class SecureFileService {
   Future<Uint8List> _downloadRaw(String url, {required bool isPrivate}) async {
     final normalized = UploadService.normalizeUrl(url);
     if (!isPrivate) {
-      final resp = await http.get(Uri.parse(normalized)).timeout(const Duration(seconds: 20));
+      final resp = await http
+          .get(Uri.parse(normalized), headers: {"accept": "application/pdf"})
+          .timeout(const Duration(seconds: 20));
       if (resp.statusCode != 200 || resp.bodyBytes.isEmpty) {
         throw Exception("PDF alınamadı (${resp.statusCode})");
       }
@@ -73,21 +96,99 @@ class SecureFileService {
 
     final uri = Uri.parse(UploadService.normalizeUrl("/private/view"));
     final payload = {"path": path};
-    final resp = await http
-        .post(
-          uri,
-          headers: {
-            "content-type": "application/json",
-            "x-api-key": UploadService.privateAuthToken,
-          },
-          body: jsonEncode(payload),
-        )
-        .timeout(const Duration(seconds: 20));
+    http.Response resp;
+    try {
+      resp = await http
+          .post(
+            uri,
+            headers: {
+              "content-type": "application/json",
+              "accept": "application/pdf",
+              "x-api-key": UploadService.privateAuthToken,
+            },
+            body: jsonEncode(payload),
+          )
+          .timeout(const Duration(seconds: 20));
+    } catch (e, s) {
+      await _logger.logError(
+        service: "SecureFileService",
+        operation: "privateViewPost",
+        message: e.toString(),
+        stackTrace: s.toString(),
+        payload: {
+          "url": normalized,
+          "path": path,
+          "platform": defaultTargetPlatform.toString(),
+        },
+      );
+      rethrow;
+    }
 
     if (resp.statusCode != 200 || resp.bodyBytes.isEmpty) {
-      throw Exception("Görünüm linki alınamadı (${resp.statusCode})");
+      await _logger.logError(
+        service: "SecureFileService",
+        operation: "privateViewPost",
+        message: "HTTP ${resp.statusCode}",
+        payload: {
+          "url": normalized,
+          "path": path,
+          "status": resp.statusCode,
+          "contentType": resp.headers["content-type"],
+          "bytes": resp.bodyBytes.length,
+          "head": _previewBytes(resp.bodyBytes),
+          "platform": defaultTargetPlatform.toString(),
+        },
+      );
+      return _downloadViaViewToken(path);
     }
-    return resp.bodyBytes;
+
+    if (_looksLikePdf(resp.bodyBytes)) {
+      return resp.bodyBytes;
+    }
+
+    await _logger.logError(
+      service: "SecureFileService",
+      operation: "privateViewPost",
+      message: "Non-PDF response, falling back to token flow",
+      payload: {
+        "url": normalized,
+        "path": path,
+        "status": resp.statusCode,
+        "contentType": resp.headers["content-type"],
+        "bytes": resp.bodyBytes.length,
+        "head": _previewBytes(resp.bodyBytes),
+        "platform": defaultTargetPlatform.toString(),
+      },
+    );
+    return _downloadViaViewToken(path);
+  }
+
+  bool _looksLikePdf(Uint8List bytes) {
+    if (bytes.isEmpty) return false;
+    final maxScan = min(bytes.length, 1024);
+    for (var i = 0; i < maxScan - 4; i++) {
+      final b = bytes[i];
+      if (b == 0x25 /* % */ &&
+          bytes[i + 1] == 0x50 /* P */ &&
+          bytes[i + 2] == 0x44 /* D */ &&
+          bytes[i + 3] == 0x46 /* F */ &&
+          bytes[i + 4] == 0x2D /* - */) {
+        return true;
+      }
+      if (b > 0x20) break;
+    }
+    return false;
+  }
+
+  String _previewBytes(Uint8List bytes) {
+    if (bytes.isEmpty) return "";
+    final take = min(bytes.length, 200);
+    final head = bytes.sublist(0, take);
+    try {
+      return utf8.decode(head, allowMalformed: true);
+    } catch (_) {
+      return base64Encode(head);
+    }
   }
 
   Future<Uint8List> _downloadViaViewToken(String path) async {
@@ -151,6 +252,23 @@ class SecureFileService {
 
     if (resp.statusCode != 200 || resp.bodyBytes.isEmpty) {
       throw Exception("PDF alınamadı (${resp.statusCode})");
+    }
+
+    if (!_looksLikePdf(resp.bodyBytes)) {
+      await _logger.logError(
+        service: "SecureFileService",
+        operation: "fetchPdfWithToken",
+        message: "Non-PDF response",
+        payload: {
+          "secureUrlHost": Uri.tryParse(secureUrl)?.host,
+          "status": resp.statusCode,
+          "contentType": resp.headers["content-type"],
+          "bytes": resp.bodyBytes.length,
+          "head": _previewBytes(resp.bodyBytes),
+          "platform": defaultTargetPlatform.toString(),
+        },
+      );
+      throw Exception("PDF içeriği alınamadı.");
     }
 
     return resp.bodyBytes;

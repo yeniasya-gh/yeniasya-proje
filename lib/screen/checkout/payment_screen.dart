@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:http/http.dart' as http;
+import 'package:flutter/services.dart';
 import '../../services/order_service.dart';
 import '../../services/error/error_manager.dart';
 import '../../services/cart/cart_provider.dart';
@@ -18,6 +20,7 @@ import '../../services/address_service.dart';
 import '../../services/payment_service.dart';
 import 'payment_webview_screen.dart';
 import '../../config/payment_config.dart';
+import '../../helpers/payment_web_helper.dart';
 
 class PaymentScreen extends StatefulWidget {
   final int deliveryAddressId;
@@ -60,6 +63,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
+    FocusScope.of(context).unfocus();
     final cart = context.read<CartProvider>();
     final payableTotal = cart.totalAfterDiscount;
     final promo = cart.appliedPromo;
@@ -130,17 +134,25 @@ class _PaymentScreenState extends State<PaymentScreen> {
       // ignore: avoid_print
       print("🟦 PaymentScreen.submit -> open webview");
 
-      final result = await Navigator.push<PaymentResult>(
-        context,
-        MaterialPageRoute(
-          builder: (_) => PaymentWebViewScreen(
-            payload: redirectPayload,
-            redirectUri: _paymentService.redirectUri(),
-            returnUrl: PaymentConfig.returnUrl,
-            orderId: orderId,
+      PaymentResult? result;
+
+      if (kIsWeb) {
+        // Web: POST to redirect endpoint and open popup for 3D payment
+        result = await _handleWebPayment(redirectPayload, orderId);
+      } else {
+        // iOS/Android: Use WebView screen
+        result = await Navigator.push<PaymentResult>(
+          context,
+          MaterialPageRoute(
+            builder: (_) => PaymentWebViewScreen(
+              payload: redirectPayload,
+              redirectUri: _paymentService.redirectUri(),
+              returnUrl: PaymentConfig.returnUrl,
+              orderId: orderId,
+            ),
           ),
-        ),
-      );
+        );
+      }
 
       if (result == null || !result.success) {
         if (mounted) {
@@ -148,9 +160,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
           final msg = result?.errorMsg ?? result?.message ?? "Odeme tamamlanamadi.";
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
         }
+        // Status enumda desteklenmeyen değer hatasını önlemek için başarısızlığı kayda pending bırakıyoruz.
         await _orderService.updateOrderPaymentStatus(
           orderId: orderId,
-          status: "payment_failed",
+          status: "pending",
           paymentApproved: false,
           paymentResponseCode: result?.responseCode,
           paymentResponseMsg: result?.responseMsg,
@@ -435,6 +448,141 @@ class _PaymentScreenState extends State<PaymentScreen> {
     }
   }
 
+  /// Web için ödeme akışı: POST ile kart bilgileri gönderilir,
+  /// dönen HTML'den 3D URL'i çıkarılır ve popup açılır.
+  Future<PaymentResult?> _handleWebPayment(PaymentRedirectPayload payload, int orderId) async {
+    try {
+      // ignore: avoid_print
+      print("🟦 PaymentScreen._handleWebPayment -> start");
+
+      // POST kart bilgileriyle redirect endpoint'ine
+      final redirectUri = _paymentService.redirectUri();
+      final resp = await http.post(
+        redirectUri,
+        headers: {
+          "content-type": "application/json",
+          "x-api-key": PaymentConfig.apiKey,
+        },
+        body: jsonEncode(payload.toJson()),
+      ).timeout(const Duration(seconds: 30));
+
+      // ignore: avoid_print
+      print("🟦 PaymentScreen._handleWebPayment -> response: ${resp.statusCode}");
+
+      if (resp.statusCode < 200 || resp.statusCode >= 300) {
+        return PaymentResult(false, "3D ödeme sayfası yüklenemedi (${resp.statusCode})");
+      }
+
+      // Redirect response veya HTML dönebilir
+      final location = resp.headers["location"];
+      if (location != null && location.isNotEmpty) {
+        // Direct redirect durumu - success/error URL'i olabilir
+        if (location.contains("/payment/pay/success") || location.contains("/payment/pay/error")) {
+          return _parseWebPaymentResult(location);
+        }
+        // 3D sayfa URL'ine redirect
+        return await _openWebPaymentPopup(location);
+      }
+
+      // HTML döndüyse, içinden 3D URL'i veya form'u çıkar
+      final body = resp.body;
+
+      // 3D form action URL'sini bul (genellikle iframe veya form içinde)
+      final actionMatch = RegExp('action=["\']([^"\']+)["\']', caseSensitive: false).firstMatch(body);
+      if (actionMatch != null) {
+        final actionUrl = actionMatch.group(1)!;
+        // ignore: avoid_print
+        print("🟦 PaymentScreen._handleWebPayment -> found action: $actionUrl");
+        return await _openWebPaymentPopup(actionUrl);
+      }
+
+      // iFrame src bul
+      final iframeSrcMatch = RegExp('<iframe[^>]*src=["\']([^"\']+)["\']', caseSensitive: false).firstMatch(body);
+      if (iframeSrcMatch != null) {
+        final iframeSrc = iframeSrcMatch.group(1)!;
+        // ignore: avoid_print
+        print("🟦 PaymentScreen._handleWebPayment -> found iframe src: $iframeSrc");
+        return await _openWebPaymentPopup(iframeSrc);
+      }
+
+      // Direct HTML content - blob URL ile popup aç
+      // ignore: avoid_print
+      print("🟦 PaymentScreen._handleWebPayment -> opening popup with HTML content");
+      return await _openWebPaymentPopupWithHtml(body);
+
+    } catch (e) {
+      // ignore: avoid_print
+      print("🟥 PaymentScreen._handleWebPayment error: $e");
+      return PaymentResult(false, "Ödeme işlemi başlatılamadı: $e");
+    }
+  }
+
+  Future<PaymentResult?> _openWebPaymentPopup(String url) async {
+    // ignore: avoid_print
+    print("🟦 PaymentScreen._openWebPaymentPopup -> $url");
+    final result = await openPaymentWindowAndWait(url);
+    return result;
+  }
+
+  Future<PaymentResult?> _openWebPaymentPopupWithHtml(String htmlContent) async {
+    // Web helper ile HTML blob URL'i oluşturup popup aç
+    // Bu durumda polling mekanizması çalışacak
+    final handle = openPaymentWindow("about:blank");
+    if (handle == null) {
+      return const PaymentResult(false, "Popup penceresi açılamadı. Lütfen popup engelleyiciyi kapatın.");
+    }
+
+    await loadPaymentHtml(handle, htmlContent);
+
+    try {
+      final result = await handle.onResult.first.timeout(
+        const Duration(minutes: 5),
+        onTimeout: () => const PaymentResult(false, "Ödeme zaman aşımına uğradı."),
+      );
+      return result;
+    } catch (e) {
+      handle.dispose();
+      return PaymentResult(false, "Ödeme işlemi sırasında hata: $e");
+    }
+  }
+
+  PaymentResult _parseWebPaymentResult(String url) {
+    final uri = Uri.tryParse(url);
+    if (uri == null) {
+      return const PaymentResult(false, "Ödeme sonucu okunamadı.");
+    }
+
+    final qp = uri.queryParameters;
+    final responseCode = qp["responseCode"] ?? "";
+    final responseMsg = _decodeWebParam(qp["responseMsg"]);
+    final errorCode = qp["errorCode"];
+    final errorMsg = _decodeWebParam(qp["errorMsg"]);
+    final merchantPaymentId = qp["merchantPaymentId"] ?? qp["pgOrderId"];
+
+    final isSuccess = responseCode == "00" || qp["approved"] == "true";
+
+    return PaymentResult(
+      isSuccess,
+      isSuccess ? null : (errorMsg ?? responseMsg ?? "Ödeme başarısız."),
+      approved: isSuccess,
+      merchantPaymentId: merchantPaymentId,
+      responseCode: responseCode,
+      responseMsg: responseMsg,
+      errorCode: errorCode,
+      errorMsg: errorMsg,
+    );
+  }
+
+  String? _decodeWebParam(String? raw) {
+    if (raw == null) return null;
+    final normalized = raw.replaceAll("+", " ");
+    try {
+      return Uri.decodeComponent(normalized);
+    } catch (_) {
+      return normalized;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final cart = context.watch<CartProvider>();
@@ -556,6 +704,28 @@ class _PaymentScreenState extends State<PaymentScreen> {
   }
 
   Widget _cardForm() {
+    InputDecoration _inputDecoration(String label, {IconData? icon}) {
+      return InputDecoration(
+        labelText: label,
+        prefixIcon: icon != null ? Icon(icon, color: Colors.red.shade400) : null,
+        filled: true,
+        fillColor: const Color(0xFFF7F8FA),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.red.shade400, width: 1.2),
+        ),
+      );
+    }
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -574,31 +744,52 @@ class _PaymentScreenState extends State<PaymentScreen> {
             const SizedBox(height: 12),
             TextFormField(
               controller: _cardHolderCtrl,
-              decoration: const InputDecoration(labelText: "Kart Üzerindeki İsim"),
+              decoration: _inputDecoration("Kart Üzerindeki İsim", icon: Icons.person_outline),
               validator: (v) => (v == null || v.trim().isEmpty) ? "Zorunlu" : null,
             ),
+            const SizedBox(height: 10),
             TextFormField(
               controller: _cardNumberCtrl,
-              decoration: const InputDecoration(labelText: "Kart Numarası"),
               keyboardType: TextInputType.number,
-              validator: (v) => (v == null || v.replaceAll(' ', '').length < 12) ? "Geçerli kart numarası girin" : null,
+              inputFormatters: [
+                _CardNumberFormatter(),
+                LengthLimitingTextInputFormatter(19),
+              ],
+              decoration: _inputDecoration("Kart Numarası", icon: Icons.credit_card),
+              validator: (v) {
+                final digits = _sanitizeCardNumber(v ?? "");
+                return digits.length < 12 ? "Geçerli kart numarası girin" : null;
+              },
             ),
+            const SizedBox(height: 12),
             Row(
               children: [
                 Expanded(
                   child: TextFormField(
                     controller: _expiryCtrl,
-                    decoration: const InputDecoration(labelText: "SKT (AA/YY)"),
-                    validator: (v) => (v == null || v.length < 4) ? "Geçerli tarih girin" : null,
+                    decoration: _inputDecoration("AA/YY", icon: Icons.event),
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [
+                      _ExpiryFormatter(),
+                      LengthLimitingTextInputFormatter(5),
+                    ],
+                    validator: (v) {
+                      final digits = _normalizeExpiry(v ?? "");
+                      return digits.length < 4 ? "Geçerli tarih girin" : null;
+                    },
                   ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: TextFormField(
                     controller: _cvvCtrl,
-                    decoration: const InputDecoration(labelText: "CVV"),
+                    decoration: _inputDecoration("CVV", icon: Icons.lock_outline),
                     keyboardType: TextInputType.number,
-                    validator: (v) => (v == null || v.length < 3) ? "CVV girin" : null,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.digitsOnly,
+                      LengthLimitingTextInputFormatter(3),
+                    ],
+                    validator: (v) => (v == null || v.length != 3) ? "CVV girin" : null,
                   ),
                 ),
               ],
@@ -650,5 +841,42 @@ class _PaymentScreenState extends State<PaymentScreen> {
       return DateTime(now.year, now.month + 12, now.day);
     }
     return null;
+  }
+}
+
+class _CardNumberFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
+    final digits = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
+    final limited = digits.length > 16 ? digits.substring(0, 16) : digits;
+    final buffer = StringBuffer();
+    for (var i = 0; i < limited.length; i++) {
+      buffer.write(limited[i]);
+      final isLast = i == limited.length - 1;
+      if (!isLast && (i + 1) % 4 == 0) buffer.write(' ');
+    }
+    final text = buffer.toString();
+    return TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
+    );
+  }
+}
+
+class _ExpiryFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
+    final digits = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
+    final limited = digits.length > 4 ? digits.substring(0, 4) : digits;
+    String text;
+    if (limited.length >= 3) {
+      text = "${limited.substring(0, 2)}/${limited.substring(2)}";
+    } else {
+      text = limited;
+    }
+    return TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
+    );
   }
 }

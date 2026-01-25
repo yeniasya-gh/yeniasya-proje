@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../services/order_service.dart';
 import '../../services/error/error_manager.dart';
+import '../../utils/safe_image.dart';
 
 class OrderDetailScreen extends StatefulWidget {
   final int orderId;
@@ -175,17 +176,15 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                     decoration: BoxDecoration(
                       color: const Color(0xFFE0E0E0),
                       borderRadius: BorderRadius.circular(8),
-                      image: img != null && img.isNotEmpty
-                          ? DecorationImage(
-                              image: NetworkImage(img),
-                              fit: BoxFit.cover,
-                              onError: (_, __) {},
-                            )
-                          : null,
                     ),
-                    child: img == null || img.isEmpty
-                        ? const Icon(Icons.broken_image, color: Colors.black54)
-                        : null,
+                    clipBehavior: Clip.antiAlias,
+                    child: safeImage(
+                      img,
+                      width: 56,
+                      height: 72,
+                      fit: BoxFit.cover,
+                      fallbackIcon: Icons.broken_image,
+                    ),
                   ),
                   Expanded(
                     child: Column(

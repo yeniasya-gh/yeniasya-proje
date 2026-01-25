@@ -3,12 +3,15 @@ import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
+import 'logging_service.dart';
 
 enum UploadFileType { book, magazine, newspaper, supplement, slider }
 
 class UploadService {
-  UploadService({String? baseUrl}) : _baseUrl = baseUrl ?? "https://cdn.yeniasyadigital.com";
+  UploadService({String? baseUrl})
+    : _baseUrl = baseUrl ?? "https://cdn.yeniasyadigital.com";
 
+  final LoggingService _logger = LoggingService();
   final String _baseUrl;
 
   // Change here if endpoint/base differs per environment.
@@ -41,13 +44,40 @@ class UploadService {
   }
 
   /// Normalizes a returned path (e.g. `/public/kitap/x.png`) to a fully usable URL.
-  static String normalizeUrl(String url, {String baseUrl = "https://cdn.yeniasyadigital.com"}) {
-    if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("data:")) {
-      return url;
+  static String normalizeUrl(
+    String url, {
+    String baseUrl = "https://cdn.yeniasyadigital.com",
+  }) {
+    final value = url.trim();
+    if (value.isEmpty) return value;
+
+    if (value.startsWith("data:")) return value;
+    if (value.startsWith("assets/")) return value;
+    if (value.startsWith("http://") || value.startsWith("https://")) {
+      return value;
     }
-    if (url.startsWith("assets/")) return url;
-    if (url.startsWith("/")) return "$baseUrl$url";
-    return "$baseUrl/$url";
+
+    // Defensive: sometimes a URL can be persisted without the leading "h".
+    // Example: `ttps://yeniasya.b-cdn.net/...`
+    if (value.startsWith("ttps://") || value.startsWith("ttp://")) {
+      return "h$value";
+    }
+
+    // Protocol-relative URLs: `//example.com/a.png`
+    if (value.startsWith("//")) {
+      return "https:$value";
+    }
+
+    // Host without scheme: `yeniasya.b-cdn.net/...`
+    final looksLikeHost = RegExp(
+      r"^[a-zA-Z0-9][a-zA-Z0-9.-]*\\.[a-zA-Z]{2,}(/|$)",
+    ).hasMatch(value);
+    if (looksLikeHost) {
+      return "https://$value";
+    }
+
+    if (value.startsWith("/")) return "$baseUrl$value";
+    return "$baseUrl/$value";
   }
 
   Future<String> uploadPublic({
@@ -55,45 +85,49 @@ class UploadService {
     required Uint8List bytes,
     required String filename,
   }) async {
-  print("🟦 uploadPublic() çağrıldı");
-  print(" - type: ${_mapType(type)}");
-  print(" - filename: $filename");
-  print(" - byte size: ${bytes.length}");
+    print("🟦 uploadPublic() çağrıldı");
+    print(" - type: ${_mapType(type)}");
+    print(" - filename: $filename");
+    print(" - byte size: ${bytes.length}");
 
-  _validate(bytes, filename);
-  print("🟩 Dosya validasyonu başarılı");
+    _validate(bytes, filename);
+    print("🟩 Dosya validasyonu başarılı");
 
-  final uri = Uri.parse("$_baseUrl/upload/public");
-  print("➡️ İstek URL: $uri");
+    final uri = Uri.parse("$_baseUrl/upload/public");
+    print("➡️ İstek URL: $uri");
 
-  final request = http.MultipartRequest("POST", uri)
-    ..fields["type"] = _mapType(type)
-    ..files.add(_buildFile(bytes, filename));
+    final request = http.MultipartRequest("POST", uri)
+      ..fields["type"] = _mapType(type)
+      ..files.add(_buildFile(bytes, filename));
 
-  print("📤 Dosya istek paketine eklendi");
-  print("📬 İstek gönderiliyor...");
+    print("📤 Dosya istek paketine eklendi");
+    print("📬 İstek gönderiliyor...");
 
-  try {
-    final streamed = await request.send();
-    print("📥 Yanıt stream alındı (status: ${streamed.statusCode})");
+    try {
+      final streamed = await request.send();
+      print("📥 Yanıt stream alındı (status: ${streamed.statusCode})");
 
-    final resp = await http.Response.fromStream(streamed);
+      final resp = await http.Response.fromStream(streamed);
 
-    print("📩 Tam yanıt alındı:");
-    print(resp.body);
+      print("📩 Tam yanıt alındı:");
+      print(resp.body);
 
-    final url = _parseUrl(resp);
-    print("🟢 Yükleme başarılı → URL: $url");
+      final url = _parseUrl(resp);
+      print("🟢 Yükleme başarılı → URL: $url");
 
-    return url;
-
-  } catch (e, s) {
-    print("❌ uploadPublic hata:");
-    print(e);
-    print(s);
-    rethrow;
+      return url;
+    } catch (e, s) {
+      print("❌ uploadPublic hata:");
+      print(e);
+      print(s);
+      await _logError("uploadPublic", e, s, {
+        "type": _mapType(type),
+        "filename": filename,
+        "status": null,
+      });
+      rethrow;
+    }
   }
-}
 
   Future<String> uploadPrivateBook({
     required Uint8List bytes,
@@ -107,9 +141,17 @@ class UploadService {
       ..files.add(_buildFile(bytes, filename))
       ..headers["x-api-key"] = _privateAuthToken;
 
-    final streamed = await request.send();
-    final resp = await http.Response.fromStream(streamed);
-    return _parseUrl(resp);
+    try {
+      final streamed = await request.send();
+      final resp = await http.Response.fromStream(streamed);
+      return _parseUrl(resp);
+    } catch (e, s) {
+      await _logError("uploadPrivateBook", e, s, {
+        "type": "kitap",
+        "filename": filename,
+      });
+      rethrow;
+    }
   }
 
   Future<String> uploadPrivate({
@@ -125,9 +167,17 @@ class UploadService {
       ..files.add(_buildFile(bytes, filename))
       ..headers["x-api-key"] = _privateAuthToken;
 
-    final streamed = await request.send();
-    final resp = await http.Response.fromStream(streamed);
-    return _parseUrl(resp);
+    try {
+      final streamed = await request.send();
+      final resp = await http.Response.fromStream(streamed);
+      return _parseUrl(resp);
+    } catch (e, s) {
+      await _logError("uploadPrivate", e, s, {
+        "type": _mapType(type),
+        "filename": filename,
+      });
+      rethrow;
+    }
   }
 
   void _validate(Uint8List bytes, String filename) {
@@ -153,6 +203,12 @@ class UploadService {
 
   String _parseUrl(http.Response resp) {
     if (resp.statusCode < 200 || resp.statusCode >= 300) {
+      _logError(
+        "parseUrl",
+        Exception("Yükleme başarısız (${resp.statusCode})"),
+        null,
+        {"status": resp.statusCode, "body": resp.body},
+      );
       throw Exception("Yükleme başarısız (${resp.statusCode}): ${resp.body}");
     }
     try {
@@ -161,6 +217,10 @@ class UploadService {
       if (url == null) throw Exception("Sunucudan URL alınamadı.");
       return url.toString();
     } catch (e) {
+      _logError("parseUrl", e, null, {
+        "body": resp.body,
+        "status": resp.statusCode,
+      });
       throw Exception("Sunucu yanıtı çözülemedi: ${resp.body}");
     }
   }
@@ -169,5 +229,25 @@ class UploadService {
     final dot = filename.lastIndexOf(".");
     if (dot == -1 || dot == filename.length - 1) return "";
     return filename.substring(dot + 1).toLowerCase();
+  }
+
+  Future<void> _logError(
+    String operation,
+    Object error,
+    StackTrace? stackTrace,
+    Map<String, dynamic>? payload,
+  ) async {
+    try {
+      await _logger.logError(
+        service: "UploadService",
+        operation: operation,
+        message: error.toString(),
+        stackTrace: stackTrace?.toString(),
+        payload: payload,
+      );
+    } catch (_) {
+      // ignore: avoid_print
+      print("UploadService logging failed");
+    }
   }
 }

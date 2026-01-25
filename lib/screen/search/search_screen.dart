@@ -10,6 +10,8 @@ class SearchScreen extends StatefulWidget {
   final List<Map<String, dynamic>> newspapers;
   final List<Map<String, dynamic>> attachments;
   final String initialQuery;
+  final bool hideMagazines;
+  final bool hideNewspapers;
 
   const SearchScreen({
     super.key,
@@ -18,6 +20,8 @@ class SearchScreen extends StatefulWidget {
     required this.newspapers,
     required this.attachments,
     this.initialQuery = "",
+    this.hideMagazines = false,
+    this.hideNewspapers = false,
   });
 
   @override
@@ -44,6 +48,13 @@ class _SearchScreenState extends State<SearchScreen> {
   @override
   Widget build(BuildContext context) {
     final results = _filterResults(_query);
+    final hintSegments = [
+      "Kitap",
+      if (!widget.hideMagazines) "dergi",
+      if (!widget.hideNewspapers) "gazete",
+      "ek",
+    ];
+    final hintText = "${hintSegments.join(", ")} ara";
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -58,7 +69,7 @@ class _SearchScreenState extends State<SearchScreen> {
         title: TextField(
           controller: _controller,
           decoration: InputDecoration(
-            hintText: "Kitap, dergi veya gazete ara",
+            hintText: hintText,
             border: InputBorder.none,
             suffixIcon: (_query.isNotEmpty)
                 ? IconButton(
@@ -82,10 +93,14 @@ class _SearchScreenState extends State<SearchScreen> {
             children: [
               _section("Kitaplar", results.books, "book"),
               const SizedBox(height: 18),
-              _section("Dergiler", results.magazines, "magazine"),
-              const SizedBox(height: 18),
-              _section("Gazeteler", results.newspapers, "newspaper"),
-              const SizedBox(height: 18),
+              if (!widget.hideMagazines) ...[
+                _section("Dergiler", results.magazines, "magazine"),
+                const SizedBox(height: 18),
+              ],
+              if (!widget.hideNewspapers) ...[
+                _section("Gazeteler", results.newspapers, "newspaper"),
+                const SizedBox(height: 18),
+              ],
               _section("Ekler", results.ekler, "ek"),
             ],
           ),
@@ -105,17 +120,21 @@ class _SearchScreenState extends State<SearchScreen> {
       return t.contains(lower) || a.contains(lower);
     }).toList();
 
-    final mags = widget.magazines.where((m) {
-      final t = (m["name"] ?? "").toString().toLowerCase();
-      final c = (m["category"] ?? "").toString().toLowerCase();
-      return t.contains(lower) || c.contains(lower);
-    }).toList();
+    final mags = widget.hideMagazines
+        ? <Map<String, dynamic>>[]
+        : widget.magazines.where((m) {
+            final t = (m["name"] ?? "").toString().toLowerCase();
+            final c = (m["category"] ?? "").toString().toLowerCase();
+            return t.contains(lower) || c.contains(lower);
+          }).toList();
 
-    final news = widget.newspapers.where((n) {
-      final d = (n["publish_date"] ?? "").toString().toLowerCase();
-      final t = (n["title"] ?? "gazete").toLowerCase();
-      return d.contains(lower) || t.contains(lower);
-    }).toList();
+    final news = widget.hideNewspapers
+        ? <Map<String, dynamic>>[]
+        : widget.newspapers.where((n) {
+            final d = (n["publish_date"] ?? "").toString().toLowerCase();
+            final t = (n["title"] ?? "gazete").toLowerCase();
+            return d.contains(lower) || t.contains(lower);
+          }).toList();
 
     final eks = widget.attachments.where((e) {
       final name = (e["ad"] ?? "").toString().toLowerCase();
@@ -130,10 +149,16 @@ class _SearchScreenState extends State<SearchScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+        Text(
+          title,
+          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+        ),
         const SizedBox(height: 8),
         if (items.isEmpty)
-          const Text("Sonuç bulunamadı.", style: TextStyle(color: Colors.black54))
+          const Text(
+            "Sonuç bulunamadı.",
+            style: TextStyle(color: Colors.black54),
+          )
         else
           ...items.map((i) => _resultTile(i, type)),
       ],
@@ -141,31 +166,38 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   Widget _resultTile(Map<String, dynamic> item, String type) {
-    final title = (type == "ek"
-            ? (item["ad"] ?? item["title"] ?? "Ek")
-            : (item["title"] ?? item["name"] ?? "Başlık"))
-        .toString();
-    final subtitle = (type == "ek"
-            ? (item["aciklama"] ?? item["description"] ?? item["publish_date"] ?? "")
-            : (item["author_rel"]?["name"] ?? item["category"] ?? item["publish_date"] ?? ""))
-        .toString();
-    final image = (type == "ek"
-            ? (item["photo_url"] ?? item["image_url"] ?? "assets/images/gazete.jpg")
-            : (item["cover_url"] ??
-                item["cover_image_url"] ??
-                item["image_url"] ??
-                "assets/images/gazete.jpg"))
-        .toString();
+    final title =
+        (type == "ek"
+                ? (item["ad"] ?? item["title"] ?? "Ek")
+                : (item["title"] ?? item["name"] ?? "Başlık"))
+            .toString();
+    final subtitle =
+        (type == "ek"
+                ? (item["aciklama"] ??
+                      item["description"] ??
+                      item["publish_date"] ??
+                      "")
+                : (item["author_rel"]?["name"] ??
+                      item["category"] ??
+                      item["publish_date"] ??
+                      ""))
+            .toString();
+    final image =
+        (type == "ek"
+                ? (item["photo_url"] ??
+                      item["image_url"] ??
+                      "assets/images/gazete.jpg")
+                : (item["cover_url"] ??
+                      item["cover_image_url"] ??
+                      item["image_url"] ??
+                      "assets/images/gazete.jpg"))
+            .toString();
 
     return ListTile(
       contentPadding: EdgeInsets.zero,
       leading: ClipRRect(
         borderRadius: BorderRadius.circular(8),
-        child: SizedBox(
-          width: 48,
-          height: 64,
-          child: _image(image),
-        ),
+        child: SizedBox(width: 48, height: 64, child: _image(image)),
       ),
       title: Text(title, maxLines: 2, overflow: TextOverflow.ellipsis),
       subtitle: Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis),

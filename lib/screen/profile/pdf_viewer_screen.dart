@@ -11,6 +11,7 @@ import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 
 import '../../services/upload_service.dart';
 import '../../services/error/error_manager.dart';
+import '../../services/logging_service.dart';
 import '../../services/secure_file_service.dart';
 import '../../widgets/pdf_web_frame_stub.dart'
     if (dart.library.html) '../../widgets/pdf_web_frame_web.dart' as pdf_web_frame;
@@ -35,6 +36,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   String? _webPdfUrl;
   bool _loading = true;
   String? _error;
+  final LoggingService _logger = LoggingService();
   final PdfViewerController _controller = PdfViewerController();
   final GlobalKey<SfPdfViewerState> _pdfKey = GlobalKey();
   double _zoom = 1.0;
@@ -116,8 +118,21 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       }
 
       _bytes = await _fetchPdfBytes();
-    } catch (e) {
+    } catch (e, s) {
       _error = ErrorManager.parseGraphQLError(e.toString());
+      await _logger.logError(
+        service: "PdfViewerScreen",
+        operation: "load",
+        message: _error ?? e.toString(),
+        stackTrace: s.toString(),
+        payload: {
+          "url": widget.url,
+          "normalizedUrl": UploadService.normalizeUrl(widget.url),
+          "isPrivate": widget.isPrivate,
+          "platform": defaultTargetPlatform.toString(),
+          "web": kIsWeb,
+        },
+      );
     } finally {
       if (mounted) {
         setState(() => _loading = false);
@@ -229,6 +244,25 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       _bytes!,
       key: _pdfKey,
       controller: _controller,
+      onDocumentLoadFailed: (details) async {
+        final errorText = details.error;
+        if (mounted) {
+          setState(() => _error = errorText.isNotEmpty ? errorText : "PDF yüklenemedi");
+        }
+        await _logger.logError(
+          service: "PdfViewerScreen",
+          operation: "documentLoadFailed",
+          message: errorText,
+          payload: {
+            "url": widget.url,
+            "normalizedUrl": UploadService.normalizeUrl(widget.url),
+            "isPrivate": widget.isPrivate,
+            "platform": defaultTargetPlatform.toString(),
+            "web": kIsWeb,
+            "description": details.description,
+          },
+        );
+      },
       onPageChanged: (details) {
         setState(() {});
         _persistState(page: details.newPageNumber);
