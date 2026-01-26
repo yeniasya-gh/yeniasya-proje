@@ -90,6 +90,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   bool _hasLocalCopy = false;
   bool _downloadBusy = false;
   bool _openingBook = false;
+  double? _downloadProgress;
 
   @override
   void initState() {
@@ -443,8 +444,18 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   Future<void> _openPdf(BuildContext context, String fileUrl) async {
     setState(() => _downloadBusy = true);
     try {
-      await SecureFileService.instance.getPdfBytes(url: fileUrl, isPrivate: true);
-      setState(() => _hasLocalCopy = true);
+      if (!kIsWeb) {
+        setState(() => _downloadProgress = 0);
+        await SecureFileService.instance.getPdfBytes(
+          url: fileUrl,
+          isPrivate: true,
+          onProgress: (p) {
+            if (!mounted) return;
+            setState(() => _downloadProgress = p.clamp(0, 1));
+          },
+        );
+        setState(() => _hasLocalCopy = true);
+      }
       if (!mounted) return;
       Navigator.push(
         context,
@@ -462,7 +473,12 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         SnackBar(content: Text("Dosya açılamadı: ${ErrorManager.parseGraphQLError(e.toString())}")),
       );
     } finally {
-      if (mounted) setState(() => _downloadBusy = false);
+      if (mounted) {
+        setState(() {
+          _downloadBusy = false;
+          _downloadProgress = null;
+        });
+      }
     }
   }
 
@@ -950,6 +966,13 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                         height: 18,
                         child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                       ),
+                      if (_downloadProgress != null) ...[
+                        const SizedBox(width: 8),
+                        Text(
+                          "${(_downloadProgress! * 100).round()}%",
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                      ],
                     ],
                   ],
                 );

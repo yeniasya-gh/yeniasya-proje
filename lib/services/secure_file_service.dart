@@ -1,10 +1,13 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:encrypt/encrypt.dart' as enc;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -26,13 +29,14 @@ class SecureFileService {
   Future<Uint8List> getPdfBytes({
     required String url,
     required bool isPrivate,
+    ValueChanged<double>? onProgress,
   }) async {
     final normalized = UploadService.normalizeUrl(url);
     final filename = _safeFileName(normalized) + ".enc";
 
     if (kIsWeb) {
       // Web için disk cache yerine direkt network'ten al.
-      return _downloadRaw(normalized, isPrivate: isPrivate);
+      return _downloadRaw(normalized, isPrivate: isPrivate, onProgress: onProgress);
     }
 
     final dir = await getApplicationSupportDirectory();
@@ -44,7 +48,10 @@ class SecureFileService {
         final encrypted = await file.readAsBytes();
         final decrypted = await _decrypt(encrypted);
         cacheValid = _looksLikePdf(decrypted);
-        if (cacheValid) return decrypted;
+        if (cacheValid) {
+          onProgress?.call(1);
+          return decrypted;
+        }
       } catch (_) {
         // bozuk dosya, silip tekrar indir
       }
@@ -55,7 +62,11 @@ class SecureFileService {
       }
     }
 
-    final raw = await _downloadRaw(normalized, isPrivate: isPrivate);
+    final raw = await _downloadRaw(
+      normalized,
+      isPrivate: isPrivate,
+      onProgress: onProgress,
+    );
     if (!_looksLikePdf(raw)) {
       await _logger.logError(
         service: "SecureFileService",
@@ -71,17 +82,66 @@ class SecureFileService {
       );
       throw Exception("PDF içeriği alınamadı.");
     }
-    final encrypted = await _encrypt(raw);
-    await file.writeAsBytes(encrypted, flush: true);
+    try {
+      final encrypted = await _encrypt(raw);
+      await file.writeAsBytes(encrypted, flush: true);
+    } catch (e, s) {
+      await _logger.logError(
+        service: "SecureFileService",
+        operation: "cacheEncrypt",
+        message: e.toString(),
+        stackTrace: s.toString(),
+        payload: {
+          "url": normalized,
+          "isPrivate": isPrivate,
+          "bytes": raw.length,
+          "os": Platform.operatingSystem,
+          "osVersion": Platform.operatingSystemVersion,
+          "platform": defaultTargetPlatform.toString(),
+        },
+      );
+      // Retry once after resetting stored key (Android keystore can invalidate).
+      try {
+        await _resetStoredKey();
+        final encrypted = await _encrypt(raw);
+        await file.writeAsBytes(encrypted, flush: true);
+      } catch (e2, s2) {
+        await _logger.logError(
+          service: "SecureFileService",
+          operation: "cacheEncryptRetry",
+          message: e2.toString(),
+          stackTrace: s2.toString(),
+          payload: {
+            "url": normalized,
+            "isPrivate": isPrivate,
+            "bytes": raw.length,
+            "os": Platform.operatingSystem,
+            "osVersion": Platform.operatingSystemVersion,
+            "platform": defaultTargetPlatform.toString(),
+          },
+        );
+        // Don't fail viewing the PDF. Skip encrypted cache and just return raw bytes.
+      }
+    }
     return raw;
   }
 
-  Future<Uint8List> _downloadRaw(String url, {required bool isPrivate}) async {
+  Future<Uint8List> _downloadRaw(
+    String url, {
+    required bool isPrivate,
+    ValueChanged<double>? onProgress,
+  }) async {
     final normalized = UploadService.normalizeUrl(url);
     if (!isPrivate) {
-      final resp = await http
-          .get(Uri.parse(normalized), headers: {"accept": "application/pdf"})
-          .timeout(const Duration(seconds: 20));
+      final req = http.Request("GET", Uri.parse(normalized))
+        ..headers["accept"] = "application/pdf";
+      final resp = await _sendAndCollect(
+        req,
+        connectTimeout: const Duration(seconds: 15),
+        inactivityTimeout: const Duration(seconds: 30),
+        overallTimeout: const Duration(minutes: 2),
+        onProgress: onProgress,
+      );
       if (resp.statusCode != 200 || resp.bodyBytes.isEmpty) {
         throw Exception("PDF alınamadı (${resp.statusCode})");
       }
@@ -91,24 +151,40 @@ class SecureFileService {
     final path = _extractPath(normalized);
 
     if (kIsWeb) {
-      return _downloadViaViewToken(path);
+      return _downloadViaViewToken(path, onProgress: onProgress);
     }
 
     final uri = Uri.parse(UploadService.normalizeUrl("/private/view"));
     final payload = {"path": path};
-    http.Response resp;
+    _CollectedResponse resp;
     try {
-      resp = await http
-          .post(
-            uri,
-            headers: {
-              "content-type": "application/json",
-              "accept": "application/pdf",
-              "x-api-key": UploadService.privateAuthToken,
-            },
-            body: jsonEncode(payload),
-          )
-          .timeout(const Duration(seconds: 20));
+      final req = http.Request("POST", uri)
+        ..headers.addAll({
+          "content-type": "application/json",
+          "accept": "application/pdf",
+          "x-api-key": UploadService.privateAuthToken,
+        })
+        ..body = jsonEncode(payload);
+      resp = await _sendAndCollect(
+        req,
+        connectTimeout: const Duration(seconds: 20),
+        inactivityTimeout: const Duration(seconds: 45),
+        overallTimeout: const Duration(minutes: 3),
+        onProgress: onProgress,
+      );
+    } on TimeoutException catch (e, s) {
+      await _logger.logError(
+        service: "SecureFileService",
+        operation: "privateViewPost",
+        message: e.toString(),
+        stackTrace: s.toString(),
+        payload: {
+          "url": normalized,
+          "path": path,
+          "platform": defaultTargetPlatform.toString(),
+        },
+      );
+      return _downloadViaViewToken(path, onProgress: onProgress);
     } catch (e, s) {
       await _logger.logError(
         service: "SecureFileService",
@@ -139,7 +215,7 @@ class SecureFileService {
           "platform": defaultTargetPlatform.toString(),
         },
       );
-      return _downloadViaViewToken(path);
+      return _downloadViaViewToken(path, onProgress: onProgress);
     }
 
     if (_looksLikePdf(resp.bodyBytes)) {
@@ -160,7 +236,7 @@ class SecureFileService {
         "platform": defaultTargetPlatform.toString(),
       },
     );
-    return _downloadViaViewToken(path);
+    return _downloadViaViewToken(path, onProgress: onProgress);
   }
 
   bool _looksLikePdf(Uint8List bytes) {
@@ -191,13 +267,16 @@ class SecureFileService {
     }
   }
 
-  Future<Uint8List> _downloadViaViewToken(String path) async {
+  Future<Uint8List> _downloadViaViewToken(
+    String path, {
+    ValueChanged<double>? onProgress,
+  }) async {
     final viewToken = await _requestViewToken(path);
     try {
-      return await _fetchPdfWithToken(viewToken);
+      return await _fetchPdfWithToken(viewToken, onProgress: onProgress);
     } on _TokenExpiredException {
       final refreshed = await _requestViewToken(path);
-      return _fetchPdfWithToken(refreshed);
+      return _fetchPdfWithToken(refreshed, onProgress: onProgress);
     }
   }
 
@@ -235,16 +314,20 @@ class SecureFileService {
     }
   }
 
-  Future<Uint8List> _fetchPdfWithToken(_ViewTokenData tokenData) async {
+  Future<Uint8List> _fetchPdfWithToken(
+    _ViewTokenData tokenData, {
+    ValueChanged<double>? onProgress,
+  }) async {
     final secureUrl = _buildSecureUrl(tokenData);
-    final resp = await http
-        .get(
-          Uri.parse(secureUrl),
-          headers: {
-            "accept": "application/pdf",
-          },
-        )
-        .timeout(const Duration(seconds: 20));
+    final req = http.Request("GET", Uri.parse(secureUrl))
+      ..headers["accept"] = "application/pdf";
+    final resp = await _sendAndCollect(
+      req,
+      connectTimeout: const Duration(seconds: 20),
+      inactivityTimeout: const Duration(seconds: 45),
+      overallTimeout: const Duration(minutes: 3),
+      onProgress: onProgress,
+    );
 
     if (resp.statusCode == 401 || resp.statusCode == 403) {
       throw _TokenExpiredException();
@@ -274,6 +357,76 @@ class SecureFileService {
     return resp.bodyBytes;
   }
 
+  Future<_CollectedResponse> _sendAndCollect(
+    http.BaseRequest request, {
+    required Duration connectTimeout,
+    required Duration inactivityTimeout,
+    required Duration overallTimeout,
+    ValueChanged<double>? onProgress,
+  }) async {
+    const maxRetries = 1;
+    for (var attempt = 0; attempt <= maxRetries; attempt++) {
+      final client = http.Client();
+      try {
+        if (attempt > 0) onProgress?.call(0);
+        return await (() async {
+          final streamed = await client.send(request).timeout(connectTimeout);
+          final total = streamed.contentLength;
+          var received = 0;
+          final buffer = BytesBuilder(copy: false);
+          onProgress?.call(0);
+          await for (final chunk in streamed.stream.timeout(inactivityTimeout)) {
+            buffer.add(chunk);
+            received += chunk.length;
+            if (onProgress != null && total != null && total > 0) {
+              onProgress(received / total);
+            }
+          }
+          onProgress?.call(1);
+          return _CollectedResponse(
+            statusCode: streamed.statusCode,
+            headers: streamed.headers,
+            bodyBytes: buffer.takeBytes(),
+          );
+        })().timeout(overallTimeout);
+      } on TimeoutException catch (e, s) {
+        if (attempt >= maxRetries) rethrow;
+        await _logger.logError(
+          service: "SecureFileService",
+          operation: "downloadRetry",
+          message: e.toString(),
+          stackTrace: s.toString(),
+          payload: {
+            "attempt": attempt + 1,
+            "method": request.method,
+            "url": request.url.toString(),
+            "platform": defaultTargetPlatform.toString(),
+          },
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 650));
+      } on SocketException catch (e, s) {
+        if (attempt >= maxRetries) rethrow;
+        await _logger.logError(
+          service: "SecureFileService",
+          operation: "downloadRetry",
+          message: e.toString(),
+          stackTrace: s.toString(),
+          payload: {
+            "attempt": attempt + 1,
+            "method": request.method,
+            "url": request.url.toString(),
+            "platform": defaultTargetPlatform.toString(),
+          },
+        );
+        await Future<void>.delayed(const Duration(milliseconds: 650));
+      } finally {
+        client.close();
+      }
+    }
+
+    throw Exception("Download failed after retry");
+  }
+
   Future<String> getWebViewSecureUrl({required String url}) async {
     final normalized = UploadService.normalizeUrl(url);
     final path = _extractPath(normalized);
@@ -295,8 +448,24 @@ class SecureFileService {
 
   String _extractPath(String url) {
     final parsed = Uri.tryParse(url);
-    if (parsed != null && parsed.hasAuthority) return parsed.path;
-    return url.replaceFirst(RegExp(r'^https?://[^/]+'), "");
+    final rawPath =
+        (parsed != null && parsed.hasAuthority)
+            ? parsed.path
+            : url.replaceFirst(RegExp(r'^https?://[^/]+'), "");
+
+    // New CDN format can come as: `/<type>/private/<filename>`
+    // Backend endpoints expect: `/private/<type>/<filename>`
+    final mapped = RegExp(
+      r"^/(kitap|dergi|gazete|ek|slider)/private/(.+)$",
+      caseSensitive: false,
+    ).firstMatch(rawPath);
+    if (mapped != null) {
+      final type = mapped.group(1)!.toLowerCase();
+      final file = mapped.group(2)!;
+      return "/private/$type/$file";
+    }
+
+    return rawPath;
   }
 
   Future<Uint8List> _encrypt(Uint8List data) async {
@@ -318,13 +487,84 @@ class SecureFileService {
   }
 
   Future<List<int>> _getOrCreateKey() async {
-    final existing = await _keyStorage.read(key: _keyName);
+    String? existing;
+    try {
+      existing = await _keyStorage.read(key: _keyName);
+    } on PlatformException catch (e, s) {
+      // Android keystore might invalidate and make previously stored value undecryptable.
+      await _logger.logError(
+        service: "SecureFileService",
+        operation: "keyRead",
+        message: e.toString(),
+        stackTrace: s.toString(),
+        payload: {
+          "os": Platform.operatingSystem,
+          "osVersion": Platform.operatingSystemVersion,
+          "platform": defaultTargetPlatform.toString(),
+        },
+      );
+      await _resetStoredKey();
+      existing = null;
+    } catch (e, s) {
+      await _logger.logError(
+        service: "SecureFileService",
+        operation: "keyRead",
+        message: e.toString(),
+        stackTrace: s.toString(),
+        payload: {
+          "os": Platform.operatingSystem,
+          "osVersion": Platform.operatingSystemVersion,
+          "platform": defaultTargetPlatform.toString(),
+        },
+      );
+      await _resetStoredKey();
+      existing = null;
+    }
+
     if (existing != null && existing.isNotEmpty) {
-      return base64Decode(existing);
+      try {
+        return base64Decode(existing);
+      } catch (e, s) {
+        await _logger.logError(
+          service: "SecureFileService",
+          operation: "keyDecode",
+          message: e.toString(),
+          stackTrace: s.toString(),
+          payload: {
+            "os": Platform.operatingSystem,
+            "osVersion": Platform.operatingSystemVersion,
+            "platform": defaultTargetPlatform.toString(),
+          },
+        );
+        await _resetStoredKey();
+      }
     }
     final key = _randomBytes(32);
-    await _keyStorage.write(key: _keyName, value: base64Encode(key));
+    try {
+      await _keyStorage.write(key: _keyName, value: base64Encode(key));
+    } on PlatformException catch (e, s) {
+      await _logger.logError(
+        service: "SecureFileService",
+        operation: "keyWrite",
+        message: e.toString(),
+        stackTrace: s.toString(),
+        payload: {
+          "os": Platform.operatingSystem,
+          "osVersion": Platform.operatingSystemVersion,
+          "platform": defaultTargetPlatform.toString(),
+        },
+      );
+      rethrow;
+    }
     return key;
+  }
+
+  Future<void> _resetStoredKey() async {
+    try {
+      await _keyStorage.delete(key: _keyName);
+    } catch (_) {
+      // ignore
+    }
   }
 
   List<int> _randomBytes(int length) {
@@ -347,6 +587,18 @@ class SecureFileService {
 }
 
 class _TokenExpiredException implements Exception {}
+
+class _CollectedResponse {
+  final int statusCode;
+  final Map<String, String> headers;
+  final Uint8List bodyBytes;
+
+  _CollectedResponse({
+    required this.statusCode,
+    required this.headers,
+    required this.bodyBytes,
+  });
+}
 
 class _ViewTokenData {
   final String? token;

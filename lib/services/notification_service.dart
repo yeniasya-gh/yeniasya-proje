@@ -35,19 +35,11 @@ class NotificationService {
       if (token == null) return;
 
       const mutation = r'''
-        mutation UpsertToken(
+        mutation UpdateUserToken(
           $user_id: bigint!,
           $token: String!,
-          $platform: String,
           $firebase_token_updated_at: timestamptz!
         ) {
-          insert_notification_tokens_one(
-            object: {user_id: $user_id, token: $token, platform: $platform},
-            on_conflict: {
-              constraint: notification_tokens_user_id_token_key,
-              update_columns: [token, updated_at]
-            }
-          ) { id }
           update_users_by_pk(pk_columns: {id: $user_id}, _set: {firebase_token: $token, firebase_token_updated_at: $firebase_token_updated_at}) {
             id
           }
@@ -59,7 +51,6 @@ class NotificationService {
         variables: {
         "user_id": userId,
         "token": token,
-        "platform": "firebase-messaging",
         "firebase_token_updated_at": DateTime.now().toIso8601String(),
       },
       );

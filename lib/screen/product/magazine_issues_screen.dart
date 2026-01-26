@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import '../../services/admin/admin_magazine_service.dart';
 import '../../services/access_provider.dart';
@@ -32,7 +33,12 @@ class _MagazineIssuesScreenState extends State<MagazineIssuesScreen> {
     if (_opening) return;
     setState(() => _opening = true);
     try {
-      await SecureFileService.instance.getPdfBytes(url: fileUrl, isPrivate: true);
+      if (!kIsWeb) {
+        await SecureFileService.instance.getPdfBytes(
+          url: fileUrl,
+          isPrivate: true,
+        );
+      }
       if (!mounted) return;
       Navigator.push(
         context,
