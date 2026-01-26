@@ -218,6 +218,43 @@ class SecureFileService {
       return _downloadViaViewToken(path, onProgress: onProgress);
     }
 
+    // Some environments return a JSON payload with a signed/direct URL instead
+    // of streaming the PDF bytes.
+    if (!_looksLikePdf(resp.bodyBytes)) {
+      final extracted = _extractUrlFromJson(resp.bodyBytes);
+      if (extracted != null && extracted.isNotEmpty) {
+        final req = http.Request("GET", Uri.parse(extracted))
+          ..headers["accept"] = "application/pdf";
+        final redirected = await _sendAndCollect(
+          req,
+          connectTimeout: const Duration(seconds: 15),
+          inactivityTimeout: const Duration(seconds: 30),
+          overallTimeout: const Duration(minutes: 2),
+          onProgress: onProgress,
+        );
+        if (redirected.statusCode == 200 &&
+            redirected.bodyBytes.isNotEmpty &&
+            _looksLikePdf(redirected.bodyBytes)) {
+          return redirected.bodyBytes;
+        }
+        await _logger.logError(
+          service: "SecureFileService",
+          operation: "privateViewJsonUrl",
+          message: "Non-PDF response from extracted URL",
+          payload: {
+            "url": normalized,
+            "path": path,
+            "extractedUrlHost": Uri.tryParse(extracted)?.host,
+            "status": redirected.statusCode,
+            "contentType": redirected.headers["content-type"],
+            "bytes": redirected.bodyBytes.length,
+            "head": _previewBytes(redirected.bodyBytes),
+            "platform": defaultTargetPlatform.toString(),
+          },
+        );
+      }
+    }
+
     if (_looksLikePdf(resp.bodyBytes)) {
       return resp.bodyBytes;
     }
@@ -466,6 +503,27 @@ class SecureFileService {
     }
 
     return rawPath;
+  }
+
+  String? _extractUrlFromJson(Uint8List bytes) {
+    final text = _previewBytes(bytes).trimLeft();
+    if (!(text.startsWith("{") || text.startsWith("["))) return null;
+    try {
+      final decoded = jsonDecode(utf8.decode(bytes, allowMalformed: true));
+      if (decoded is Map<String, dynamic>) {
+        final url =
+            decoded["url"] ??
+            decoded["viewUrl"] ??
+            decoded["path"] ??
+            decoded["file"];
+        final value = url?.toString();
+        if (value == null || value.isEmpty) return null;
+        return UploadService.normalizeUrl(value);
+      }
+    } catch (_) {
+      return null;
+    }
+    return null;
   }
 
   Future<Uint8List> _encrypt(Uint8List data) async {
