@@ -5,6 +5,7 @@ class AppUser {
   final String? phone;
   final int roleId;
   final String roleName;
+  final String? payUniqe;
 
   AppUser({
     required this.id,
@@ -13,6 +14,7 @@ class AppUser {
     this.phone,
     required this.roleId,
     required this.roleName,
+    this.payUniqe,
   });
 
   factory AppUser.fromJson(Map<String, dynamic> json) {
@@ -23,6 +25,7 @@ class AppUser {
       phone: json["phone"],
       roleId: json["role_id"],
       roleName: json["role"]?["name"] ?? "user",
+      payUniqe: json["payUniqe"]?.toString() ?? json["payuniqe"]?.toString(),
     );
   }
 

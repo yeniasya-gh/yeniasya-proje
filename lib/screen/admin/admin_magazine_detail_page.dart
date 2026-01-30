@@ -8,7 +8,6 @@ import '../../services/admin/admin_review_service.dart';
 import '../../services/loading_manager.dart';
 import '../../utils/asset_image_picker.dart';
 import '../../utils/safe_image.dart';
-import '../../services/upload_service.dart';
 import 'admin_loading_indicator.dart';
 
 class AdminMagazineDetailPage extends StatefulWidget {
@@ -62,7 +61,9 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
       setState(() {
         _reviews = List<Map<String, dynamic>>.from(data["reviews"] ?? []);
         _avgRating = (data["average"] as double?) ?? 0;
-        _reviewCount = data["count"] is int ? data["count"] as int : int.tryParse(data["count"]?.toString() ?? "0") ?? 0;
+        _reviewCount = data["count"] is int
+            ? data["count"] as int
+            : int.tryParse(data["count"]?.toString() ?? "0") ?? 0;
       });
     } catch (e) {
       await _showError(e.toString());
@@ -90,11 +91,30 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
     );
   }
 
+  String _formatAsMoney(String raw) {
+    final digits = raw.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digits.isEmpty) return "";
+    final padded = digits.padLeft(3, "0");
+    final l = padded.length;
+    String integerPart = padded.substring(0, l - 2);
+    final decimalPart = padded.substring(l - 2);
+    integerPart = integerPart.replaceFirst(RegExp(r'^0+'), '');
+    if (integerPart.isEmpty) integerPart = "0";
+    return "$integerPart.$decimalPart";
+  }
+
+  double? _parsePrice(String value) {
+    if (value.trim().isEmpty) return null;
+    return double.tryParse(value.replaceAll(",", "."));
+  }
+
   Future<void> _showAddIssueDialog() async {
     final formKey = GlobalKey<FormState>();
     final issueCtrl = TextEditingController();
     final fileCtrl = TextEditingController();
     final photoCtrl = TextEditingController();
+    final priceCtrl = TextEditingController();
+    final descCtrl = TextEditingController();
 
     Uint8List? pickedPdfBytes;
     String? pickedPdfName;
@@ -116,8 +136,9 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
                   TextFormField(
                     controller: issueCtrl,
                     keyboardType: TextInputType.number,
-                    decoration:
-                        const InputDecoration(labelText: "Sayı Numarası (1,2,3...)"),
+                    decoration: const InputDecoration(
+                      labelText: "Sayı Numarası (1,2,3...)",
+                    ),
                     validator: (v) {
                       if (v == null || v.trim().isEmpty) {
                         return "Bu alan zorunlu";
@@ -151,8 +172,9 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
                         ),
                       ),
                     ),
-                    validator: (v) =>
-                        v == null || v.trim().isEmpty ? "Bu alan zorunlu" : null,
+                    validator: (v) => v == null || v.trim().isEmpty
+                        ? "Bu alan zorunlu"
+                        : null,
                   ),
                   TextFormField(
                     controller: photoCtrl,
@@ -178,14 +200,47 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
                       ),
                     ),
                   ),
+                  TextFormField(
+                    controller: priceCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    onChanged: (value) {
+                      final formatted = _formatAsMoney(value);
+                      priceCtrl.value = TextEditingValue(
+                        text: formatted,
+                        selection: TextSelection.collapsed(
+                          offset: formatted.length,
+                        ),
+                      );
+                    },
+                    decoration: const InputDecoration(
+                      labelText: "Fiyat",
+                      prefixText: "₺ ",
+                    ),
+                    validator: (v) {
+                      final p = _parsePrice(v ?? "");
+                      if (p == null) return "Geçerli bir fiyat girin";
+                      if (p < 0) return "Fiyat negatif olamaz";
+                      return null;
+                    },
+                  ),
+                  TextFormField(
+                    controller: descCtrl,
+                    maxLines: 3,
+                    decoration: const InputDecoration(labelText: "Açıklama"),
+                  ),
                   if (_submitting)
                     Padding(
                       padding: const EdgeInsets.only(top: 12),
                       child: AnimatedBuilder(
                         animation: LoadingManager.instance,
                         builder: (_, __) {
-                          if (LoadingManager.instance.loading) return const SizedBox.shrink();
-                          return const Center(child: CircularProgressIndicator());
+                          if (LoadingManager.instance.loading)
+                            return const SizedBox.shrink();
+                          return const Center(
+                            child: CircularProgressIndicator(),
+                          );
                         },
                       ),
                     ),
@@ -209,6 +264,8 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
                       setStateDialog(() {});
 
                       final issueNumber = int.parse(issueCtrl.text.trim());
+                      final price = _parsePrice(priceCtrl.text.trim());
+                      if (price == null || price < 0) return;
                       try {
                         String fileUrl = fileCtrl.text.trim();
                         if (pickedPdfBytes != null && pickedPdfName != null) {
@@ -222,7 +279,8 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
                         String? photoUrl = photoCtrl.text.trim().isEmpty
                             ? null
                             : photoCtrl.text.trim();
-                        if (pickedPhotoBytes != null && pickedPhotoName != null) {
+                        if (pickedPhotoBytes != null &&
+                            pickedPhotoName != null) {
                           photoUrl = await _uploadService.uploadPublic(
                             type: UploadFileType.magazine,
                             bytes: pickedPhotoBytes!,
@@ -235,6 +293,10 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
                           issueNumber: issueNumber,
                           fileUrl: fileUrl,
                           photoUrl: photoUrl,
+                          price: price,
+                          description: descCtrl.text.trim().isEmpty
+                              ? null
+                              : descCtrl.text.trim(),
                         );
                         if (!mounted) return;
                         Navigator.pop(context);
@@ -246,7 +308,10 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
                         setStateDialog(() {});
                       }
                     },
-              child: const Text("Kaydet", style: TextStyle(color: Colors.white)),
+              child: const Text(
+                "Kaydet",
+                style: TextStyle(color: Colors.white),
+              ),
             ),
           ],
         ),
@@ -256,9 +321,17 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
 
   Future<void> _showEditIssueDialog(Map<String, dynamic> issue) async {
     final formKey = GlobalKey<FormState>();
-    final issueCtrl = TextEditingController(text: issue["issue_number"]?.toString() ?? "");
+    final issueCtrl = TextEditingController(
+      text: issue["issue_number"]?.toString() ?? "",
+    );
     final fileCtrl = TextEditingController(text: issue["file_url"] ?? "");
     final photoCtrl = TextEditingController(text: issue["photo_url"] ?? "");
+    final priceCtrl = TextEditingController(
+      text: (issue["price"] ?? "").toString(),
+    );
+    final descCtrl = TextEditingController(
+      text: (issue["description"] ?? "").toString(),
+    );
     Uint8List? pickedPdfBytes;
     String? pickedPdfName;
     Uint8List? pickedPhotoBytes;
@@ -280,10 +353,13 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
                   TextFormField(
                     controller: issueCtrl,
                     keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(labelText: "Sayı Numarası"),
+                    decoration: const InputDecoration(
+                      labelText: "Sayı Numarası",
+                    ),
                     validator: (v) {
                       if (v == null || v.trim().isEmpty) return "Zorunlu";
-                      if (int.tryParse(v.trim()) == null) return "Geçerli bir sayı girin";
+                      if (int.tryParse(v.trim()) == null)
+                        return "Geçerli bir sayı girin";
                       return null;
                     },
                   ),
@@ -310,8 +386,9 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
                         ),
                       ),
                     ),
-                    validator: (v) =>
-                        v == null || v.trim().isEmpty ? "Bu alan zorunlu" : null,
+                    validator: (v) => v == null || v.trim().isEmpty
+                        ? "Bu alan zorunlu"
+                        : null,
                   ),
                   TextFormField(
                     controller: photoCtrl,
@@ -337,14 +414,47 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
                       ),
                     ),
                   ),
+                  TextFormField(
+                    controller: priceCtrl,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    onChanged: (value) {
+                      final formatted = _formatAsMoney(value);
+                      priceCtrl.value = TextEditingValue(
+                        text: formatted,
+                        selection: TextSelection.collapsed(
+                          offset: formatted.length,
+                        ),
+                      );
+                    },
+                    decoration: const InputDecoration(
+                      labelText: "Fiyat",
+                      prefixText: "₺ ",
+                    ),
+                    validator: (v) {
+                      final p = _parsePrice(v ?? "");
+                      if (p == null) return "Geçerli bir fiyat girin";
+                      if (p < 0) return "Fiyat negatif olamaz";
+                      return null;
+                    },
+                  ),
+                  TextFormField(
+                    controller: descCtrl,
+                    maxLines: 3,
+                    decoration: const InputDecoration(labelText: "Açıklama"),
+                  ),
                   if (submitting)
                     Padding(
                       padding: const EdgeInsets.only(top: 12),
                       child: AnimatedBuilder(
                         animation: LoadingManager.instance,
                         builder: (_, __) {
-                          if (LoadingManager.instance.loading) return const SizedBox.shrink();
-                          return const Center(child: CircularProgressIndicator());
+                          if (LoadingManager.instance.loading)
+                            return const SizedBox.shrink();
+                          return const Center(
+                            child: CircularProgressIndicator(),
+                          );
                         },
                       ),
                     ),
@@ -366,6 +476,8 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
                       setStateDialog(() => submitting = true);
 
                       final issueNumber = int.parse(issueCtrl.text.trim());
+                      final price = _parsePrice(priceCtrl.text.trim());
+                      if (price == null || price < 0) return;
                       try {
                         String fileUrl = fileCtrl.text.trim();
                         if (pickedPdfBytes != null && pickedPdfName != null) {
@@ -379,7 +491,8 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
                         String? photoUrl = photoCtrl.text.trim().isEmpty
                             ? null
                             : photoCtrl.text.trim();
-                        if (pickedPhotoBytes != null && pickedPhotoName != null) {
+                        if (pickedPhotoBytes != null &&
+                            pickedPhotoName != null) {
                           photoUrl = await _uploadService.uploadPublic(
                             type: UploadFileType.magazine,
                             bytes: pickedPhotoBytes!,
@@ -392,6 +505,10 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
                           issueNumber: issueNumber,
                           fileUrl: fileUrl,
                           photoUrl: photoUrl,
+                          price: price,
+                          description: descCtrl.text.trim().isEmpty
+                              ? null
+                              : descCtrl.text.trim(),
                         );
                         if (!mounted) return;
                         Navigator.pop(context);
@@ -402,7 +519,10 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
                         setStateDialog(() => submitting = false);
                       }
                     },
-              child: const Text("Kaydet", style: TextStyle(color: Colors.white)),
+              child: const Text(
+                "Kaydet",
+                style: TextStyle(color: Colors.white),
+              ),
             ),
           ],
         ),
@@ -431,9 +551,9 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
       onPicked(picked.bytes, picked.name);
       controller.text = picked.name;
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Seçildi: ${picked.name}")),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text("Seçildi: ${picked.name}")));
       }
     } catch (e) {
       await showDialog(
@@ -457,14 +577,16 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
     required void Function(Uint8List bytes, String name) onPicked,
   }) async {
     try {
-      final picked = await AssetImagePicker.pickFile(allowedExtensions: const ["pdf"]);
+      final picked = await AssetImagePicker.pickFile(
+        allowedExtensions: const ["pdf"],
+      );
       if (picked == null) return;
       onPicked(picked.bytes, picked.name);
       controller.text = picked.name;
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Seçildi: ${picked.name}")),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text("Seçildi: ${picked.name}")));
       }
     } catch (e) {
       await showDialog(
@@ -541,8 +663,13 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
                   ),
                   ElevatedButton.icon(
                     icon: const Icon(Icons.add, color: Colors.white),
-                    label: const Text("Yeni Sayı", style: TextStyle(color: Colors.white)),
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                    label: const Text(
+                      "Yeni Sayı",
+                      style: TextStyle(color: Colors.white),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red,
+                    ),
                     onPressed: _showAddIssueDialog,
                   ),
                 ],
@@ -565,42 +692,55 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
                 child: _loading
                     ? const AdminLoadingIndicator()
                     : _issues.isEmpty
-                        ? const Center(child: Padding(padding: EdgeInsets.all(12), child: Text("Henüz sayı eklenmemiş.")))
-                        : ListView.separated(
-                            shrinkWrap: true,
-                            physics: const NeverScrollableScrollPhysics(),
-                            itemCount: _issues.length,
-                            separatorBuilder: (_, __) => const Divider(),
-                            itemBuilder: (_, i) {
-                              final issue = _issues[i];
-                              return ListTile(
-                                leading: _issueCover(issue["photo_url"]),
-                                title: Text(
-                                    "${(magazine["name"] ?? "").toString()} - ${issue["issue_number"]}"),
-                                subtitle: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      "Eklendi: ${_formatDateTime(issue["added_at"])}",
-                                    ),
-                                  ],
+                    ? const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(12),
+                          child: Text("Henüz sayı eklenmemiş."),
+                        ),
+                      )
+                    : ListView.separated(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: _issues.length,
+                        separatorBuilder: (_, __) => const Divider(),
+                        itemBuilder: (_, i) {
+                          final issue = _issues[i];
+                          return ListTile(
+                            leading: _issueCover(issue["photo_url"]),
+                            title: Text(
+                              "${(magazine["name"] ?? "").toString()} - ${issue["issue_number"]}",
+                            ),
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  "Eklendi: ${_formatDateTime(issue["added_at"])}",
                                 ),
-                                trailing: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    IconButton(
-                                      icon: const Icon(Icons.edit, color: Colors.orange),
-                                      onPressed: () => _showEditIssueDialog(issue),
-                                    ),
-                                    IconButton(
-                                      icon: const Icon(Icons.delete, color: Colors.red),
-                                      onPressed: () => _deleteIssue(issue["id"] as int),
-                                    ),
-                                  ],
+                              ],
+                            ),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(
+                                    Icons.edit,
+                                    color: Colors.orange,
+                                  ),
+                                  onPressed: () => _showEditIssueDialog(issue),
                                 ),
-                              );
-                            },
-                          ),
+                                IconButton(
+                                  icon: const Icon(
+                                    Icons.delete,
+                                    color: Colors.red,
+                                  ),
+                                  onPressed: () =>
+                                      _deleteIssue(issue["id"] as int),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
               ),
               const SizedBox(height: 20),
               _reviewsSection(),
@@ -659,7 +799,7 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
                 ),
               ],
             ),
-          )
+          ),
         ],
       ),
     );
@@ -686,12 +826,23 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text("Yorumlar", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              const Text(
+                "Yorumlar",
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
               if (_reviewCount > 0)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(color: Colors.amber.shade100, borderRadius: BorderRadius.circular(8)),
-                  child: Text("⭐ ${_avgRating.toStringAsFixed(1)} ($_reviewCount)"),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.shade100,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    "⭐ ${_avgRating.toStringAsFixed(1)} ($_reviewCount)",
+                  ),
                 ),
             ],
           ),
@@ -699,40 +850,46 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
           _loadingReviews
               ? const AdminLoadingIndicator(padding: EdgeInsets.all(16))
               : _reviews.isEmpty
-                  ? const Padding(
-                      padding: EdgeInsets.all(8.0),
-                      child: Text("Bu dergi için yorum yok."),
-                    )
-                  : ListView.separated(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      itemCount: _reviews.length,
-                      separatorBuilder: (_, __) => const Divider(),
-                      itemBuilder: (_, i) {
-                        final r = _reviews[i];
-                        return ListTile(
-                          title: Row(
-                            children: [
-                              Text(
-                                "Kullanıcı #${r["user_id"] ?? "-"}",
-                                style: const TextStyle(fontWeight: FontWeight.w600),
-                              ),
-                              const SizedBox(width: 8),
-                              _ratingStars((r["rating"] ?? 0) as int? ?? 0),
-                            ],
+              ? const Padding(
+                  padding: EdgeInsets.all(8.0),
+                  child: Text("Bu dergi için yorum yok."),
+                )
+              : ListView.separated(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: _reviews.length,
+                  separatorBuilder: (_, __) => const Divider(),
+                  itemBuilder: (_, i) {
+                    final r = _reviews[i];
+                    return ListTile(
+                      title: Row(
+                        children: [
+                          Text(
+                            "Kullanıcı #${r["user_id"] ?? "-"}",
+                            style: const TextStyle(fontWeight: FontWeight.w600),
                           ),
-                          subtitle: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const SizedBox(height: 4),
-                              Text(r["comment"] ?? "-"),
-                              const SizedBox(height: 4),
-                              Text(_formatDateTime(r["created_at"]), style: const TextStyle(fontSize: 11, color: Colors.black54)),
-                            ],
+                          const SizedBox(width: 8),
+                          _ratingStars((r["rating"] ?? 0) as int? ?? 0),
+                        ],
+                      ),
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const SizedBox(height: 4),
+                          Text(r["comment"] ?? "-"),
+                          const SizedBox(height: 4),
+                          Text(
+                            _formatDateTime(r["created_at"]),
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: Colors.black54,
+                            ),
                           ),
-                        );
-                      },
-                    ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
         ],
       ),
     );
@@ -804,7 +961,10 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
     return Chip(
       label: Text(label),
       backgroundColor: const Color(0xFFFFEBEE),
-      labelStyle: const TextStyle(color: Colors.red, fontWeight: FontWeight.w600),
+      labelStyle: const TextStyle(
+        color: Colors.red,
+        fontWeight: FontWeight.w600,
+      ),
       padding: EdgeInsets.zero,
     );
   }

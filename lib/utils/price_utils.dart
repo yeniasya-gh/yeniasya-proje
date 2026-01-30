@@ -33,7 +33,7 @@ class PriceInfo {
   }
 }
 
-String formatPrice(double value) => "₺${value.toStringAsFixed(2)}";
+String formatPrice(double value) => value > 0 ? "₺${value.toStringAsFixed(2)}" : "Ücretsiz";
 
 Widget buildPriceText({
   required PriceInfo info,
@@ -45,6 +45,15 @@ Widget buildPriceText({
 }) {
   final hasCampaign = info.hasCampaign && info.campaignPrice > 0;
   final hasSale = info.salePrice > 0;
+  
+  // If either price is 0 (Free), we should show "Ücretsiz" or the discounted price
+  if (info.hasCampaign && info.campaignPrice == 0) {
+    return Text("Ücretsiz", style: campaignStyle ?? const TextStyle(color: Colors.red, fontWeight: FontWeight.bold));
+  }
+  if (!info.hasCampaign && info.salePrice == 0) {
+    return Text("Ücretsiz", style: saleStyle ?? const TextStyle(color: Colors.red, fontWeight: FontWeight.bold));
+  }
+
   if (!hasSale && !hasCampaign) {
     return Text(emptyText, style: saleStyle ?? const TextStyle(color: Colors.black54));
   }

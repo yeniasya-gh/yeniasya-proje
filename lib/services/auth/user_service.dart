@@ -30,6 +30,7 @@ class UserService {
           name
           phone
           email
+          payUniqe
           role_id
           role { id name }
         }
@@ -59,8 +60,8 @@ class UserService {
   query Login(
     $email: String!,
     $password: String!
-  ) {
-    users(
+    ) {
+      users(
       where: {
         email: { _eq: $email },
         password: { _eq: $password },
@@ -72,6 +73,7 @@ class UserService {
       name
       phone
       email
+      payUniqe
       role_id
       role {
         id
@@ -100,6 +102,7 @@ class UserService {
           name
           phone
           email
+          payUniqe
           role_id
           role { id name }
         }
@@ -124,6 +127,7 @@ class UserService {
         name
         phone
         email
+        payUniqe
         role_id
         role { id name }
       }
@@ -159,6 +163,7 @@ class UserService {
           name
           phone
           email
+          payUniqe
           role_id
           role { id name }
         }

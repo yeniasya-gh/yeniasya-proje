@@ -1,6 +1,12 @@
 import 'package:flutter/material.dart';
 import '../../services/admin/admin_user_service.dart';
 import '../../services/error/error_manager.dart';
+import '../../services/admin/admin_book_service.dart';
+import '../../services/admin/admin_magazine_service.dart';
+import '../../services/admin/admin_magazine_type_service.dart';
+import '../../services/admin/admin_newspaper_subscription_type_service.dart';
+import '../../services/admin/admin_ek_service.dart';
+import '../../services/user_content_access_service.dart';
 import 'admin_user_detail_page.dart';
 
 class AdminUsersPage extends StatefulWidget {
@@ -293,6 +299,247 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
     );
   }
 
+  void _showGrantAccessDialog(Map<String, dynamic> user) async {
+    final accessService = UserContentAccessService();
+    final bookService = AdminBookService();
+    final magazineService = AdminMagazineService();
+    final magazineTypeService = AdminMagazineTypeService();
+    final searchTypeService = AdminNewspaperSubscriptionTypeService();
+    final ekService = AdminEkService();
+
+    String? selectedCategory; // 'book', 'magazine', 'newspaper', 'ek'
+    dynamic selectedItem;
+    dynamic selectedSubType; // for magazine subscription duration
+    List<dynamic> items = [];
+    List<dynamic> subTypes = [];
+    bool loadingItems = false;
+    bool isSaving = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setSt) => AlertDialog(
+          title: Text("${user["name"]} - Erişim Tanımla"),
+          content: SizedBox(
+            width: 450,
+            child: isSaving
+                ? const Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Padding(
+                        padding: EdgeInsets.symmetric(vertical: 24.0),
+                        child: CircularProgressIndicator(),
+                      ),
+                      Text("Erişim tanımlanıyor..."),
+                    ],
+                  )
+                : Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      DropdownButtonFormField<String>(
+                        value: selectedCategory,
+                        decoration: const InputDecoration(labelText: "Kategori"),
+                        items: const [
+                          DropdownMenuItem(value: "book", child: Text("Kitap")),
+                          DropdownMenuItem(
+                              value: "magazine", child: Text("Dergi (Abonelik)")),
+                          DropdownMenuItem(
+                              value: "newspaper",
+                              child: Text("E-Gazete (Abonelik)")),
+                          DropdownMenuItem(value: "ek", child: Text("Ek")),
+                        ],
+                        onChanged: (val) async {
+                          setSt(() {
+                            selectedCategory = val;
+                            selectedItem = null;
+                            selectedSubType = null;
+                            items = [];
+                            subTypes = [];
+                            loadingItems = true;
+                          });
+
+                          try {
+                            if (val == "book") {
+                              items = await bookService.getAllBooks();
+                            } else if (val == "magazine") {
+                              items = await magazineService.getMagazines();
+                              subTypes = await magazineTypeService.getAll();
+                            } else if (val == "newspaper") {
+                              items = await searchTypeService.getAll();
+                            } else if (val == "ek") {
+                              items = await ekService.getAll();
+                            }
+                          } catch (e) {
+                            if (mounted) {
+                              ScaffoldMessenger.of(ctx).showSnackBar(
+                                  SnackBar(content: Text("Yükleme hatası: $e")));
+                            }
+                          } finally {
+                            setSt(() => loadingItems = false);
+                          }
+                        },
+                      ),
+                      if (loadingItems)
+                        const Padding(
+                          padding: EdgeInsets.all(16.0),
+                          child: CircularProgressIndicator(),
+                        ),
+                      if (!loadingItems && selectedCategory != null) ...[
+                        const SizedBox(height: 12),
+                        if (selectedCategory == "book")
+                          DropdownButtonFormField<dynamic>(
+                            value: selectedItem,
+                            decoration: const InputDecoration(labelText: "Kitap Seçin"),
+                            items: items
+                                .map((i) => DropdownMenuItem(
+                                    value: i, child: Text(i["title"] ?? "")))
+                                .toList(),
+                            onChanged: (val) => setSt(() => selectedItem = val),
+                          ),
+                        if (selectedCategory == "magazine") ...[
+                          DropdownButtonFormField<dynamic>(
+                            value: selectedItem,
+                            decoration:
+                                const InputDecoration(labelText: "Dergi Seçin"),
+                            items: items
+                                .map((i) => DropdownMenuItem(
+                                    value: i, child: Text(i["name"] ?? "")))
+                                .toList(),
+                            onChanged: (val) => setSt(() => selectedItem = val),
+                          ),
+                          const SizedBox(height: 12),
+                          DropdownButtonFormField<dynamic>(
+                            value: selectedSubType,
+                            decoration:
+                                const InputDecoration(labelText: "Abonelik Süresi"),
+                            items: subTypes
+                                .map((i) => DropdownMenuItem(
+                                    value: i, child: Text(i["title"] ?? "")))
+                                .toList(),
+                            onChanged: (val) => setSt(() => selectedSubType = val),
+                          ),
+                        ],
+                        if (selectedCategory == "newspaper")
+                          DropdownButtonFormField<dynamic>(
+                            value: selectedItem,
+                            decoration:
+                                const InputDecoration(labelText: "Abonelik Tipi"),
+                            items: items
+                                .map((i) => DropdownMenuItem(
+                                    value: i, child: Text(i["title"] ?? "")))
+                                .toList(),
+                            onChanged: (val) => setSt(() => selectedItem = val),
+                          ),
+                        if (selectedCategory == "ek")
+                          DropdownButtonFormField<dynamic>(
+                            value: selectedItem,
+                            decoration: const InputDecoration(labelText: "Ek Seçin"),
+                            items: items
+                                .map((i) => DropdownMenuItem(
+                                    value: i, child: Text(i["ad"] ?? "")))
+                                .toList(),
+                            onChanged: (val) => setSt(() => selectedItem = val),
+                          ),
+                      ],
+                    ],
+                  ),
+          ),
+          actions: isSaving
+              ? null
+              : [
+                  TextButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      child: const Text("İptal")),
+                  ElevatedButton(
+                    onPressed: selectedItem == null
+                        ? null
+                        : () async {
+                            setSt(() => isSaving = true);
+                            try {
+                              String itemType = "";
+                              int? itemId;
+                              DateTime? expiresAt;
+                              double price = 0;
+
+                              if (selectedCategory == "book") {
+                                itemType = "book";
+                                itemId = selectedItem["id"];
+                                price = double.tryParse(
+                                        selectedItem["price"]?.toString() ??
+                                            "0") ??
+                                    0;
+                              } else if (selectedCategory == "magazine") {
+                                if (selectedSubType == null) {
+                                  ScaffoldMessenger.of(ctx).showSnackBar(
+                                      const SnackBar(
+                                          content:
+                                              Text("Lütfen abonelik tipi seçin")));
+                                  setSt(() => isSaving = false);
+                                  return;
+                                }
+                                itemType = "magazine";
+                                itemId = selectedItem["id"];
+                                final months = (selectedSubType["duration_months"]
+                                            as num?)
+                                        ?.toInt() ??
+                                    1;
+                                expiresAt = DateTime.now()
+                                    .add(Duration(days: 30 * months));
+                                price = 0; // Manuel tanımlama
+                              } else if (selectedCategory == "newspaper") {
+                                itemType = "newspaper_subscription";
+                                itemId = null; // Genel abonelik
+                                final months =
+                                    (selectedItem["duration_months"] as num?)
+                                            ?.toInt() ??
+                                        1;
+                                expiresAt = DateTime.now()
+                                    .add(Duration(days: 30 * months));
+                                price = 0;
+                              } else if (selectedCategory == "ek") {
+                                itemType = "ek";
+                                itemId = selectedItem["id"];
+                                price = double.tryParse(
+                                        selectedItem["fiyat"]?.toString() ??
+                                            "0") ??
+                                    0;
+                              }
+
+                              await accessService.grantAccess(
+                                userId: user["id"].toString(),
+                                items: [
+                                  {
+                                    "item_type": itemType,
+                                    "item_id": itemId,
+                                    "started_at": DateTime.now().toIso8601String(),
+                                    "expires_at": expiresAt?.toIso8601String(),
+                                    "purchase_price": price,
+                                  }
+                                ],
+                              );
+
+                              if (mounted) {
+                                Navigator.pop(ctx);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                        content:
+                                            Text("Erişim başarıyla tanımlandı")));
+                              }
+                            } catch (e) {
+                              setSt(() => isSaving = false);
+                              ScaffoldMessenger.of(ctx).showSnackBar(
+                                  SnackBar(content: Text("Hata: $e")));
+                            }
+                          },
+                    child: const Text("Tanımla"),
+                  ),
+                ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
 
@@ -375,6 +622,11 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
                           DataCell(
                             Row(
                               children: [
+                                IconButton(
+                                  icon: const Icon(Icons.add_circle_outline, color: Colors.green),
+                                  onPressed: () => _showGrantAccessDialog(u),
+                                  tooltip: "Erişim Tanımla",
+                                ),
                                 IconButton(
                                   icon: const Icon(Icons.info_outline, color: Colors.teal),
                                   onPressed: () => _openUserDetail(u),

@@ -348,7 +348,7 @@ class _AdminBooksPageState extends State<AdminBooksPage> {
                       validator: (v) {
                         final price = _parsePrice(v ?? "");
                         if (price == null) return "Geçerli bir fiyat girin";
-                        if (price <= 0) return "Fiyat 0'dan büyük olmalı";
+                        if (price < 0) return "Fiyat negatif olamaz";
                         return null;
                       },
                     ),
@@ -628,7 +628,7 @@ class _AdminBooksPageState extends State<AdminBooksPage> {
                       validator: (v) {
                         final price = _parsePrice(v ?? "");
                         if (price == null) return "Geçerli bir fiyat girin";
-                        if (price <= 0) return "Fiyat 0'dan büyük olmalı";
+                        if (price < 0) return "Fiyat negatif olamaz";
                         return null;
                       },
                     ),

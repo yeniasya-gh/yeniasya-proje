@@ -8,7 +8,6 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../../models/cart_item.dart';
 import '../../services/cart/cart_provider.dart';
 import '../../utils/safe_image.dart';
-import '../profile/pdf_viewer_screen.dart';
 import 'magazine_issues_screen.dart';
 import '../../services/upload_service.dart';
 import '../../services/newspaper_subscription_type_service.dart';
@@ -16,10 +15,11 @@ import '../../services/magazine_type_price_service.dart';
 import '../../services/access_provider.dart';
 import '../../services/review_service.dart';
 import '../../services/auth/auth_provider.dart';
-import '../../services/secure_file_service.dart';
 import '../../services/error/error_manager.dart';
 import '../../utils/cart_feedback.dart';
 import 'package:flutter/foundation.dart';
+import '../../utils/pdf_open_helper.dart';
+import '../../services/secure_file_service.dart';
 
 class ProductDetail {
   final String id;
@@ -46,12 +46,10 @@ class ProductDetail {
     this.forceAccess = false,
   });
 
-  String get priceText => price > 0 ? "₺${price.toStringAsFixed(2)}" : "Fiyat bilgisi yakında";
+  String get priceText =>
+      price > 0 ? "₺${price.toStringAsFixed(2)}" : "Ücretsiz";
 
-  ProductDetail copyWith({
-    bool? forceAccess,
-    Map<String, dynamic>? metadata,
-  }) {
+  ProductDetail copyWith({bool? forceAccess, Map<String, dynamic>? metadata}) {
     return ProductDetail(
       id: id,
       title: title,
@@ -121,9 +119,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     if (added) {
       showAddedToCartDialog(context);
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Bu ürün zaten sepette.")),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("Bu ürün zaten sepette.")));
     }
   }
 
@@ -148,7 +146,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text("Gazete Aboneliği Seç", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                const Text(
+                  "Gazete Aboneliği Seç",
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                ),
                 const SizedBox(height: 12),
                 Expanded(
                   child: ListView.separated(
@@ -156,12 +157,19 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                     separatorBuilder: (_, __) => const Divider(height: 1),
                     itemBuilder: (_, i) {
                       final item = list[i];
-                      final id = int.tryParse(item["id"]?.toString() ?? "") ?? 0;
-                      final months = int.tryParse(item["duration_months"]?.toString() ?? "") ?? 0;
-                      final price = double.tryParse(item["price"]?.toString() ?? "") ?? 0;
+                      final id =
+                          int.tryParse(item["id"]?.toString() ?? "") ?? 0;
+                      final months =
+                          int.tryParse(
+                            item["duration_months"]?.toString() ?? "",
+                          ) ??
+                          0;
+                      final price =
+                          double.tryParse(item["price"]?.toString() ?? "") ?? 0;
                       final title = (item["title"] ?? "").toString().trim();
-                      final displayTitle =
-                          title.isNotEmpty ? title : "$months Aylık Gazete Aboneliği";
+                      final displayTitle = title.isNotEmpty
+                          ? title
+                          : "$months Aylık Gazete Aboneliği";
                       final cartItem = CartItem(
                         id: "news-type-$id",
                         title: displayTitle,
@@ -181,9 +189,13 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                       return ListTile(
                         contentPadding: EdgeInsets.zero,
                         title: Text(displayTitle),
-                        subtitle: Text(months > 0 ? "$months ay" : "Gazete Aboneliği"),
+                        subtitle: Text(
+                          months > 0 ? "$months ay" : "Gazete Aboneliği",
+                        ),
                         trailing: Text(
-                          alreadyInCart ? "Sepette" : "₺${price.toStringAsFixed(2)}",
+                          alreadyInCart
+                              ? "Sepette"
+                              : "₺${price.toStringAsFixed(2)}",
                           style: TextStyle(
                             fontWeight: FontWeight.w700,
                             color: alreadyInCart ? Colors.grey : Colors.red,
@@ -198,7 +210,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                                   showAddedToCartDialog(context);
                                 } else {
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text("Bu ürün zaten sepette.")),
+                                    const SnackBar(
+                                      content: Text("Bu ürün zaten sepette."),
+                                    ),
                                   );
                                 }
                               },
@@ -219,9 +233,14 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     }
   }
 
-  Future<void> _selectMagazineSubscriptionType(BuildContext context, int magazineId) async {
+  Future<void> _selectMagazineSubscriptionType(
+    BuildContext context,
+    int magazineId,
+  ) async {
     try {
-      final list = await _magazineTypePriceService.getActiveByMagazine(magazineId);
+      final list = await _magazineTypePriceService.getActiveByMagazine(
+        magazineId,
+      );
       if (!mounted) return;
       if (list.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -240,7 +259,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text("Dergi Aboneliği Seç", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                const Text(
+                  "Dergi Aboneliği Seç",
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                ),
                 const SizedBox(height: 12),
                 Expanded(
                   child: ListView.separated(
@@ -248,12 +270,21 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                     separatorBuilder: (_, __) => const Divider(height: 1),
                     itemBuilder: (_, i) {
                       final item = list[i];
-                      final type = item["magazine_type"] as Map<String, dynamic>? ?? {};
-                      final typeId = int.tryParse(type["id"]?.toString() ?? "") ?? 0;
-                      final months = int.tryParse(type["duration_months"]?.toString() ?? "") ?? 0;
-                      final price = double.tryParse(item["price"]?.toString() ?? "") ?? 0;
+                      final type =
+                          item["magazine_type"] as Map<String, dynamic>? ?? {};
+                      final typeId =
+                          int.tryParse(type["id"]?.toString() ?? "") ?? 0;
+                      final months =
+                          int.tryParse(
+                            type["duration_months"]?.toString() ?? "",
+                          ) ??
+                          0;
+                      final price =
+                          double.tryParse(item["price"]?.toString() ?? "") ?? 0;
                       final title = (type["title"] ?? "").toString().trim();
-                      final displayTitle = title.isNotEmpty ? title : "$months Aylık Dergi Aboneliği";
+                      final displayTitle = title.isNotEmpty
+                          ? title
+                          : "$months Aylık Dergi Aboneliği";
                       final cartItem = CartItem(
                         id: "mag-$magazineId-type-$typeId",
                         title: widget.detail.title,
@@ -274,9 +305,13 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                       return ListTile(
                         contentPadding: EdgeInsets.zero,
                         title: Text(displayTitle),
-                        subtitle: Text(months > 0 ? "$months ay" : "Dergi Aboneliği"),
+                        subtitle: Text(
+                          months > 0 ? "$months ay" : "Dergi Aboneliği",
+                        ),
                         trailing: Text(
-                          alreadyInCart ? "Sepette" : "₺${price.toStringAsFixed(2)}",
+                          alreadyInCart
+                              ? "Sepette"
+                              : "₺${price.toStringAsFixed(2)}",
                           style: TextStyle(
                             fontWeight: FontWeight.w700,
                             color: alreadyInCart ? Colors.grey : Colors.red,
@@ -291,7 +326,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                                   showAddedToCartDialog(context);
                                 } else {
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text("Bu ürün zaten sepette.")),
+                                    const SnackBar(
+                                      content: Text("Bu ürün zaten sepette."),
+                                    ),
                                   );
                                 }
                               },
@@ -314,7 +351,44 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
   bool _hasContentAccess(BuildContext context) {
     if (widget.detail.forceAccess) return true;
+    if (widget.detail.price <= 0) return true;
     if (_hasLocalCopy) return true;
+    if (widget.detail.type == CartItemType.magazineIssue) {
+      final access = context.read<AccessProvider>();
+      final issueIdRaw = widget.detail.metadata?["productId"];
+      final issueId = int.tryParse(issueIdRaw?.toString() ?? "");
+      if (issueId == null) return false;
+
+      final directIssueAccess = access.hasAccessExact(
+        "magazine_issue",
+        itemId: issueId,
+      );
+
+      final magazineIdRaw = widget.detail.metadata?["magazineId"];
+      final magazineId = int.tryParse(magazineIdRaw?.toString() ?? "");
+      final hasSubscription = magazineId != null
+          ? access.hasAccess("magazine", itemId: magazineId)
+          : false;
+      final start = magazineId != null
+          ? access.startDate("magazine", itemId: magazineId)
+          : null;
+      final end = magazineId != null
+          ? access.expiry("magazine", itemId: magazineId)
+          : null;
+      final issueDateRaw = widget.detail.metadata?["issueDate"]?.toString();
+      final issueDate = issueDateRaw == null
+          ? null
+          : DateTime.tryParse(issueDateRaw);
+      final windowAccess =
+          hasSubscription &&
+          start != null &&
+          end != null &&
+          issueDate != null &&
+          !_normalizeDay(issueDate).isBefore(_normalizeDay(start)) &&
+          !_normalizeDay(issueDate).isAfter(_normalizeDay(end));
+
+      return directIssueAccess || windowAccess;
+    }
     final target = _reviewTarget();
     if (target == null) {
       return widget.detail.metadata?["disableAdd"] == true;
@@ -325,6 +399,17 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       itemId: target["productId"] as int?,
     );
     return hasAccess;
+  }
+
+  DateTime _normalizeDay(DateTime dt) => DateTime(dt.year, dt.month, dt.day);
+
+  bool _hasMagazineSubscriptionForIssue(BuildContext context) {
+    if (widget.detail.type != CartItemType.magazineIssue) return false;
+    final access = context.read<AccessProvider>();
+    final magazineIdRaw = widget.detail.metadata?["magazineId"];
+    final magazineId = int.tryParse(magazineIdRaw?.toString() ?? "");
+    if (magazineId == null) return false;
+    return access.hasAccess("magazine", itemId: magazineId);
   }
 
   CartItem? _directCartItem() {
@@ -402,9 +487,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     } else {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("PDF açılamadı.")),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("PDF açılamadı.")));
     }
   }
 
@@ -414,7 +499,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       await Share.share(text);
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Paylaşım başlatılamadı.")));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("Paylaşım başlatılamadı.")));
     }
   }
 
@@ -430,7 +517,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       }
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Paylaşım başlatılamadı.")));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("Paylaşım başlatılamadı.")));
     }
   }
 
@@ -444,33 +533,32 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   Future<void> _openPdf(BuildContext context, String fileUrl) async {
     setState(() => _downloadBusy = true);
     try {
-      if (!kIsWeb) {
-        setState(() => _downloadProgress = 0);
-        await SecureFileService.instance.getPdfBytes(
-          url: fileUrl,
-          isPrivate: true,
-          onProgress: (p) {
-            if (!mounted) return;
-            setState(() => _downloadProgress = p.clamp(0, 1));
-          },
-        );
+      final showPercent =
+          !kIsWeb && !(await SecureFileService.instance.hasCached(fileUrl));
+      if (showPercent && mounted) setState(() => _downloadProgress = 0);
+      await PdfOpenHelper.downloadAndOpen(
+        context,
+        url: fileUrl,
+        title: widget.detail.title,
+        isPrivate: true,
+        onProgress: showPercent
+            ? (p) {
+                if (!mounted) return;
+                setState(() => _downloadProgress = p);
+              }
+            : null,
+      );
+      if (!kIsWeb && mounted) {
         setState(() => _hasLocalCopy = true);
       }
-      if (!mounted) return;
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => PdfViewerScreen(
-            url: fileUrl,
-            title: widget.detail.title,
-            isPrivate: true,
-          ),
-        ),
-      );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Dosya açılamadı: ${ErrorManager.parseGraphQLError(e.toString())}")),
+        SnackBar(
+          content: Text(
+            "Dosya açılamadı: ${ErrorManager.parseGraphQLError(e.toString())}",
+          ),
+        ),
       );
     } finally {
       if (mounted) {
@@ -515,10 +603,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         break;
     }
 
-    return {
-      "productId": parsedId,
-      "productType": type,
-    };
+    return {"productId": parsedId, "productType": type};
   }
 
   Future<void> _loadReviews() async {
@@ -534,7 +619,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       setState(() {
         _reviews = List<Map<String, dynamic>>.from(data["reviews"] ?? []);
         _avgRating = (data["average"] as double?) ?? 0;
-        _reviewCount = data["count"] is int ? data["count"] as int : int.tryParse(data["count"]?.toString() ?? "0") ?? 0;
+        _reviewCount = data["count"] is int
+            ? data["count"] as int
+            : int.tryParse(data["count"]?.toString() ?? "0") ?? 0;
       });
     } catch (_) {
       // Sessiz geç
@@ -546,27 +633,40 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   Future<void> _submitReview() async {
     final target = _reviewTarget();
     if (target == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Bu ürün için yorum aktif değil.")));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Bu ürün için yorum aktif değil.")),
+      );
       return;
     }
 
     final user = context.read<AuthProvider>().user;
     final userId = user?.id;
     if (userId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Yorum yapmak için giriş yapın.")));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Yorum yapmak için giriş yapın.")),
+      );
       return;
     }
 
     final access = context.read<AccessProvider>();
-    final hasAccess = access.hasAccess(target["productType"] as String, itemId: target["productId"] as int?);
+    final hasAccess = access.hasAccess(
+      target["productType"] as String,
+      itemId: target["productId"] as int?,
+    );
     if (!hasAccess) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Satın aldığınız ürünlere yorum ekleyebilirsiniz.")));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Satın aldığınız ürünlere yorum ekleyebilirsiniz."),
+        ),
+      );
       return;
     }
 
     final comment = _commentCtrl.text.trim();
     if (comment.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Lütfen yorum yazın.")));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("Lütfen yorum yazın.")));
       return;
     }
 
@@ -586,11 +686,15 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       setState(() => _rating = 5);
       await _loadReviews();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Yorumunuz onaya gönderildi.")));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Yorumunuz onaya gönderildi.")),
+        );
       }
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Yorum eklenemedi")));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("Yorum eklenemedi")));
     } finally {
       if (mounted) setState(() => _reviewSubmitting = false);
     }
@@ -602,74 +706,88 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       return const SizedBox.shrink();
     }
     final access = context.watch<AccessProvider>();
-    final canReview = access.hasAccess(target["productType"] as String, itemId: target["productId"] as int?);
+    final canReview = access.hasAccess(
+      target["productType"] as String,
+      itemId: target["productId"] as int?,
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
-            const Text("Değerlendirmeler", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+            const Text(
+              "Değerlendirmeler",
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+            ),
             const SizedBox(width: 8),
             if (_reviewCount > 0)
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(color: Colors.amber.shade100, borderRadius: BorderRadius.circular(8)),
-                child: Text("⭐ ${_avgRating.toStringAsFixed(1)} ($_reviewCount)"),
+                decoration: BoxDecoration(
+                  color: Colors.amber.shade100,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  "⭐ ${_avgRating.toStringAsFixed(1)} ($_reviewCount)",
+                ),
               ),
           ],
         ),
         const SizedBox(height: 12),
-        if (access.expiry(target["productType"] as String, itemId: target["productId"] as int?) != null)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8.0),
-            child: Text(
-              "Abonelik bitiş: ${_formatDate(access.expiry(target["productType"] as String, itemId: target["productId"] as int?)!)}",
-              style: const TextStyle(color: Colors.black54),
-            ),
-          ),
         _reviewForm(canReview),
         const SizedBox(height: 12),
         _reviewsLoading
             ? const Center(child: CircularProgressIndicator())
             : _reviews.isEmpty
-                ? const Text("Henüz yorum yok.")
-                : Column(
-                    children: _reviews
-                        .map(
-                          (r) => Card(
-                            margin: const EdgeInsets.only(bottom: 8),
-                            child: ListTile(
-                              title: Row(
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      (r["user_name"] ?? r["user_email"] ?? "Kullanıcı #${r["user_id"] ?? "-"}").toString(),
-                                      style: const TextStyle(fontWeight: FontWeight.w600),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
+            ? const Text("Henüz yorum yok.")
+            : Column(
+                children: _reviews
+                    .map(
+                      (r) => Card(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        child: ListTile(
+                          title: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  (r["user_name"] ??
+                                          r["user_email"] ??
+                                          "Kullanıcı #${r["user_id"] ?? "-"}")
+                                      .toString(),
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
                                   ),
-                                  const SizedBox(width: 8),
-                                  _ratingStars((r["rating"] ?? 0) as int? ?? 0, size: 16),
-                                ],
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                               ),
-                              subtitle: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const SizedBox(height: 4),
-                                  Text(r["comment"] ?? "-"),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    _formatDate(r["created_at"]),
-                                    style: const TextStyle(fontSize: 11, color: Colors.black54),
-                                  ),
-                                ],
+                              const SizedBox(width: 8),
+                              _ratingStars(
+                                (r["rating"] ?? 0) as int? ?? 0,
+                                size: 16,
                               ),
-                            ),
+                            ],
                           ),
-                        )
-                        .toList(),
-                  ),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const SizedBox(height: 4),
+                              Text(r["comment"] ?? "-"),
+                              const SizedBox(height: 6),
+                              Text(
+                                _formatDate(r["created_at"]),
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.black54,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    )
+                    .toList(),
+              ),
       ],
     );
   }
@@ -688,7 +806,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         children: [
           Row(
             children: [
-              const Text("Puanınız:", style: TextStyle(fontWeight: FontWeight.w600)),
+              const Text(
+                "Puanınız:",
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
               const SizedBox(width: 8),
               _ratingStars(_rating, onTap: (v) => setState(() => _rating = v)),
             ],
@@ -700,23 +821,42 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             decoration: InputDecoration(
               hintText: user == null
                   ? "Yorum yapmak için giriş yapın"
-                  : (canReview ? "Yorumunuzu yazın" : "Sadece satın alınan ürünlere yorum yapılabilir"),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                  : (canReview
+                        ? "Yorumunuzu yazın"
+                        : "Sadece satın alınan ürünlere yorum yapılabilir"),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
               filled: true,
               fillColor: Colors.white,
             ),
             readOnly: user == null || !canReview,
           ),
           const SizedBox(height: 8),
-          SizedBox(
-            width: 140,
-            height: 42,
-            child: ElevatedButton(
-              onPressed: user == null || _reviewSubmitting || !canReview ? null : _submitReview,
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
-              child: _reviewSubmitting
-                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                  : const Text("Gönder"),
+          Align(
+            alignment: Alignment.centerRight,
+            child: SizedBox(
+              width: 140,
+              height: 42,
+              child: ElevatedButton(
+                onPressed: user == null || _reviewSubmitting || !canReview
+                    ? null
+                    : _submitReview,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red,
+                  foregroundColor: Colors.white,
+                ),
+                child: _reviewSubmitting
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Text("Gönder"),
+              ),
             ),
           ),
           if (user != null && !canReview)
@@ -763,6 +903,19 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     return "${two(dt.day)}.${two(dt.month)}.${dt.year} ${two(dt.hour)}:${two(dt.minute)}";
   }
 
+  String _formatTurkishDate(String raw) {
+    if (raw.isEmpty) return "-";
+    DateTime? dt = DateTime.tryParse(raw);
+    if (dt == null) return raw;
+
+    final turkishMonths = [
+      "Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran",
+      "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"
+    ];
+
+    return "${dt.day} ${turkishMonths[dt.month - 1]} ${dt.year}";
+  }
+
   @override
   Widget build(BuildContext context) {
     final isWeb = MediaQuery.of(context).size.width > 800;
@@ -774,6 +927,81 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     final directItem = _directCartItem();
     final alreadyInCart = directItem != null && cart.contains(directItem);
 
+    if (widget.detail.type == CartItemType.newspaperSubscription) {
+      final newsTitle = "Yeni Asya Gazetesi";
+      return Scaffold(
+        backgroundColor: const Color(0xFFF7F8FA),
+        appBar: AppBar(
+          backgroundColor: Colors.white,
+          foregroundColor: Colors.black87,
+          elevation: 1,
+          title: Text(newsTitle, style: const TextStyle(fontWeight: FontWeight.w600)),
+          centerTitle: true,
+        ),
+        body: Column(
+          children: [
+            Expanded(
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: _image(widget.detail.imageUrl),
+                ),
+              ),
+            ),
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, -4)),
+                ],
+              ),
+              child: SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        newsTitle,
+                        style: const TextStyle(
+                          color: Colors.black87,
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          letterSpacing: -0.5,
+                        ),
+                      ),
+                      if ((widget.detail.subtitle ?? "").isNotEmpty) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          _formatTurkishDate(widget.detail.subtitle!),
+                          style: TextStyle(
+                            color: Colors.black54,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 24),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 56,
+                        child: _buildPrimaryActionButton(context, alreadyInCart, magazineId),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -781,205 +1009,368 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         foregroundColor: Colors.black87,
         centerTitle: true,
         elevation: 1,
-        title: Text(widget.detail.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+        title: Text(
+          widget.detail.title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
-            padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                LayoutBuilder(
-                  builder: (context, constraints) {
-                    final maxHeight = isWeb ? 420.0 : 360.0;
-                    return Center(
-                      child: ConstrainedBox(
-                        constraints: BoxConstraints(
-                          maxWidth: isWeb ? 420 : double.infinity,
-                          maxHeight: maxHeight,
-                        ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(16),
-                          child: _image(widget.detail.imageUrl),
-                        ),
-                      ),
-                    );
-                  },
-                ),
-                const SizedBox(height: 16),
-                if (widget.detail.type == CartItemType.book)
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(
-                        child: Text(
-                          widget.detail.title,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      OutlinedButton.icon(
-                        onPressed: null,
-                        icon: Icon(Icons.headphones, color: Colors.grey.shade500),
-                        label: Text(
-                          "Sesli Kitap",
-                          style: TextStyle(color: Colors.grey.shade500, fontWeight: FontWeight.w600),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          side: BorderSide(color: Colors.grey.shade300),
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
-                      ),
-                    ],
-                  )
-                else
-                  Text(widget.detail.title, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-                if ((widget.detail.subtitle ?? "").isNotEmpty) ...[
-                  const SizedBox(height: 6),
-                  Text(widget.detail.subtitle!, style: const TextStyle(color: Colors.black54, fontSize: 14)),
-                ],
-                if (widget.detail.type != CartItemType.newspaperSubscription) ...[
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: _shareGeneral,
-                          icon: const Icon(Icons.share),
-                          label: const Text("Sosyal Medyada Paylaş"),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: _shareWhatsApp,
-                          icon: const Icon(FontAwesomeIcons.whatsapp, color: Colors.green),
-                          label: const Text("WhatsApp"),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                ],
-                Text(
-                  widget.detail.description.isNotEmpty ? widget.detail.description : "Açıklama yakında.",
-                  style: const TextStyle(fontSize: 15, height: 1.5),
-                ),
-                if (widget.detail.type != CartItemType.newspaperSubscription)
-                  Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF7F8FA),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text("Fiyat", style: TextStyle(fontSize: 15, color: Colors.black54)),
-                        _priceDisplay(),
-                      ],
-                    ),
-                  ),
-                if (widget.detail.type == CartItemType.magazine && magazineId != null) ...[
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: () => _openMagazineIssues(context, magazineId),
-                      icon: const Icon(Icons.menu_book),
-                      label: const Text("Dergi Sayıları"),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                ],
-                const SizedBox(height: 16),
-                _reviewsSection(),
-                const SizedBox(height: 80),
-              ],
-            ),
+          padding: EdgeInsets.symmetric(
+            horizontal: horizontalPadding,
+            vertical: 12,
           ),
-      ),
-      bottomNavigationBar: SafeArea(
-        minimum: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 16),
-        child: SizedBox(
-          height: 54,
-          child: ElevatedButton(
-            onPressed: (alreadyInCart && !_hasContentAccess(context))
-                ? null
-                : () {
-                    final hasAccess = _hasContentAccess(context);
-
-                    if (hasAccess) {
-                      if (_openingBook) return;
-                      if (widget.detail.type == CartItemType.magazine && magazineId != null) {
-                        _openMagazineIssues(context, magazineId);
-                        return;
-                      }
-                      final fileUrl = _currentFileUrl();
-                      if (fileUrl != null && fileUrl.isNotEmpty) {
-                        setState(() => _openingBook = true);
-                        _openPdf(context, fileUrl).whenComplete(() {
-                          if (mounted) setState(() => _openingBook = false);
-                        });
-                      } else {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text("Bu içerik için indirme bağlantısı bulunamadı.")),
-                        );
-                      }
-                      return;
-                    }
-                    if (widget.detail.type == CartItemType.newspaperSubscription) {
-                      _selectNewspaperSubscriptionType(context);
-                      return;
-                    }
-                    if (widget.detail.type == CartItemType.magazine && magazineId != null) {
-                      _selectMagazineSubscriptionType(context, magazineId);
-                      return;
-                    }
-                    _addToCart(context);
-                  },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: _hasContentAccess(context) ? Colors.blue : Colors.red,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            ),
-            child: Builder(
-              builder: (context) {
-                final hasAccess = _hasContentAccess(context);
-                final label = (alreadyInCart && !hasAccess)
-                    ? "Sepette"
-                    : (hasAccess && widget.detail.type == CartItemType.book)
-                        ? "Kitabı Görüntüle"
-                        : _buttonLabel(widget.detail, hasAccess);
-                return Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(label),
-                    if (hasAccess && _openingBook) ...[
-                      const SizedBox(width: 8),
-                      const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final maxHeight = isWeb ? 420.0 : 360.0;
+                  return Center(
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxWidth: isWeb ? 420 : double.infinity,
+                        maxHeight: maxHeight,
                       ),
-                      if (_downloadProgress != null) ...[
-                        const SizedBox(width: 8),
-                        Text(
-                          "${(_downloadProgress! * 100).round()}%",
-                          style: const TextStyle(fontWeight: FontWeight.w600),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(16),
+                        child: _image(widget.detail.imageUrl),
+                      ),
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 16),
+              if (widget.detail.type == CartItemType.book)
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        widget.detail.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
                         ),
-                      ],
-                    ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    OutlinedButton.icon(
+                      onPressed: null,
+                      icon: Icon(Icons.headphones, color: Colors.grey.shade500),
+                      label: Text(
+                        "Sesli Kitap",
+                        style: TextStyle(
+                          color: Colors.grey.shade500,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        side: BorderSide(color: Colors.grey.shade300),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
                   ],
-                );
-              },
-            ),
+                )
+              else
+                Text(
+                  widget.detail.title,
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              if ((widget.detail.subtitle ?? "").isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Text(
+                  widget.detail.subtitle!,
+                  style: const TextStyle(color: Colors.black54, fontSize: 14),
+                ),
+              ],
+              if (widget.detail.type != CartItemType.newspaperSubscription) ...[
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _shareGeneral,
+                        icon: const Icon(Icons.share),
+                        label: const Text("Paylaş"),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _shareWhatsApp,
+                        icon: const Icon(
+                          FontAwesomeIcons.whatsapp,
+                          color: Colors.green,
+                        ),
+                        label: const Text("WhatsApp"),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+              ],
+              Text(
+                widget.detail.description.isNotEmpty
+                    ? widget.detail.description
+                    : "Açıklama yakında.",
+                style: const TextStyle(fontSize: 15, height: 1.5),
+              ),
+              if (widget.detail.type != CartItemType.newspaperSubscription)
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF7F8FA),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        "Fiyat",
+                        style: TextStyle(fontSize: 15, color: Colors.black54),
+                      ),
+                      _priceDisplay(),
+                    ],
+                  ),
+                ),
+              if (widget.detail.type == CartItemType.magazine &&
+                  magazineId != null) ...[
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () => _openMagazineIssues(context, magazineId),
+                    icon: const Icon(Icons.menu_book),
+                    label: const Text("Dergi Sayıları"),
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
+              const SizedBox(height: 16),
+              _reviewsSection(),
+              const SizedBox(height: 80),
+            ],
           ),
         ),
+      ),
+      bottomNavigationBar: SafeArea(
+        minimum: EdgeInsets.symmetric(
+          horizontal: horizontalPadding,
+          vertical: 16,
+        ),
+        child: widget.detail.type == CartItemType.magazineIssue
+            ? Row(
+                children: [
+                  if (_hasContentAccess(context))
+                    Expanded(
+                      child: SizedBox(
+                        height: 54,
+                        child: ElevatedButton(
+                          onPressed: _openingBook
+                              ? null
+                              : () {
+                                  final fileUrl = _currentFileUrl();
+                                  if (fileUrl == null || fileUrl.isEmpty) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text(
+                                          "Bu içerik için indirme bağlantısı bulunamadı.",
+                                        ),
+                                      ),
+                                    );
+                                    return;
+                                  }
+                                  setState(() => _openingBook = true);
+                                  _openPdf(context, fileUrl).whenComplete(() {
+                                    if (mounted) {
+                                      setState(() => _openingBook = false);
+                                    }
+                                  });
+                                },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.blue,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Text("Dergiyi Görüntüle"),
+                              if (_openingBook) ...[
+                                const SizedBox(width: 8),
+                                const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  if (_hasMagazineSubscriptionForIssue(context)) ...[
+                    if (_hasContentAccess(context)) const SizedBox(width: 12),
+                    Expanded(
+                      child: SizedBox(
+                        height: 54,
+                        child: ElevatedButton(
+                          onPressed: alreadyInCart
+                              ? null
+                              : () => _addToCart(context),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.red,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          child: Text(
+                            alreadyInCart
+                                ? "Sepette"
+                                : "Sepete Ekle (Sınırsız Erişim)",
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ] else if (!_hasContentAccess(context))
+                    Expanded(
+                      child: SizedBox(
+                        height: 54,
+                        child: ElevatedButton(
+                          onPressed: alreadyInCart
+                              ? null
+                              : () => _addToCart(context),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.red,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          child: Text(
+                            alreadyInCart ? "Sepette" : "Sepete Ekle",
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              )
+            : SizedBox(
+                height: 54,
+                child: _buildPrimaryActionButton(context, alreadyInCart, magazineId),
+              ),
+      ),
+    );
+  }
+
+  Widget _buildPrimaryActionButton(BuildContext context, bool alreadyInCart, int? magazineId) {
+    return ElevatedButton(
+      onPressed: (alreadyInCart && !_hasContentAccess(context))
+          ? null
+          : () {
+              final hasAccess = _hasContentAccess(context);
+
+              if (hasAccess) {
+                if (_openingBook) return;
+                if (widget.detail.type == CartItemType.magazine &&
+                    magazineId != null) {
+                  _openMagazineIssues(context, magazineId);
+                  return;
+                }
+                final fileUrl = _currentFileUrl();
+                if (fileUrl != null && fileUrl.isNotEmpty) {
+                  setState(() => _openingBook = true);
+                  _openPdf(context, fileUrl).whenComplete(() {
+                    if (mounted) setState(() => _openingBook = false);
+                  });
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        "Bu içerik için indirme bağlantısı bulunamadı.",
+                      ),
+                    ),
+                  );
+                }
+                return;
+              }
+              if (widget.detail.type == CartItemType.newspaperSubscription) {
+                _selectNewspaperSubscriptionType(context);
+                return;
+              }
+              if (widget.detail.type == CartItemType.magazine && magazineId != null) {
+                _selectMagazineSubscriptionType(
+                  context,
+                  magazineId,
+                );
+                return;
+              }
+              _addToCart(context);
+            },
+      style: ElevatedButton.styleFrom(
+        backgroundColor: _hasContentAccess(context) ? Colors.blue : Colors.red,
+        foregroundColor: Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+      ),
+      child: Builder(
+        builder: (context) {
+          final hasAccess = _hasContentAccess(context);
+          final label = (alreadyInCart && !hasAccess)
+              ? "Sepette"
+              : (hasAccess && widget.detail.type == CartItemType.book)
+                  ? "Kitabı Görüntüle"
+                  : _buttonLabel(widget.detail, hasAccess);
+          return Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(label, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              if (hasAccess && _openingBook) ...[
+                const SizedBox(width: 8),
+                const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                ),
+                if (_downloadProgress != null) ...[
+                  const SizedBox(width: 8),
+                  Text(
+                    "${(_downloadProgress! * 100).round()}%",
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ],
+            ],
+          );
+        },
       ),
     );
   }
@@ -988,7 +1379,11 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     if (url == null || url.isEmpty) {
       return Container(
         color: const Color(0xFFE0E0E0),
-        child: const Icon(Icons.image_not_supported, size: 40, color: Colors.black54),
+        child: const Icon(
+          Icons.image_not_supported,
+          size: 40,
+          color: Colors.black54,
+        ),
       );
     }
 
@@ -998,8 +1393,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     );
 
     final normalized = UploadService.normalizeUrl(url);
-    final isNetwork =
-        normalized.startsWith("http://") || normalized.startsWith("https://");
     final isData = normalized.startsWith("data:image");
 
     if (isData) {
@@ -1025,7 +1418,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         case CartItemType.magazine:
           return _accessText(detail, fallback: "Abonelik aktif");
         case CartItemType.magazineIssue:
-          return "Dergi sayısı erişimi aktif";
+          return "Dergiyi Görüntüle";
         case CartItemType.newspaperSubscription:
           return _accessText(detail, fallback: "Görüntüle");
         case CartItemType.supplement:
@@ -1043,7 +1436,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     final target = _reviewTarget();
     if (target == null) return fallback;
     final access = context.read<AccessProvider>();
-    final exp = access.expiry(target["productType"] as String, itemId: target["productId"] as int?);
+    final exp = access.expiry(
+      target["productType"] as String,
+      itemId: target["productId"] as int?,
+    );
     if (exp == null) return fallback;
     String two(int v) => v.toString().padLeft(2, '0');
     final dateText = "${two(exp.day)}.${two(exp.month)}.${exp.year}";
@@ -1054,12 +1450,20 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     if (widget.detail.type != CartItemType.magazine) {
       return Text(
         widget.detail.priceText,
-        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Colors.red),
+        style: const TextStyle(
+          fontSize: 18,
+          fontWeight: FontWeight.w800,
+          color: Colors.red,
+        ),
       );
     }
     return const Text(
       "Abonelik seçeneklerinde gösterilir",
-      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.red),
+      style: TextStyle(
+        fontSize: 16,
+        fontWeight: FontWeight.w700,
+        color: Colors.red,
+      ),
     );
   }
 

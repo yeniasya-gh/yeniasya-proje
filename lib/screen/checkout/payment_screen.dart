@@ -40,12 +40,21 @@ class PaymentScreen extends StatefulWidget {
 
 class _PaymentScreenState extends State<PaymentScreen> {
   final _formKey = GlobalKey<FormState>();
+  final _savedCardFormKey = GlobalKey<FormState>();
   final _cardHolderCtrl = TextEditingController();
   final _cardNumberCtrl = TextEditingController();
   final _expiryCtrl = TextEditingController();
   final _cvvCtrl = TextEditingController();
+  final _cardNameCtrl = TextEditingController();
+  bool _saveCard = false;
+  final _savedCardCvvCtrl = TextEditingController();
 
   bool _loading = false;
+  bool _loadingSavedCards = false;
+  String? _savedCardsError;
+  List<SavedCard> _savedCards = const [];
+  bool _useSavedCard = false;
+  int _selectedSavedCardIndex = 0;
   final _orderService = OrderService();
   final _accessService = UserContentAccessService();
   final _promoService = PromoCodeService();
@@ -53,16 +62,71 @@ class _PaymentScreenState extends State<PaymentScreen> {
   final _addressService = AddressService();
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadSavedCards();
+    });
+  }
+
+  @override
   void dispose() {
     _cardHolderCtrl.dispose();
     _cardNumberCtrl.dispose();
     _expiryCtrl.dispose();
     _cvvCtrl.dispose();
+    _cardNameCtrl.dispose();
+    _savedCardCvvCtrl.dispose();
     super.dispose();
   }
 
+  Future<void> _loadSavedCards() async {
+    final user = context.read<AuthProvider>().user;
+    final customer = user?.payUniqe?.trim();
+    if (customer == null || customer.isEmpty) {
+      setState(() {
+        _savedCards = const [];
+        _useSavedCard = false;
+        _selectedSavedCardIndex = 0;
+      });
+      return;
+    }
+
+    setState(() {
+      _loadingSavedCards = true;
+      _savedCardsError = null;
+    });
+
+    try {
+      final cards = await _paymentService.queryCards(customer: customer);
+      if (!mounted) return;
+      setState(() {
+        _savedCards = cards;
+        _useSavedCard = cards.isNotEmpty;
+        _selectedSavedCardIndex = 0;
+        _loadingSavedCards = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _savedCardsError = e.toString().replaceFirst("Exception:", "").trim();
+        _savedCards = const [];
+        _useSavedCard = false;
+        _selectedSavedCardIndex = 0;
+        _loadingSavedCards = false;
+      });
+    }
+  }
+
   Future<void> _submit() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (_useSavedCard) {
+      if (_savedCards.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Kayıtlı kart bulunamadı.")));
+        return;
+      }
+    } else {
+      if (!_formKey.currentState!.validate()) return;
+    }
     FocusScope.of(context).unfocus();
     final cart = context.read<CartProvider>();
     final payableTotal = cart.totalAfterDiscount;
@@ -78,6 +142,12 @@ class _PaymentScreenState extends State<PaymentScreen> {
       }
       // ignore: avoid_print
       print("🟦 PaymentScreen.submit -> user: ${user.id}");
+
+      String? cardToken;
+      if (_useSavedCard) {
+        final card = _savedCards[_selectedSavedCardIndex];
+        cardToken = card.cardToken;
+      }
 
       final itemsPayload = _buildOrderItemsPayload(cart.items);
       final accessItems = _buildAccessItems(cart.items);
@@ -124,13 +194,20 @@ class _PaymentScreenState extends State<PaymentScreen> {
         throw Exception("Siparis olusturulamadi.");
       }
 
-      final redirectPayload = PaymentRedirectPayload(
-        sessionToken: sessionToken,
-        cardPan: _sanitizeCardNumber(_cardNumberCtrl.text),
-        cardExpiry: _normalizeExpiry(_expiryCtrl.text),
-        cardCvv: _cvvCtrl.text.trim(),
-        nameOnCard: _cardHolderCtrl.text.trim(),
-      );
+      final redirectPayload = _useSavedCard
+          ? PaymentRedirectPayload(
+              sessionToken: sessionToken,
+              cardToken: cardToken,
+            )
+          : PaymentRedirectPayload(
+              sessionToken: sessionToken,
+              cardPan: _sanitizeCardNumber(_cardNumberCtrl.text),
+              cardExpiry: _normalizeExpiry(_expiryCtrl.text),
+              cardCvv: _cvvCtrl.text.trim(),
+              nameOnCard: _cardHolderCtrl.text.trim(),
+              saveCard: _saveCard,
+              cardName: _saveCard ? _cardNameCtrl.text.trim() : null,
+            );
       // ignore: avoid_print
       print("🟦 PaymentScreen.submit -> open webview");
 
@@ -378,12 +455,16 @@ class _PaymentScreenState extends State<PaymentScreen> {
       "CURRENCY": "TRY",
       "MERCHANTPAYMENTID": merchantPaymentId,
       "RETURNURL": PaymentConfig.returnUrl,
-      "CUSTOMER": "Customer-${user.id}",
+      "CUSTOMER": (user.payUniqe != null && user.payUniqe!.trim().isNotEmpty)
+          ? user.payUniqe!.trim()
+          : "Customer-${user.id}",
       "CUSTOMERNAME": user.name,
       "CUSTOMEREMAIL": user.email,
       "CUSTOMERIP": "127.0.0.1",
       "CUSTOMERUSERAGENT": _resolveUserAgent(),
-      "NAMEONCARD": _cardHolderCtrl.text.trim(),
+      "NAMEONCARD": _useSavedCard
+          ? (_savedCards[_selectedSavedCardIndex].cardOwner ?? user.name)
+          : _cardHolderCtrl.text.trim(),
       "CUSTOMERPHONE": user.phone ?? "",
       "ORDERITEMS": jsonEncode(orderItems),
       "BILLTOADDRESSLINE": billing?["full_address"]?.toString() ?? "",
@@ -583,6 +664,226 @@ class _PaymentScreenState extends State<PaymentScreen> {
     }
   }
 
+  Widget _paymentMethodToggle() {
+    final canUseSaved = !_loadingSavedCards && _savedCards.isNotEmpty;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8, offset: const Offset(0, 4)),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text("Ödeme Yöntemi", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 10),
+          if (_loadingSavedCards)
+            Row(
+              children: const [
+                SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                SizedBox(width: 10),
+                Text("Kayıtlı kartlar kontrol ediliyor..."),
+              ],
+            )
+          else if (_savedCardsError != null)
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    _savedCardsError!,
+                    style: TextStyle(color: Colors.red.shade700),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                TextButton(
+                  onPressed: _loadSavedCards,
+                  child: const Text("Tekrar Dene"),
+                ),
+              ],
+            )
+          else
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                ChoiceChip(
+                  label: const Text("Kayıtlı Kart ile Öde"),
+                  selected: _useSavedCard,
+                  onSelected: canUseSaved
+                      ? (v) {
+                          if (!v) return;
+                          setState(() {
+                            _useSavedCard = true;
+                            _selectedSavedCardIndex = 0;
+                          });
+                        }
+                      : null,
+                  selectedColor: Colors.red.shade50,
+                  labelStyle: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: _useSavedCard ? Colors.red.shade700 : Colors.black87,
+                  ),
+                  side: BorderSide(color: _useSavedCard ? Colors.red.shade400 : const Color(0xFFE5E7EB)),
+                ),
+                ChoiceChip(
+                  label: const Text("Yeni Bir Kart"),
+                  selected: !_useSavedCard,
+                  onSelected: (v) {
+                    if (!v) return;
+                    setState(() {
+                      _useSavedCard = false;
+                      _savedCardCvvCtrl.clear();
+                    });
+                  },
+                  selectedColor: Colors.red.shade50,
+                  labelStyle: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: !_useSavedCard ? Colors.red.shade700 : Colors.black87,
+                  ),
+                  side: BorderSide(color: !_useSavedCard ? Colors.red.shade400 : const Color(0xFFE5E7EB)),
+                ),
+              ],
+            ),
+          if (!_loadingSavedCards && _savedCards.isEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              "Kayıtlı kart bulunamadı. Yeni kart ile devam edebilirsiniz.",
+              style: TextStyle(color: Colors.grey.shade700),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _savedCardsSection() {
+    InputDecoration _inputDecoration(String label, {IconData? icon}) {
+      return InputDecoration(
+        labelText: label,
+        prefixIcon: icon != null ? Icon(icon, color: Colors.red.shade400) : null,
+        filled: true,
+        fillColor: const Color(0xFFF7F8FA),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.red.shade400, width: 1.2),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8, offset: const Offset(0, 4)),
+        ],
+      ),
+      child: Form(
+        key: _savedCardFormKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text("Kayıtlı Kartlar", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 12),
+            ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: _savedCards.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 10),
+              itemBuilder: (ctx, i) {
+                final card = _savedCards[i];
+                final selected = i == _selectedSavedCardIndex;
+                final brand = (card.cardBrand ?? "").trim();
+                final last4 = (card.panLast4 ?? "").trim();
+                final expiry = (card.cardExpiry ?? "").trim();
+                final title = (card.cardName ?? "").trim();
+                final subtitle = [
+                  if (brand.isNotEmpty) brand,
+                  if (last4.isNotEmpty) "•••• $last4",
+                  if (expiry.isNotEmpty) "SKT $expiry",
+                ].join(" · ");
+
+                return InkWell(
+                  borderRadius: BorderRadius.circular(14),
+                  onTap: () {
+                    setState(() => _selectedSavedCardIndex = i);
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: selected ? Colors.red.shade400 : const Color(0xFFE5E7EB)),
+                      color: selected ? Colors.red.shade50 : const Color(0xFFFDFDFD),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            color: selected ? Colors.red.shade100 : const Color(0xFFF3F4F6),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Icon(Icons.credit_card, color: selected ? Colors.red.shade700 : Colors.grey.shade700),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                title.isNotEmpty && title != "-" ? title : (card.cardOwner ?? "Kayıtlı Kart"),
+                                style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                subtitle,
+                                style: TextStyle(color: Colors.grey.shade700),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Icon(
+                          selected ? Icons.radio_button_checked : Icons.radio_button_off,
+                          color: selected ? Colors.red.shade600 : Colors.grey.shade500,
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final cart = context.watch<CartProvider>();
@@ -603,7 +904,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
             children: [
               _orderSummary(cart),
               const SizedBox(height: 16),
-              _cardForm(),
+              _paymentMethodToggle(),
+              const SizedBox(height: 16),
+              _useSavedCard ? _savedCardsSection() : _cardForm(),
               const SizedBox(height: 100),
             ],
           ),
@@ -794,6 +1097,28 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 ),
               ],
             ),
+            const SizedBox(height: 10),
+            CheckboxListTile(
+              contentPadding: EdgeInsets.zero,
+              controlAffinity: ListTileControlAffinity.leading,
+              activeColor: Colors.red.shade400,
+              value: _saveCard,
+              title: const Text("Kart kayıt edilsin"),
+              onChanged: (v) {
+                setState(() {
+                  _saveCard = v ?? false;
+                  if (!_saveCard) _cardNameCtrl.clear();
+                });
+              },
+            ),
+            if (_saveCard) ...[
+              const SizedBox(height: 6),
+              TextFormField(
+                controller: _cardNameCtrl,
+                decoration: _inputDecoration("Kart Adı", icon: Icons.bookmark_outline),
+                validator: (v) => (_saveCard && (v == null || v.trim().isEmpty)) ? "Kart adı girin" : null,
+              ),
+            ],
           ],
         ),
       ),

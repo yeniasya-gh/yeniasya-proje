@@ -7,7 +7,9 @@ import '../../services/error/error_manager.dart';
 import '../../services/secure_file_service.dart';
 import '../../services/upload_service.dart';
 import '../../utils/safe_image.dart';
+import '../../models/cart_item.dart';
 import '../profile/pdf_viewer_screen.dart';
+import 'product_detail_screen.dart';
 
 class MagazineIssuesScreen extends StatefulWidget {
   final int magazineId;
@@ -27,11 +29,38 @@ class MagazineIssuesScreen extends StatefulWidget {
 
 class _MagazineIssuesScreenState extends State<MagazineIssuesScreen> {
   final _service = AdminMagazineService();
-  bool _opening = false;
+  String? _openingIssueKey;
 
-  Future<void> _openPdf(BuildContext context, String fileUrl, String title) async {
-    if (_opening) return;
-    setState(() => _opening = true);
+  bool get _busy => _openingIssueKey != null;
+
+  DateTime? _issueDate(Map<String, dynamic> issue) {
+    final raw =
+        issue["added_at"]?.toString() ??
+        issue["publish_date"]?.toString() ??
+        issue["created_at"]?.toString();
+    if (raw == null || raw.isEmpty) return null;
+    return DateTime.tryParse(raw);
+  }
+
+  bool _isWithinAccessWindow({
+    required DateTime issueDate,
+    required DateTime start,
+    required DateTime end,
+  }) {
+    final issueDay = DateTime(issueDate.year, issueDate.month, issueDate.day);
+    final startDay = DateTime(start.year, start.month, start.day);
+    final endDay = DateTime(end.year, end.month, end.day);
+    return !issueDay.isBefore(startDay) && !issueDay.isAfter(endDay);
+  }
+
+  Future<void> _openPdf(
+    BuildContext context,
+    String fileUrl,
+    String title, {
+    required String issueKey,
+  }) async {
+    if (_busy) return;
+    setState(() => _openingIssueKey = issueKey);
     try {
       if (!kIsWeb) {
         await SecureFileService.instance.getPdfBytes(
@@ -43,31 +72,92 @@ class _MagazineIssuesScreenState extends State<MagazineIssuesScreen> {
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => PdfViewerScreen(
-            url: fileUrl,
-            title: title,
-            isPrivate: true,
-          ),
+          builder: (_) =>
+              PdfViewerScreen(url: fileUrl, title: title, isPrivate: true),
         ),
       );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Dosya açılamadı: ${ErrorManager.parseGraphQLError(e.toString())}")),
+        SnackBar(
+          content: Text(
+            "Dosya açılamadı: ${ErrorManager.parseGraphQLError(e.toString())}",
+          ),
+        ),
       );
     } finally {
-      if (mounted) setState(() => _opening = false);
+      if (mounted && _openingIssueKey == issueKey) {
+        setState(() => _openingIssueKey = null);
+      }
     }
+  }
+
+  void _openIssueDetail({
+    required BuildContext context,
+    required Map<String, dynamic> issue,
+    required String issueNumber,
+    required String imageUrl,
+    required String fileUrl,
+  }) {
+    final issueId = issue["id"] as int?;
+    if (issueId == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("Sayı detayı açılamadı.")));
+      return;
+    }
+
+    final title = issueNumber.isEmpty
+        ? "${widget.magazineTitle} - Sayı"
+        : "${widget.magazineTitle} - Sayı $issueNumber";
+
+    final rawPrice = issue["price"];
+    final price = rawPrice is num
+        ? rawPrice.toDouble()
+        : double.tryParse(rawPrice?.toString() ?? "") ?? 0;
+    final description = (issue["description"] ?? "").toString().trim().isEmpty
+        ? "Bu dergi sayısına abonelik ile erişilir."
+        : (issue["description"] ?? "").toString().trim();
+    final issueDate =
+        issue["added_at"]?.toString() ??
+        issue["publish_date"]?.toString() ??
+        issue["created_at"]?.toString();
+
+    final detail = ProductDetail(
+      id: "mag-issue-$issueId",
+      title: title,
+      subtitle: widget.magazineTitle,
+      description: description,
+      imageUrl: UploadService.normalizeUrl(imageUrl),
+      price: price,
+      type: CartItemType.magazineIssue,
+      metadata: {
+        "productId": issueId,
+        "fileUrl": fileUrl,
+        "magazineId": widget.magazineId,
+        "issueDate": issueDate,
+      },
+      actionLabel: "Sepete Ekle",
+    );
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => ProductDetailScreen(detail: detail)),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final access = context.watch<AccessProvider>();
+    final start = access.startDate("magazine", itemId: widget.magazineId);
+    final end = access.expiry("magazine", itemId: widget.magazineId);
+    final hasMagazineAccess = access.hasAccess(
+      "magazine",
+      itemId: widget.magazineId,
+    );
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Dergi Sayıları"),
-      ),
+      appBar: AppBar(title: const Text("Dergi Sayıları")),
       body: FutureBuilder<List<Map<String, dynamic>>>(
         future: _service.getIssues(widget.magazineId),
         builder: (context, snapshot) {
@@ -75,7 +165,9 @@ class _MagazineIssuesScreenState extends State<MagazineIssuesScreen> {
             return const Center(child: CircularProgressIndicator());
           }
           if (snapshot.hasError) {
-            return Center(child: Text("Sayılar yüklenemedi: ${snapshot.error}"));
+            return Center(
+              child: Text("Sayılar yüklenemedi: ${snapshot.error}"),
+            );
           }
           final issues = snapshot.data ?? [];
           if (issues.isEmpty) {
@@ -89,13 +181,34 @@ class _MagazineIssuesScreenState extends State<MagazineIssuesScreen> {
               final issue = issues[i];
               final issueId = issue["id"] as int?;
               final issueNumber = issue["issue_number"]?.toString() ?? "";
-              final imageUrl = issue["photo_url"]?.toString() ?? widget.magazineCoverUrl ?? "";
+              final issueKey = "i-$i-${issueId ?? "null"}";
+              final imageUrl =
+                  issue["photo_url"]?.toString() ??
+                  widget.magazineCoverUrl ??
+                  "";
               final fileUrl = issue["file_url"]?.toString() ?? "";
-              final hasAccess = access.hasAccess("magazine_issue", itemId: issueId);
+              final directIssueAccess = access.hasAccess(
+                "magazine_issue",
+                itemId: issueId,
+              );
+              final issueDate = _issueDate(issue);
+              final windowAccess =
+                  hasMagazineAccess &&
+                  start != null &&
+                  end != null &&
+                  issueDate != null &&
+                  _isWithinAccessWindow(
+                    issueDate: issueDate,
+                    start: start,
+                    end: end,
+                  );
+              final canView = directIssueAccess || windowAccess;
 
               return Card(
                 elevation: 1,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
                 child: Padding(
                   padding: const EdgeInsets.all(12),
                   child: Row(
@@ -117,19 +230,29 @@ class _MagazineIssuesScreenState extends State<MagazineIssuesScreen> {
                           children: [
                             Text(
                               "Sayı $issueNumber",
-                              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                              ),
                             ),
                             const SizedBox(height: 6),
                             const Text(
                               "Abonelik ile erişilir",
-                              style: TextStyle(fontSize: 12, color: Colors.black54),
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.black54,
+                              ),
                             ),
-                            if (hasAccess)
+                            if (canView)
                               const Padding(
                                 padding: EdgeInsets.only(top: 6.0),
                                 child: Text(
                                   "Sahip",
-                                  style: TextStyle(color: Colors.green, fontSize: 12, fontWeight: FontWeight.w600),
+                                  style: TextStyle(
+                                    color: Colors.green,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                  ),
                                 ),
                               ),
                           ],
@@ -139,30 +262,53 @@ class _MagazineIssuesScreenState extends State<MagazineIssuesScreen> {
                       SizedBox(
                         width: 110,
                         height: 40,
-                        child: hasAccess
+                        child: canView
                             ? OutlinedButton(
-                                onPressed: fileUrl.isEmpty
+                                onPressed: (_busy || fileUrl.isEmpty)
                                     ? null
-                                    : () => _openPdf(context, UploadService.normalizeUrl(fileUrl), "Sayı $issueNumber"),
-                                child: _opening
+                                    : () => _openPdf(
+                                        context,
+                                        UploadService.normalizeUrl(fileUrl),
+                                        "Sayı $issueNumber",
+                                        issueKey: issueKey,
+                                      ),
+                                style: OutlinedButton.styleFrom(
+                                  padding: EdgeInsets.zero,
+                                  visualDensity: VisualDensity.compact,
+                                  tapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                  alignment: Alignment.center,
+                                ),
+                                child: _openingIssueKey == issueKey
                                     ? const SizedBox(
                                         width: 16,
                                         height: 16,
-                                        child: CircularProgressIndicator(strokeWidth: 2),
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
                                       )
-                                    : const Text("Görüntüle"),
+                                    : const Center(child: Text("Görüntüle")),
                               )
-                            : ElevatedButton(
-                                onPressed: () {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text("Abonelik için dergi detayından Abone Ol'a basın.")),
-                                  );
-                                },
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.red,
+                            : OutlinedButton(
+                                onPressed: _busy
+                                    ? null
+                                    : () => _openIssueDetail(
+                                        context: context,
+                                        issue: issue,
+                                        issueNumber: issueNumber,
+                                        imageUrl: imageUrl,
+                                        fileUrl: UploadService.normalizeUrl(
+                                          fileUrl,
+                                        ),
+                                      ),
+                                style: OutlinedButton.styleFrom(
                                   padding: EdgeInsets.zero,
+                                  visualDensity: VisualDensity.compact,
+                                  tapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                  alignment: Alignment.center,
                                 ),
-                                child: const Text("Abone Ol", style: TextStyle(color: Colors.white)),
+                                child: const Center(child: Text("Detay")),
                               ),
                       ),
                     ],

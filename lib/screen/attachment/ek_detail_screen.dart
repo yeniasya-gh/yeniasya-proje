@@ -7,6 +7,7 @@ import '../../services/cart/cart_provider.dart';
 import '../../services/upload_service.dart';
 import '../../utils/safe_image.dart';
 import '../../utils/cart_feedback.dart';
+import '../../utils/ek_normalizer.dart';
 import '../profile/pdf_viewer_screen.dart';
 
 class EkDetailScreen extends StatelessWidget {
@@ -16,27 +17,28 @@ class EkDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final price = _price(ek["fiyat"]);
+    final data = normalizeEk(ek);
+    final price = _price(data["fiyat"]);
     final isFree = price == 0;
     final access = context.watch<AccessProvider>();
     final cart = context.watch<CartProvider>();
-    final hasAccess = access.hasAccess("ek", itemId: _id(ek));
+    final hasAccess = access.hasAccess("ek", itemId: _id(data));
 
-    final imageUrl = UploadService.normalizeUrl(ek["photo_url"]?.toString() ?? "");
+    final imageUrl = UploadService.normalizeUrl(data["photo_url"]?.toString() ?? "");
     final item = CartItem(
-      id: "ek-${_id(ek)}",
-      title: ek["ad"]?.toString() ?? "Ek",
-      subtitle: ek["aciklama"]?.toString(),
-      imageUrl: ek["photo_url"]?.toString() ?? "",
+      id: "ek-${_id(data)}",
+      title: data["ad"]?.toString() ?? "Ek",
+      subtitle: data["aciklama"]?.toString(),
+      imageUrl: data["photo_url"]?.toString() ?? "",
       price: price,
       quantity: 1,
       type: CartItemType.supplement,
       metadata: {
-        "productId": _id(ek),
-        "pdf_url": ek["pdf_url"],
-        "photo_url": ek["photo_url"],
-        "title": ek["ad"],
-        "is_public": ek["is_public"],
+        "productId": _id(data),
+        "pdf_url": data["pdf_url"],
+        "photo_url": data["photo_url"],
+        "title": data["ad"],
+        "is_public": data["is_public"],
       },
     );
     final alreadyInCart = cart.contains(item);
@@ -70,10 +72,10 @@ class EkDetailScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 16),
-            Text(ek["ad"]?.toString() ?? "-", style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+            Text(data["ad"]?.toString() ?? "-", style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             Text(
-              (ek["aciklama"] ?? "").toString().isEmpty ? "Açıklama bulunmuyor." : ek["aciklama"].toString(),
+              (data["aciklama"] ?? "").toString().isEmpty ? "Açıklama bulunmuyor." : data["aciklama"].toString(),
               style: const TextStyle(fontSize: 15, color: Colors.black87, height: 1.4),
             ),
             const SizedBox(height: 12),
@@ -99,10 +101,10 @@ class EkDetailScreen extends StatelessWidget {
             onPressed: (alreadyInCart && !(isFree || hasAccess))
                 ? null
                 : () {
-                    if (isFree || hasAccess) {
-                      _openPdf(context, ek["pdf_url"]?.toString() ?? "", isFree: isFree);
+                  if (isFree || hasAccess) {
+                      _openPdf(context, data["pdf_url"]?.toString() ?? "", isFree: isFree);
                     } else {
-                      _addToCart(context, ek, price);
+                      _addToCart(context, data, price);
                     }
                   },
             style: ElevatedButton.styleFrom(
@@ -129,7 +131,7 @@ class EkDetailScreen extends StatelessWidget {
       MaterialPageRoute(
         builder: (_) => PdfViewerScreen(
           url: UploadService.normalizeUrl(url),
-          title: ek["ad"]?.toString() ?? "Ek",
+          title: normalizeEk(ek)["ad"]?.toString() ?? "Ek",
           // Ücretsiz de olsa private izleme
           isPrivate: true,
         ),

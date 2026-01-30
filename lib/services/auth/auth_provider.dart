@@ -7,7 +7,6 @@ import '../../models/app_user.dart';
 import 'user_service.dart';
 import '../notification_service.dart';
 import '../mail_manager.dart';
-import '../mail_manager.dart';
 
 class AuthProvider with ChangeNotifier {
   final UserService _userService = UserService();
@@ -15,6 +14,8 @@ class AuthProvider with ChangeNotifier {
   AppUser? _user;
   bool _isLoggedIn = false;
   String? _errorMessage;
+
+  VoidCallback? onLogout;
 
   AppUser? get user => _user;
   bool get isLoggedIn => _isLoggedIn;
@@ -240,6 +241,7 @@ class AuthProvider with ChangeNotifier {
     _isLoggedIn = false;
     _errorMessage = null;
 
+    onLogout?.call();
     notifyListeners();
   }
 

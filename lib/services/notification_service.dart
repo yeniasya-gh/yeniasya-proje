@@ -5,7 +5,10 @@ import 'hasura_manager.dart';
 class NotificationService {
   final _hasura = HasuraManager.instance;
 
-  Future<void> registerDeviceToken({required int userId, bool forceRefresh = false}) async {
+  Future<void> registerDeviceToken({
+    required int userId,
+    bool forceRefresh = false,
+  }) async {
     // Web'de FCM izin akışı ve token alma kullanıcı etkileşimi gerektirdiği ve çoğunlukla kapalı olduğu için sessizce atla.
     if (kIsWeb) return;
 
@@ -49,10 +52,10 @@ class NotificationService {
       await _hasura.graphQLRequest(
         query: mutation,
         variables: {
-        "user_id": userId,
-        "token": token,
-        "firebase_token_updated_at": DateTime.now().toIso8601String(),
-      },
+          "user_id": userId,
+          "token": token,
+          "firebase_token_updated_at": DateTime.now().toIso8601String(),
+        },
       );
     } catch (_) {
       // Bildirim izni kapalı veya tarayıcı tarafından engelliyse sessizce yut.
@@ -63,17 +66,29 @@ class NotificationService {
   Future<List<Map<String, dynamic>>> getTokens() async {
     const query = r'''
       query GetTokens {
-        notification_tokens(order_by: {updated_at: desc}) {
+        users(
+          where: {firebase_token: {_is_null: false, _neq: ""}}
+          order_by: {firebase_token_updated_at: desc}
+        ) {
           id
-          user_id
-          token
-          platform
-          updated_at
+          firebase_token
+          firebase_token_updated_at
         }
       }
     ''';
     final data = await _hasura.graphQLRequest(query: query);
-    return List<Map<String, dynamic>>.from(data["notification_tokens"] ?? []);
+    final users = List<Map<String, dynamic>>.from(data["users"] ?? []);
+    return users
+        .map(
+          (u) => <String, dynamic>{
+            "id": u["id"],
+            "user_id": u["id"],
+            "token": u["firebase_token"],
+            "platform": null,
+            "updated_at": u["firebase_token_updated_at"],
+          },
+        )
+        .toList(growable: false);
   }
 
   Future<List<Map<String, dynamic>>> getUserNotifications(int userId) async {
@@ -88,7 +103,10 @@ class NotificationService {
         }
       }
     ''';
-    final data = await _hasura.graphQLRequest(query: query, variables: {"user_id": userId});
+    final data = await _hasura.graphQLRequest(
+      query: query,
+      variables: {"user_id": userId},
+    );
     return List<Map<String, dynamic>>.from(data["notifications"] ?? []);
   }
 
@@ -104,11 +122,18 @@ class NotificationService {
         }
       }
     ''';
-    final data = await _hasura.graphQLRequest(query: query, variables: {"id": id});
+    final data = await _hasura.graphQLRequest(
+      query: query,
+      variables: {"id": id},
+    );
     return data["notifications_by_pk"] as Map<String, dynamic>?;
   }
 
-  Future<bool> sendNotification({required String title, required String body, int? userId}) async {
+  Future<bool> sendNotification({
+    required String title,
+    required String body,
+    int? userId,
+  }) async {
     // Backend tarafında FCM gönderimini tetiklemek için kayıt
     const mutation = r'''
       mutation InsertNotification($title: String!, $body: String!, $user_id: bigint) {

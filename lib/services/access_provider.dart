@@ -38,6 +38,12 @@ class AccessProvider extends ChangeNotifier {
     return set.contains(itemId);
   }
 
+  /// Checks access only for a specific item id (ignores wildcard `null` rows).
+  bool hasAccessExact(String type, {required int itemId}) {
+    final set = _access[type] ?? {};
+    return set.contains(itemId);
+  }
+
   DateTime? expiry(String type, {int? itemId}) {
     return _expires[type]?[itemId];
   }
@@ -73,7 +79,9 @@ class AccessProvider extends ChangeNotifier {
           expMap[itemId] = expDt;
         }
         final startedRaw = e["started_at"]?.toString();
-        final startedDt = startedRaw == null ? null : DateTime.tryParse(startedRaw);
+        final startedDt = startedRaw == null
+            ? null
+            : DateTime.tryParse(startedRaw);
         final startMap = _starts.putIfAbsent(type, () => <int?, DateTime?>{});
         if (!startMap.containsKey(itemId)) {
           startMap[itemId] = startedDt;

@@ -32,11 +32,16 @@ class SecureFileService {
     ValueChanged<double>? onProgress,
   }) async {
     final normalized = UploadService.normalizeUrl(url);
-    final filename = _safeFileName(normalized) + ".enc";
+    final cacheKey = isPrivate ? _extractPath(normalized) : normalized;
+    final filename = _safeFileName(cacheKey) + ".enc";
 
     if (kIsWeb) {
       // Web için disk cache yerine direkt network'ten al.
-      return _downloadRaw(normalized, isPrivate: isPrivate, onProgress: onProgress);
+      return _downloadRaw(
+        normalized,
+        isPrivate: isPrivate,
+        onProgress: onProgress,
+      );
     }
 
     final dir = await getApplicationSupportDirectory();
@@ -137,8 +142,8 @@ class SecureFileService {
         ..headers["accept"] = "application/pdf";
       final resp = await _sendAndCollect(
         req,
-        connectTimeout: const Duration(seconds: 15),
-        inactivityTimeout: const Duration(seconds: 30),
+        connectTimeout: const Duration(seconds: 10),
+        inactivityTimeout: const Duration(seconds: 10),
         overallTimeout: const Duration(minutes: 2),
         onProgress: onProgress,
       );
@@ -167,8 +172,8 @@ class SecureFileService {
         ..body = jsonEncode(payload);
       resp = await _sendAndCollect(
         req,
-        connectTimeout: const Duration(seconds: 20),
-        inactivityTimeout: const Duration(seconds: 45),
+        connectTimeout: const Duration(seconds: 10),
+        inactivityTimeout: const Duration(seconds: 10),
         overallTimeout: const Duration(minutes: 3),
         onProgress: onProgress,
       );
@@ -227,8 +232,8 @@ class SecureFileService {
           ..headers["accept"] = "application/pdf";
         final redirected = await _sendAndCollect(
           req,
-          connectTimeout: const Duration(seconds: 15),
-          inactivityTimeout: const Duration(seconds: 30),
+          connectTimeout: const Duration(seconds: 10),
+          inactivityTimeout: const Duration(seconds: 10),
           overallTimeout: const Duration(minutes: 2),
           onProgress: onProgress,
         );
@@ -285,7 +290,7 @@ class SecureFileService {
           bytes[i + 1] == 0x50 /* P */ &&
           bytes[i + 2] == 0x44 /* D */ &&
           bytes[i + 3] == 0x46 /* F */ &&
-          bytes[i + 4] == 0x2D /* - */) {
+          bytes[i + 4] == 0x2D /* - */ ) {
         return true;
       }
       if (b > 0x20) break;
@@ -319,17 +324,42 @@ class SecureFileService {
 
   Future<_ViewTokenData> _requestViewToken(String path) async {
     final uri = Uri.parse(UploadService.normalizeUrl("/private/view-token"));
-    final resp = await http
-        .post(
-          uri,
-          headers: {
-            "content-type": "application/json",
-            "accept": "application/json",
-            "x-api-key": UploadService.privateAuthToken,
+    const maxTimeoutRetries = 2;
+    http.Response? resp;
+    for (var attempt = 0; attempt <= maxTimeoutRetries; attempt++) {
+      try {
+        resp = await http
+            .post(
+              uri,
+              headers: {
+                "content-type": "application/json",
+                "accept": "application/json",
+                "x-api-key": UploadService.privateAuthToken,
+              },
+              body: jsonEncode({"path": path}),
+            )
+            .timeout(const Duration(seconds: 10));
+        break;
+      } on TimeoutException catch (e, s) {
+        if (attempt >= maxTimeoutRetries) rethrow;
+        await _logger.logError(
+          service: "SecureFileService",
+          operation: "viewTokenRetry",
+          message: e.toString(),
+          stackTrace: s.toString(),
+          payload: {
+            "attempt": attempt + 1,
+            "path": path,
+            "platform": defaultTargetPlatform.toString(),
           },
-          body: jsonEncode({"path": path}),
-        )
-        .timeout(const Duration(seconds: 15));
+        );
+        await Future<void>.delayed(Duration(milliseconds: 350 * (attempt + 1)));
+      }
+    }
+
+    if (resp == null) {
+      throw Exception("Token alınamadı (timeout)");
+    }
 
     if (resp.statusCode != 200 || resp.body.isEmpty) {
       throw Exception("Token alınamadı (${resp.statusCode})");
@@ -339,13 +369,11 @@ class SecureFileService {
       final data = jsonDecode(resp.body);
       final tokenUrl = data["url"] ?? data["viewUrl"] ?? data["path"];
       final token = data["token"]?.toString();
-      if ((tokenUrl == null || tokenUrl.toString().isEmpty) && (token == null || token.isEmpty)) {
+      if ((tokenUrl == null || tokenUrl.toString().isEmpty) &&
+          (token == null || token.isEmpty)) {
         throw Exception("Token veya URL boş döndü");
       }
-      return _ViewTokenData(
-        token: token,
-        url: tokenUrl?.toString(),
-      );
+      return _ViewTokenData(token: token, url: tokenUrl?.toString());
     } catch (e) {
       throw Exception("Token yanıtı çözülemedi: $e");
     }
@@ -360,8 +388,8 @@ class SecureFileService {
       ..headers["accept"] = "application/pdf";
     final resp = await _sendAndCollect(
       req,
-      connectTimeout: const Duration(seconds: 20),
-      inactivityTimeout: const Duration(seconds: 45),
+      connectTimeout: const Duration(seconds: 10),
+      inactivityTimeout: const Duration(seconds: 10),
       overallTimeout: const Duration(minutes: 3),
       onProgress: onProgress,
     );
@@ -401,18 +429,23 @@ class SecureFileService {
     required Duration overallTimeout,
     ValueChanged<double>? onProgress,
   }) async {
-    const maxRetries = 1;
+    const maxTimeoutRetries = 2;
+    const maxSocketRetries = 1;
+    const maxRetries = maxTimeoutRetries;
     for (var attempt = 0; attempt <= maxRetries; attempt++) {
       final client = http.Client();
       try {
         if (attempt > 0) onProgress?.call(0);
         return await (() async {
-          final streamed = await client.send(request).timeout(connectTimeout);
+          final cloned = _cloneRequest(request);
+          final streamed = await client.send(cloned).timeout(connectTimeout);
           final total = streamed.contentLength;
           var received = 0;
           final buffer = BytesBuilder(copy: false);
           onProgress?.call(0);
-          await for (final chunk in streamed.stream.timeout(inactivityTimeout)) {
+          await for (final chunk in streamed.stream.timeout(
+            inactivityTimeout,
+          )) {
             buffer.add(chunk);
             received += chunk.length;
             if (onProgress != null && total != null && total > 0) {
@@ -427,7 +460,11 @@ class SecureFileService {
           );
         })().timeout(overallTimeout);
       } on TimeoutException catch (e, s) {
-        if (attempt >= maxRetries) rethrow;
+        final dur = e.duration;
+        final isShortTimeout =
+            dur == null || dur <= const Duration(seconds: 10);
+        if (!isShortTimeout) rethrow;
+        if (attempt >= maxTimeoutRetries) rethrow;
         await _logger.logError(
           service: "SecureFileService",
           operation: "downloadRetry",
@@ -440,9 +477,9 @@ class SecureFileService {
             "platform": defaultTargetPlatform.toString(),
           },
         );
-        await Future<void>.delayed(const Duration(milliseconds: 650));
+        await Future<void>.delayed(Duration(milliseconds: 450 * (attempt + 1)));
       } on SocketException catch (e, s) {
-        if (attempt >= maxRetries) rethrow;
+        if (attempt >= maxSocketRetries) rethrow;
         await _logger.logError(
           service: "SecureFileService",
           operation: "downloadRetry",
@@ -455,13 +492,29 @@ class SecureFileService {
             "platform": defaultTargetPlatform.toString(),
           },
         );
-        await Future<void>.delayed(const Duration(milliseconds: 650));
+        await Future<void>.delayed(Duration(milliseconds: 450 * (attempt + 1)));
       } finally {
         client.close();
       }
     }
 
     throw Exception("Download failed after retry");
+  }
+
+  http.BaseRequest _cloneRequest(http.BaseRequest request) {
+    if (request is http.Request) {
+      final cloned = http.Request(request.method, request.url)
+        ..followRedirects = request.followRedirects
+        ..maxRedirects = request.maxRedirects
+        ..persistentConnection = request.persistentConnection
+        ..headers.addAll(request.headers)
+        ..encoding = request.encoding
+        ..bodyBytes = request.bodyBytes;
+      return cloned;
+    }
+    throw StateError(
+      "Unsupported request type for retry: ${request.runtimeType}",
+    );
   }
 
   Future<String> getWebViewSecureUrl({required String url}) async {
@@ -480,15 +533,16 @@ class SecureFileService {
       throw Exception("Token bulunamadı");
     }
     final base = UploadService.normalizeUrl("/private/view-secure");
-    return Uri.parse(base).replace(queryParameters: {"token": token}).toString();
+    return Uri.parse(
+      base,
+    ).replace(queryParameters: {"token": token}).toString();
   }
 
   String _extractPath(String url) {
     final parsed = Uri.tryParse(url);
-    final rawPath =
-        (parsed != null && parsed.hasAuthority)
-            ? parsed.path
-            : url.replaceFirst(RegExp(r'^https?://[^/]+'), "");
+    final rawPath = (parsed != null && parsed.hasAuthority)
+        ? parsed.path
+        : url.replaceFirst(RegExp(r'^https?://[^/]+'), "");
 
     // New CDN format can come as: `/<type>/private/<filename>`
     // Backend endpoints expect: `/private/<type>/<filename>`
@@ -529,8 +583,12 @@ class SecureFileService {
   Future<Uint8List> _encrypt(Uint8List data) async {
     final key = await _getOrCreateKey();
     final iv = _randomBytes(16);
-    final encrypter = enc.Encrypter(enc.AES(enc.Key(Uint8List.fromList(key)), mode: enc.AESMode.cbc));
-    final encrypted = encrypter.encryptBytes(data, iv: enc.IV(Uint8List.fromList(iv))).bytes;
+    final encrypter = enc.Encrypter(
+      enc.AES(enc.Key(Uint8List.fromList(key)), mode: enc.AESMode.cbc),
+    );
+    final encrypted = encrypter
+        .encryptBytes(data, iv: enc.IV(Uint8List.fromList(iv)))
+        .bytes;
     return Uint8List.fromList(iv + encrypted); // IV + data
   }
 
@@ -539,8 +597,13 @@ class SecureFileService {
     final key = await _getOrCreateKey();
     final iv = data.sublist(0, 16);
     final cipher = data.sublist(16);
-    final encrypter = enc.Encrypter(enc.AES(enc.Key(Uint8List.fromList(key)), mode: enc.AESMode.cbc));
-    final decrypted = encrypter.decryptBytes(enc.Encrypted(cipher), iv: enc.IV(Uint8List.fromList(iv)));
+    final encrypter = enc.Encrypter(
+      enc.AES(enc.Key(Uint8List.fromList(key)), mode: enc.AESMode.cbc),
+    );
+    final decrypted = encrypter.decryptBytes(
+      enc.Encrypted(cipher),
+      iv: enc.IV(Uint8List.fromList(iv)),
+    );
     return Uint8List.fromList(decrypted);
   }
 
@@ -633,7 +696,9 @@ class SecureFileService {
   Future<bool> hasCached(String url) async {
     if (kIsWeb) return false;
     final dir = await getApplicationSupportDirectory();
-    final filename = _safeFileName(UploadService.normalizeUrl(url)) + ".enc";
+    final normalized = UploadService.normalizeUrl(url);
+    final cacheKey = _extractPath(normalized);
+    final filename = _safeFileName(cacheKey) + ".enc";
     return File(p.join(dir.path, filename)).exists();
   }
 

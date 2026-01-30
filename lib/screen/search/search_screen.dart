@@ -1,7 +1,9 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../utils/safe_image.dart';
+import '../../services/access_provider.dart';
 import '../../services/upload_service.dart';
 
 class SearchScreen extends StatefulWidget {
@@ -48,6 +50,7 @@ class _SearchScreenState extends State<SearchScreen> {
   @override
   Widget build(BuildContext context) {
     final results = _filterResults(_query);
+    final access = context.watch<AccessProvider>();
     final hintSegments = [
       "Kitap",
       if (!widget.hideMagazines) "dergi",
@@ -91,17 +94,27 @@ class _SearchScreenState extends State<SearchScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _section("Kitaplar", results.books, "book"),
+              _section("Kitaplar", results.books, "book", access: access),
               const SizedBox(height: 18),
               if (!widget.hideMagazines) ...[
-                _section("Dergiler", results.magazines, "magazine"),
+                _section(
+                  "Dergiler",
+                  results.magazines,
+                  "magazine",
+                  access: access,
+                ),
                 const SizedBox(height: 18),
               ],
               if (!widget.hideNewspapers) ...[
-                _section("Gazeteler", results.newspapers, "newspaper"),
+                _section(
+                  "Gazeteler",
+                  results.newspapers,
+                  "newspaper",
+                  access: access,
+                ),
                 const SizedBox(height: 18),
               ],
-              _section("Ekler", results.ekler, "ek"),
+              _section("Ekler", results.ekler, "ek", access: access),
             ],
           ),
         ),
@@ -145,7 +158,12 @@ class _SearchScreenState extends State<SearchScreen> {
     return _ResultBuckets(books, mags, news, eks);
   }
 
-  Widget _section(String title, List<Map<String, dynamic>> items, String type) {
+  Widget _section(
+    String title,
+    List<Map<String, dynamic>> items,
+    String type, {
+    required AccessProvider access,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -160,12 +178,49 @@ class _SearchScreenState extends State<SearchScreen> {
             style: TextStyle(color: Colors.black54),
           )
         else
-          ...items.map((i) => _resultTile(i, type)),
+          ...items.map((i) => _resultTile(i, type, access: access)),
       ],
     );
   }
 
-  Widget _resultTile(Map<String, dynamic> item, String type) {
+  int? _toInt(dynamic v) {
+    if (v is int) return v;
+    if (v == null) return null;
+    return int.tryParse(v.toString());
+  }
+
+  String? _statusLabelFor(
+    Map<String, dynamic> item,
+    String type,
+    AccessProvider access,
+  ) {
+    switch (type) {
+      case "book":
+        return access.hasAccess("book", itemId: _toInt(item["id"]))
+            ? "Satın alındı"
+            : null;
+      case "magazine":
+        return access.hasAccess("magazine", itemId: _toInt(item["id"]))
+            ? "Abonelik aktif"
+            : null;
+      case "newspaper":
+        return access.hasAccess("newspaper_subscription")
+            ? "Abonelik aktif"
+            : null;
+      case "ek":
+        return access.hasAccess("ek", itemId: _toInt(item["id"]))
+            ? "Erişim aktif"
+            : null;
+      default:
+        return null;
+    }
+  }
+
+  Widget _resultTile(
+    Map<String, dynamic> item,
+    String type, {
+    required AccessProvider access,
+  }) {
     final title =
         (type == "ek"
                 ? (item["ad"] ?? item["title"] ?? "Ek")
@@ -193,6 +248,8 @@ class _SearchScreenState extends State<SearchScreen> {
                       "assets/images/gazete.jpg"))
             .toString();
 
+    final status = _statusLabelFor(item, type, access);
+
     return ListTile(
       contentPadding: EdgeInsets.zero,
       leading: ClipRRect(
@@ -201,6 +258,16 @@ class _SearchScreenState extends State<SearchScreen> {
       ),
       title: Text(title, maxLines: 2, overflow: TextOverflow.ellipsis),
       subtitle: Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis),
+      trailing: status == null
+          ? null
+          : Text(
+              status,
+              style: const TextStyle(
+                color: Colors.red,
+                fontWeight: FontWeight.w700,
+                fontSize: 12,
+              ),
+            ),
       onTap: () {
         Navigator.pop(context, {"item": item, "type": type});
       },

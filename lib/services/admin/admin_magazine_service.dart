@@ -156,6 +156,8 @@ class AdminMagazineService {
           issue_number
           file_url
           photo_url
+          price
+          description
           added_at
         }
       }
@@ -174,19 +176,25 @@ class AdminMagazineService {
     required int issueNumber,
     required String fileUrl,
     String? photoUrl,
+    required double price,
+    String? description,
   }) async {
     const mutation = r'''
       mutation AddIssue(
         $magazine_id: Int!,
         $issue_number: Int!,
         $file_url: String!,
-        $photo_url: String
+        $photo_url: String,
+        $price: numeric!,
+        $description: String
       ) {
         insert_magazine_issue_one(object: {
           magazine_id: $magazine_id,
           issue_number: $issue_number,
           file_url: $file_url,
-          photo_url: $photo_url
+          photo_url: $photo_url,
+          price: $price,
+          description: $description
         }) { id }
       }
     ''';
@@ -198,6 +206,8 @@ class AdminMagazineService {
         "issue_number": issueNumber,
         "file_url": fileUrl,
         "photo_url": photoUrl,
+        "price": price,
+        "description": description,
       },
     );
 
@@ -209,20 +219,26 @@ class AdminMagazineService {
     required int issueNumber,
     required String fileUrl,
     String? photoUrl,
+    required double price,
+    String? description,
   }) async {
     const mutation = r'''
       mutation UpdateIssue(
         $id: Int!,
         $issue_number: Int!,
         $file_url: String!,
-        $photo_url: String
+        $photo_url: String,
+        $price: numeric!,
+        $description: String
       ) {
         update_magazine_issue_by_pk(
           pk_columns: {id: $id},
           _set: {
             issue_number: $issue_number,
             file_url: $file_url,
-            photo_url: $photo_url
+            photo_url: $photo_url,
+            price: $price,
+            description: $description
           }
         ) { id }
       }
@@ -235,6 +251,8 @@ class AdminMagazineService {
         "issue_number": issueNumber,
         "file_url": fileUrl,
         "photo_url": photoUrl,
+        "price": price,
+        "description": description,
       },
     );
 
@@ -261,6 +279,8 @@ class AdminMagazineService {
           issue_number
           file_url
           photo_url
+          price
+          description
           added_at
           magazine {
             id

@@ -5,7 +5,6 @@ import 'package:provider/provider.dart';
 import '../../services/admin/admin_book_service.dart';
 import '../../services/admin/admin_magazine_service.dart';
 import '../../services/auth/auth_provider.dart';
-import '../../services/access_provider.dart';
 import '../../services/user_content_access_service.dart';
 import '../../utils/route_guard.dart';
 import '../address/address_list_screen.dart';
@@ -15,6 +14,7 @@ import '../contact/contact_form.dart';
 import '../notification/notification_list_screen.dart';
 import 'pdf_viewer_screen.dart';
 import 'personal_info_screen.dart';
+import 'saved_cards_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -136,7 +136,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   },
                 ),
                 const Divider(height: 1, indent: 56),
-                _menuTile(Icons.credit_card, "Ödeme Yöntemleri"),
+                _menuTile(
+                  Icons.credit_card,
+                  "Kayıtlı Kartlarım",
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const SavedCardsScreen()),
+                    );
+                  },
+                ),
                 const Divider(height: 1, indent: 56),
                 _menuTile(
                   Icons.receipt_long,
@@ -206,7 +215,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 height: 50,
                 child: ElevatedButton.icon(
                   onPressed: () {
-                    context.read<AccessProvider>().clear();
                     auth.logout();
                     Navigator.popUntil(context, (route) => route.isFirst);
                   },

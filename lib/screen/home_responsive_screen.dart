@@ -34,9 +34,11 @@ import '../services/app_flag_service.dart';
 import '../screen/profile/pdf_viewer_screen.dart';
 import '../utils/cart_feedback.dart';
 import '../utils/price_utils.dart';
+import '../utils/pdf_open_helper.dart';
 import 'search/search_screen.dart';
 import 'product/product_detail_screen.dart';
 import '../utils/safe_image.dart';
+import '../utils/ek_normalizer.dart';
 import 'attachment/ek_detail_screen.dart';
 import 'slider/slider_detail_screen.dart';
 import 'slider/slider_webview_screen.dart';
@@ -374,7 +376,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
   void _openEkDetail(Map<String, dynamic> ek) {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => EkDetailScreen(ek: ek)),
+      MaterialPageRoute(builder: (_) => EkDetailScreen(ek: normalizeEk(ek))),
     );
   }
 
@@ -672,13 +674,20 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     };
 
     Future<void> openPdf(String url, String title) async {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) =>
-              PdfViewerScreen(url: url, title: title, isPrivate: true),
-        ),
-      );
+      try {
+        await PdfOpenHelper.downloadAndOpen(
+          context,
+          url: url,
+          title: title,
+          isPrivate: true,
+          showDialogProgress: true,
+        );
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text("Dosya açılamadı: $e")));
+      }
     }
 
     final pid = _toInt(productId);
@@ -792,7 +801,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         }
         break;
       case "ek":
-        _openEkDetail(meta.isNotEmpty ? meta : item);
+        _openEkDetail(item);
         return;
       default:
         break;
@@ -884,6 +893,21 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
   ) async {
     final itemId = entry["item_id"];
     switch (type) {
+      case "ek":
+        if (itemId == null) return _AccessItem(title: "Bilinmeyen ek");
+        final ek = await _ekService.getEk(itemId as int);
+        final title = ek?["ad"]?.toString() ?? "Ek #$itemId";
+        return _AccessItem(
+          title: title,
+          subtitle: "Ek",
+          icon: _iconForType(type),
+          onTap: (ek == null)
+              ? null
+              : () {
+                  if (!mounted) return;
+                  _openEkDetail(ek);
+                },
+        );
       case "book":
         if (itemId == null) return _AccessItem(title: "Bilinmeyen kitap");
         final book = await _bookService.getBookById(itemId as int);
@@ -895,17 +919,21 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
           icon: _iconForType(type),
           onTap: (url == null || url.isEmpty)
               ? null
-              : () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => PdfViewerScreen(
-                        url: url,
-                        title: title,
-                        isPrivate: true,
-                      ),
-                    ),
-                  );
+              : () async {
+                  try {
+                    await PdfOpenHelper.downloadAndOpen(
+                      context,
+                      url: url,
+                      title: title,
+                      isPrivate: true,
+                      showDialogProgress: true,
+                    );
+                  } catch (e) {
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text("Dosya açılamadı: $e")),
+                    );
+                  }
                 },
         );
       case "magazine_issue":
@@ -920,17 +948,21 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
           icon: _iconForType(type),
           onTap: (url == null || url.isEmpty)
               ? null
-              : () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => PdfViewerScreen(
-                        url: url,
-                        title: "$magName - $issueNumber",
-                        isPrivate: true,
-                      ),
-                    ),
-                  );
+              : () async {
+                  try {
+                    await PdfOpenHelper.downloadAndOpen(
+                      context,
+                      url: url,
+                      title: "$magName - $issueNumber",
+                      isPrivate: true,
+                      showDialogProgress: true,
+                    );
+                  } catch (e) {
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text("Dosya açılamadı: $e")),
+                    );
+                  }
                 },
         );
       case "magazine":
@@ -972,74 +1004,85 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      builder: (_) => Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom,
-          left: 12,
-          right: 12,
-        ),
-        child: SizedBox(
-          height: 420,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      "$name Sayıları",
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
+      builder: (sheetContext) {
+        final mq = MediaQueryData.fromView(View.of(sheetContext));
+        final viewInsets = MediaQuery.viewInsetsOf(sheetContext);
+        return SizedBox(
+          height: mq.size.height,
+          child: Padding(
+            padding: EdgeInsets.only(
+              top: mq.padding.top,
+              bottom: viewInsets.bottom + mq.padding.bottom,
+              left: 12,
+              right: 12,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        "$name Sayıları",
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close),
-                      onPressed: () => Navigator.pop(context),
-                    ),
-                  ],
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => Navigator.pop(sheetContext),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              const Divider(height: 1),
-              Expanded(
-                child: visibleIssues.isEmpty
-                    ? const Center(child: Text("Sayı bulunamadı"))
-                    : ListView.separated(
-                        itemCount: visibleIssues.length,
-                        separatorBuilder: (_, __) => const Divider(height: 1),
-                        itemBuilder: (_, i) {
-                          final issue = visibleIssues[i];
-                          final title = "Sayı ${issue["issue_number"]}";
-                          return ListTile(
-                            title: Text(title),
-                            subtitle: Text(
-                              "Eklenme: ${issue["added_at"] ?? ''}",
-                            ),
-                            trailing: const Icon(Icons.chevron_right),
-                            onTap: () {
-                              final url = issue["file_url"]?.toString();
-                              if (url == null || url.isEmpty) return;
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => PdfViewerScreen(
+                const Divider(height: 1),
+                Expanded(
+                  child: visibleIssues.isEmpty
+                      ? const Center(child: Text("Sayı bulunamadı"))
+                      : ListView.separated(
+                          itemCount: visibleIssues.length,
+                          separatorBuilder: (_, __) => const Divider(height: 1),
+                          itemBuilder: (_, i) {
+                            final issue = visibleIssues[i];
+                            final title = "Sayı ${issue["issue_number"]}";
+                            return ListTile(
+                              title: Text(title),
+                              subtitle: Text(
+                                "Eklenme: ${issue["added_at"] ?? ''}",
+                              ),
+                              trailing: const Icon(Icons.chevron_right),
+                              onTap: () async {
+                                final url = issue["file_url"]?.toString();
+                                if (url == null || url.isEmpty) return;
+                                try {
+                                  await PdfOpenHelper.downloadAndOpen(
+                                    context,
                                     url: url,
                                     title: "$name - $title",
                                     isPrivate: true,
-                                  ),
-                                ),
-                              );
-                            },
-                          );
-                        },
-                      ),
-              ),
-            ],
+                                    showDialogProgress: true,
+                                  );
+                                } catch (e) {
+                                  if (!context.mounted) return;
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text("Dosya açılamadı: $e"),
+                                    ),
+                                  );
+                                }
+                              },
+                            );
+                          },
+                        ),
+                ),
+              ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
@@ -1092,89 +1135,94 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      builder: (_) => Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom,
-          left: 12,
-          right: 12,
-        ),
-        child: SizedBox(
-          height: 420,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
+      builder: (sheetContext) {
+        final mq = MediaQueryData.fromView(View.of(sheetContext));
+        final viewInsets = MediaQuery.viewInsetsOf(sheetContext);
+        return SizedBox(
+          height: mq.size.height,
+          child: Padding(
+            padding: EdgeInsets.only(
+              top: mq.padding.top,
+              bottom: viewInsets.bottom + mq.padding.bottom,
+              left: 12,
+              right: 12,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close),
-                      onPressed: () => Navigator.pop(context),
-                    ),
-                  ],
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => Navigator.pop(sheetContext),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              const Divider(height: 1),
-              Expanded(
-                child: _loadingAccessSheet
-                    ? const Center(child: CircularProgressIndicator())
-                    : entries.isEmpty
-                    ? const Center(child: Text("Kayıt bulunamadı"))
-                    : ListView.separated(
-                        itemCount: entries.length,
-                        separatorBuilder: (_, __) => const Divider(height: 1),
-                        itemBuilder: (_, i) {
-                          final entry = entries[i];
-                          return FutureBuilder<_AccessItem>(
-                            future: _resolveAccessItem(itemType, entry),
-                            builder: (_, snap) {
-                              if (!snap.hasData) {
-                                return const ListTile(
-                                  title: Text("Yükleniyor..."),
-                                  trailing: SizedBox(
-                                    width: 20,
-                                    height: 20,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
+                const Divider(height: 1),
+                Expanded(
+                  child: _loadingAccessSheet
+                      ? const Center(child: CircularProgressIndicator())
+                      : entries.isEmpty
+                      ? const Center(child: Text("Kayıt bulunamadı"))
+                      : ListView.separated(
+                          itemCount: entries.length,
+                          separatorBuilder: (_, __) => const Divider(height: 1),
+                          itemBuilder: (_, i) {
+                            final entry = entries[i];
+                            return FutureBuilder<_AccessItem>(
+                              future: _resolveAccessItem(itemType, entry),
+                              builder: (_, snap) {
+                                if (!snap.hasData) {
+                                  return const ListTile(
+                                    title: Text("Yükleniyor..."),
+                                    trailing: SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    ),
+                                  );
+                                }
+                                final data = snap.data!;
+                                return ListTile(
+                                  leading: CircleAvatar(
+                                    backgroundColor: Colors.red.shade100,
+                                    foregroundColor: Colors.red,
+                                    child: Icon(
+                                      data.icon ?? _iconForType(itemType),
                                     ),
                                   ),
+                                  title: Text(data.title),
+                                  subtitle: data.subtitle != null
+                                      ? Text(data.subtitle!)
+                                      : null,
+                                  trailing: data.onTap != null
+                                      ? const Icon(Icons.chevron_right)
+                                      : const SizedBox.shrink(),
+                                  onTap: data.onTap,
                                 );
-                              }
-                              final data = snap.data!;
-                              return ListTile(
-                                leading: CircleAvatar(
-                                  backgroundColor: Colors.red.shade100,
-                                  foregroundColor: Colors.red,
-                                  child: Icon(
-                                    data.icon ?? _iconForType(itemType),
-                                  ),
-                                ),
-                                title: Text(data.title),
-                                subtitle: data.subtitle != null
-                                    ? Text(data.subtitle!)
-                                    : null,
-                                trailing: data.onTap != null
-                                    ? const Icon(Icons.chevron_right)
-                                    : const SizedBox.shrink(),
-                                onTap: data.onTap,
-                              );
-                            },
-                          );
-                        },
-                      ),
-              ),
-            ],
+                              },
+                            );
+                          },
+                        ),
+                ),
+              ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 
@@ -1256,8 +1304,14 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
       "book",
       itemId: book["id"] as int?,
     );
-    final actionLabel = hasAccess ? "Kitabı Gör" : "Sepete Ekle";
-    final price = _parsePrice(book["price"]);
+    final rawPrice = _parsePrice(book["price"]);
+    final discPriceRaw = book["discount_price"];
+    double price = rawPrice;
+    if (discPriceRaw != null) {
+      final dp = _parsePrice(discPriceRaw);
+      if (dp < rawPrice) price = dp;
+    }
+    final actionLabel = (hasAccess || price <= 0) ? "Kitabı Gör" : "Sepete Ekle";
     return ProductDetail(
       id: "book-${book["id"]}",
       title: book["title"] ?? "",
@@ -1280,7 +1334,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     final hasSub = context.read<AccessProvider>().hasAccess(
       "newspaper_subscription",
     );
-    final title = "Gündem Gazetesi";
+    final title = "E-Gazete";
     final fileUrl = news["file_url"]?.toString();
     return ProductDetail(
       id: "news-${news["id"] ?? "subscription"}",
@@ -1324,7 +1378,10 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
       backgroundColor: Colors.white,
       appBar: AppBar(
         backgroundColor: Colors.white,
-        elevation: isWeb ? 1 : 0,
+        elevation: 0,
+        scrolledUnderElevation: 6,
+        shadowColor: Colors.black.withOpacity(0.18),
+        surfaceTintColor: Colors.white,
         automaticallyImplyLeading: false,
         titleSpacing: 0,
         title: Column(
@@ -1542,6 +1599,8 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
       bottomNavigationBar: isWeb
           ? null
           : BottomNavigationBar(
+              elevation: 12,
+              backgroundColor: Colors.white,
               selectedItemColor: Colors.red,
               unselectedItemColor: Colors.grey,
               type: BottomNavigationBarType.fixed,
@@ -1624,7 +1683,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _sectionHeadingText("E-gazete"),
+            _sectionHeadingText("E-Gazete"),
             const SizedBox(height: 12),
             _newspaperFilters(context),
             const SizedBox(height: 16),
@@ -1663,14 +1722,13 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
               idKey: "id",
               selectedIdKey: "product_id",
             ).isNotEmpty;
-        final hasBookShowcase =
-            _buildHomeShowcaseList(
-              baseItems: books,
-              selectedEntries: homeBookEntries,
-              maxItems: 10,
-              idKey: "id",
-              selectedIdKey: "product_id",
-            ).isNotEmpty;
+        final hasBookShowcase = _buildHomeShowcaseList(
+          baseItems: books,
+          selectedEntries: homeBookEntries,
+          maxItems: 10,
+          idKey: "id",
+          selectedIdKey: "product_id",
+        ).isNotEmpty;
         final hasEkSection = attachments.isNotEmpty;
         final hasAnyContent =
             sliders.isNotEmpty ||
@@ -1871,17 +1929,18 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
             if (isWeb) {
               setState(() => _section = HomeSection.magazines);
             } else {
-              _openFullList(
+              Navigator.push(
                 context,
-                "E-dergi",
-                (ctx) => _magazineListGrid(ctx, false),
+                MaterialPageRoute(
+                  builder: (_) => _MagazineBrowseScreen(homeState: this),
+                ),
               );
             }
           },
         ),
         const SizedBox(height: 12),
         SizedBox(
-          height: isWeb ? 270 : 300,
+          height: isWeb ? 255 : 270,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             itemCount: displayList.length,
@@ -1892,6 +1951,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
                 "title": displayList[i]["name"],
                 "author": displayList[i]["category"] ?? "",
                 "price": isWeb ? "Fiyat için tıkla" : "",
+                "statusLabel": "Abonelik aktif",
               },
               isWeb,
               hideAction: _hasPurchased(
@@ -1942,7 +2002,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         ),
         const SizedBox(height: 12),
         SizedBox(
-          height: isWeb ? 270 : 300,
+          height: isWeb ? 255 : 270,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             itemCount: displayList.length,
@@ -2005,7 +2065,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
       final titleText = label.isNotEmpty ? label : _formatDateTr(today);
       return {
         "image": n["image_url"] ?? fallbackImage,
-        "date": "Yeni Asya Gazetesi",
+        "date": "E-Gazete",
         "title": titleText,
         "raw": n,
       };
@@ -2036,7 +2096,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             const Text(
-              "E-gazete",
+              "E-Gazete",
               style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
             ),
             Row(
@@ -2088,7 +2148,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
               separatorBuilder: (_, __) => const SizedBox(width: 14),
               itemBuilder: (_, i) => _newspaperPreviewCard(
                 items[i],
-                width: 170,
+                width: isWeb ? 160 : 150,
                 compact: true,
                 imageHeight: showRead ? 120 : 135,
                 showRead: showRead,
@@ -2110,6 +2170,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         initialDate: now,
         firstDate: DateTime(2000),
         lastDate: now.add(const Duration(days: 365 * 2)),
+        locale: const Locale('tr', 'TR'),
       );
       if (picked == null) return;
       final normalized = _normalizeDate(picked);
@@ -2123,7 +2184,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         MaterialPageRoute(
           builder: (_) => PdfViewerScreen(
             url: pdfUrl,
-            title: "E-gazete $dateLabel",
+            title: "E-Gazete $dateLabel",
             isPrivate: false,
           ),
         ),
@@ -2302,17 +2363,33 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     final crossAxisCount = isWeb ? 4 : (isTabletLayout(context) ? 2 : 1);
     return LayoutBuilder(
       builder: (context, constraints) {
-        final itemWidth = constraints.maxWidth / crossAxisCount;
-        final cardHeight = isWeb
-            ? 290.0
-            : (itemWidth * 1.0).clamp(0, 320).toDouble();
+        final spacing = 16.0;
+        final textScaler = MediaQuery.textScalerOf(context);
+        final titleHeight = textScaler.scale(16) * 1.25; // 1 line
+        final descHeight = textScaler.scale(13) * 1.25 * 2; // 2 lines
+        final rowHeight = max(
+          textScaler.scale(15) * 1.4,
+          40.0,
+        ); // price/button row
+        const verticalGaps = 4 + 8; // SizedBox heights in card
+        const contentPadding = 12 * 2; // Padding.all(12)
+        const imageHeight = 170.0;
+        const safetyMargin = 12.0;
+        final cardHeight =
+            imageHeight +
+            contentPadding +
+            verticalGaps +
+            titleHeight +
+            descHeight +
+            rowHeight +
+            safetyMargin;
         return GridView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           padding: EdgeInsets.zero,
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: crossAxisCount,
-            crossAxisSpacing: 16,
+            crossAxisSpacing: spacing,
             mainAxisSpacing: 16,
             mainAxisExtent: cardHeight,
           ),
@@ -2349,43 +2426,65 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     final cart = Provider.of<CartProvider>(context, listen: false);
     final access = context.watch<AccessProvider>();
     final crossAxisCount = isWeb ? 4 : (isTablet ? 3 : 2);
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      padding: EdgeInsets.zero,
-      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: crossAxisCount,
-        crossAxisSpacing: 14,
-        mainAxisSpacing: 14,
-        mainAxisExtent: isWeb ? 270 : 260,
-      ),
-      itemCount: books.length,
-      itemBuilder: (_, i) {
-        final item = CartItem(
-          id: "book-${books[i]["id"]}",
-          title: books[i]["title"] ?? "",
-          subtitle: books[i]["author_rel"]?["name"] ?? "",
-          imageUrl: books[i]["cover_url"] ?? "",
-          price: double.tryParse(books[i]["price"]?.toString() ?? "0") ?? 0,
-          quantity: 1,
-          type: CartItemType.book,
-          metadata: {"productId": books[i]["id"]},
-        );
-        final alreadyInCart = cart.contains(item);
-        return _bookCard(
-          {
-            "image": books[i]["cover_url"],
-            "title": books[i]["title"],
-            "author": books[i]["author_rel"]?["name"] ?? "-",
-            "price": books[i]["price"] != null
-                ? "₺${double.tryParse(books[i]["price"].toString())?.toStringAsFixed(2) ?? ""}"
-                : "-",
-          },
-          isWeb,
-          hideAction: _hasPurchased("book", _toInt(books[i]["id"])),
-          onAdd: alreadyInCart ? null : () => _addToCart(context, cart, item),
-          onTap: () {
-            _openProductDetail(_mapBookDetail(books[i]));
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const spacing = 14.0;
+        final textScaler = MediaQuery.textScalerOf(context);
+        final titleHeight = textScaler.scale(15) * 1.25 * 2; // 2 lines
+        final authorHeight = textScaler.scale(12) * 1.25; // 1 line
+        final rowHeight = 28.0; // add button + price row
+        const verticalGaps = 4.0; // SizedBox height between title/author
+        const contentPadding = 10.0 * 2; // Padding.all(10)
+        const imageHeight = 150.0;
+        final cardHeight =
+            imageHeight +
+            contentPadding +
+            verticalGaps +
+            titleHeight +
+            authorHeight +
+            rowHeight;
+
+        return GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          padding: EdgeInsets.zero,
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: crossAxisCount,
+            crossAxisSpacing: spacing,
+            mainAxisSpacing: spacing,
+            mainAxisExtent: cardHeight,
+          ),
+          itemCount: books.length,
+          itemBuilder: (_, i) {
+            final item = CartItem(
+              id: "book-${books[i]["id"]}",
+              title: books[i]["title"] ?? "",
+              subtitle: books[i]["author_rel"]?["name"] ?? "",
+              imageUrl: books[i]["cover_url"] ?? "",
+              price: double.tryParse(books[i]["price"]?.toString() ?? "0") ?? 0,
+              quantity: 1,
+              type: CartItemType.book,
+              metadata: {"productId": books[i]["id"]},
+            );
+            final alreadyInCart = cart.contains(item);
+            return _bookCard(
+              {
+                "image": books[i]["cover_url"],
+                "title": books[i]["title"],
+                "author": books[i]["author_rel"]?["name"] ?? "-",
+                "price": books[i]["price"] != null
+                    ? "₺${double.tryParse(books[i]["price"].toString())?.toStringAsFixed(2) ?? ""}"
+                    : "-",
+              },
+              isWeb,
+              hideAction: _hasPurchased("book", _toInt(books[i]["id"])),
+              onAdd: alreadyInCart
+                  ? null
+                  : () => _addToCart(context, cart, item),
+              onTap: () {
+                _openProductDetail(_mapBookDetail(books[i]));
+              },
+            );
           },
         );
       },
@@ -2413,7 +2512,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
             crossAxisCount: crossAxisCount,
             crossAxisSpacing: 14,
             mainAxisSpacing: 14,
-            mainAxisExtent: isWeb ? (hasSub ? 280 : 260) : (hasSub ? 240 : 220),
+            mainAxisExtent: isWeb ? (hasSub ? 280 : 260) : (hasSub ? 210 : 195),
           ),
           itemCount: items.length,
           itemBuilder: (_, i) {
@@ -2425,7 +2524,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
               {
                 "image": items[i]["image_url"],
                 "title": title,
-                "date": "Yeni Asya Gazetesi",
+                "date": "E-Gazete",
               },
               compact: true,
               imageHeight: isWeb ? (hasSub ? 150 : 140) : (hasSub ? 130 : 120),
@@ -2581,20 +2680,33 @@ Widget _magazineCard(
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    _priceWidgetForItem(
-                      item,
-                      saleStyle: const TextStyle(
-                        color: Colors.black54,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 12,
-                      ),
-                      campaignStyle: const TextStyle(
-                        color: Colors.red,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 15,
+                    Expanded(
+                      child: _priceWidgetForItem(
+                        item,
+                        saleStyle: const TextStyle(
+                          color: Colors.black54,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 12,
+                        ),
+                        campaignStyle: const TextStyle(
+                          color: Colors.red,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 15,
+                        ),
                       ),
                     ),
-                    if (!hideAction && onAdd != null)
+                    const SizedBox(width: 8),
+                    if (hideAction)
+                      const Text(
+                        "Abonelik aktif",
+                        textAlign: TextAlign.right,
+                        style: TextStyle(
+                          color: Colors.red,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 12,
+                        ),
+                      )
+                    else if (onAdd != null)
                       ElevatedButton(
                         onPressed: onAdd,
                         style: ElevatedButton.styleFrom(
@@ -2690,24 +2802,32 @@ Widget _bookCard(
                           fontWeight: FontWeight.w700,
                         ),
                       ),
-                      if (!hideAction)
-                        Container(
-                          decoration: BoxDecoration(
-                            color: onAdd == null ? Colors.grey : Colors.red,
-                            borderRadius: BorderRadius.circular(8),
+                      if (hideAction && item["statusLabel"] != null)
+                        Text(
+                          item["statusLabel"].toString(),
+                          textAlign: TextAlign.right,
+                          style: const TextStyle(
+                            color: Colors.red,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 12,
                           ),
-                          child: IconButton(
-                            icon: const Icon(
-                              Icons.add,
-                              color: Colors.white,
-                              size: 16,
+                        )
+                      else if (!hideAction)
+                        SizedBox(
+                          width: 32,
+                          height: 32,
+                          child: Material(
+                            color: onAdd == null ? Colors.grey : Colors.red,
+                            borderRadius: BorderRadius.circular(6),
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(6),
+                              onTap: onAdd,
+                              child: const Icon(
+                                Icons.add,
+                                color: Colors.white,
+                                size: 18,
+                              ),
                             ),
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(
-                              minWidth: 32,
-                              minHeight: 32,
-                            ),
-                            onPressed: onAdd,
                           ),
                         ),
                     ],
@@ -3013,15 +3133,6 @@ Widget _libraryView(BuildContext context, _HomeResponsiveScreenState state) {
     return const Center(child: CircularProgressIndicator());
   }
 
-  final orderItems = state.libraryOrders
-      .expand<Map<String, dynamic>>(
-        (o) => List<Map<String, dynamic>>.from(o["order_items"] ?? []),
-      )
-      .toList();
-  final eks = orderItems
-      .where((i) => (i["product_type"] ?? "") == "ek")
-      .toList();
-
   return RefreshIndicator(
     onRefresh: () async {
       await state._loadLibraryAccess();
@@ -3041,14 +3152,6 @@ Widget _libraryView(BuildContext context, _HomeResponsiveScreenState state) {
         ),
         const SizedBox(height: 12),
         _librarySubscriptionCard(context, state),
-        if (eks.isNotEmpty) ...[
-          const SizedBox(height: 16),
-          _libraryEkGallery(context, state, eks),
-        ],
-        if (orderItems.isEmpty && eks.isEmpty) ...[
-          const SizedBox(height: 16),
-          const Center(child: Text("Henüz satın alınan içerik bulunamadı.")),
-        ],
       ],
     ),
   );
@@ -3065,12 +3168,6 @@ Widget _librarySubscriptionCard(
       Icons.menu_book_outlined,
       "Kitaplar",
       onTap: () => state._openAccessSheet(context, "book", "Kitaplar"),
-    ),
-    const Divider(height: 1, thickness: 1),
-    _libraryMenuTile(
-      Icons.file_present,
-      "Ekler",
-      onTap: () => state._openAccessSheet(context, "ek", "Ekler"),
     ),
   ];
   if (showMag) {
@@ -3105,21 +3202,33 @@ Widget _librarySubscriptionCard(
       ),
     ]);
   }
-
-  return Container(
-    padding: const EdgeInsets.all(16),
-    decoration: BoxDecoration(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(14),
-      boxShadow: [
-        BoxShadow(
-          color: Colors.black.withOpacity(0.05),
-          blurRadius: 8,
-          offset: const Offset(0, 4),
-        ),
-      ],
+  tiles.addAll([
+    const Divider(height: 1, thickness: 1),
+    _libraryMenuTile(
+      Icons.file_present,
+      "Ekler",
+      onTap: () => state._openAccessSheet(context, "ek", "Ekler"),
     ),
-    child: Column(children: tiles),
+  ]);
+
+  return Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 16),
+    child: Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Theme.of(context).dividerColor),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(children: tiles),
+    ),
   );
 }
 
@@ -3231,6 +3340,20 @@ Widget _librarySection(
   String title,
   List<Map<String, dynamic>> items,
 ) {
+  String itemTitle(Map<String, dynamic> item) {
+    final metadata = Map<String, dynamic>.from(
+      item["metadata"] as Map<String, dynamic>? ?? {},
+    );
+    final value =
+        item["title"] ??
+        metadata["title"] ??
+        metadata["name"] ??
+        metadata["ad"] ??
+        item["ad"] ??
+        "-";
+    return value.toString();
+  }
+
   return Container(
     padding: const EdgeInsets.all(16),
     decoration: BoxDecoration(
@@ -3266,7 +3389,7 @@ Widget _librarySection(
                 ),
               ),
               title: Text(
-                i["title"] ?? "-",
+                itemTitle(i),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -3278,165 +3401,6 @@ Widget _librarySection(
           ),
       ],
     ),
-  );
-}
-
-Widget _libraryEkGallery(
-  BuildContext context,
-  _HomeResponsiveScreenState state,
-  List<Map<String, dynamic>> items,
-) {
-  return Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      const Text(
-        "Ekler",
-        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-      ),
-      const SizedBox(height: 12),
-      SizedBox(
-        height: 210,
-        child: ListView.separated(
-          scrollDirection: Axis.horizontal,
-          itemCount: items.length,
-          separatorBuilder: (_, __) => const SizedBox(width: 14),
-          itemBuilder: (context, index) {
-            final item = items[index];
-            final metadata = Map<String, dynamic>.from(
-              item["metadata"] as Map<String, dynamic>? ?? {},
-            );
-            final name =
-                (metadata["title"] ??
-                        metadata["name"] ??
-                        metadata["ad"] ??
-                        item["title"] ??
-                        item["ad"])
-                    .toString();
-            final desc = (metadata["description"] ?? metadata["aciklama"] ?? "")
-                .toString();
-            final cover = UploadService.normalizeUrl(
-              (metadata["photo_url"] ??
-                      metadata["photoUrl"] ??
-                      item["photo_url"] ??
-                      item["image_url"] ??
-                      "")
-                  .toString(),
-            );
-            final priceVal =
-                double.tryParse(
-                  (metadata["price"] ??
-                          metadata["fiyat"] ??
-                          item["price"] ??
-                          item["unit_price"] ??
-                          0)
-                      .toString(),
-                ) ??
-                0;
-            final pdfUrl =
-                (metadata["pdf_url"] ??
-                        metadata["file_url"] ??
-                        item["pdf_url"] ??
-                        "")
-                    .toString();
-            final ekData = {
-              "id":
-                  metadata["productId"] ??
-                  metadata["product_id"] ??
-                  item["product_id"] ??
-                  item["id"],
-              "ad": name,
-              "aciklama": desc,
-              "fiyat": priceVal,
-              "pdf_url": pdfUrl,
-              "photo_url": cover,
-              "is_public": metadata["is_public"] ?? false,
-            };
-
-            return InkWell(
-              onTap: () => state._openEkDetail(ekData),
-              borderRadius: BorderRadius.circular(14),
-              child: Container(
-                width: 220,
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: const Color(0xFFE5E5E5)),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.04),
-                      blurRadius: 8,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: AspectRatio(
-                        aspectRatio: 4 / 3,
-                        child: safeImage(
-                          cover,
-                          fit: BoxFit.cover,
-                          fallbackIcon: Icons.broken_image,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      name,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      desc.isNotEmpty ? desc : "Ek içerik",
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Colors.black54,
-                        fontSize: 13,
-                      ),
-                    ),
-                    const Spacer(),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          priceVal == 0
-                              ? "Ücretsiz"
-                              : "₺${priceVal.toStringAsFixed(2)}",
-                          style: const TextStyle(
-                            color: Colors.red,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        ElevatedButton(
-                          onPressed: () => state._openEkDetail(ekData),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.blue,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                          ),
-                          child: const Text("Görüntüle"),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        ),
-      ),
-    ],
   );
 }
 
@@ -3590,6 +3554,7 @@ class _NewspaperListScreenState extends State<_NewspaperListScreen> {
       initialDate: now,
       firstDate: DateTime(2000),
       lastDate: now.add(const Duration(days: 365 * 2)),
+      locale: const Locale('tr', 'TR'),
     );
     if (picked == null) return;
     final normalized = DateTime(picked.year, picked.month, picked.day);
@@ -3603,7 +3568,7 @@ class _NewspaperListScreenState extends State<_NewspaperListScreen> {
       MaterialPageRoute(
         builder: (_) => PdfViewerScreen(
           url: pdfUrl,
-          title: "E-gazete $dateLabel",
+          title: "E-Gazete $dateLabel",
           isPrivate: false,
         ),
       ),
@@ -3616,13 +3581,16 @@ class _NewspaperListScreenState extends State<_NewspaperListScreen> {
       appBar: AppBar(
         backgroundColor: Colors.white,
         foregroundColor: Colors.black,
-        title: const Text("E-gazete"),
+        title: const Text("E-Gazete"),
         elevation: 1,
         actions: [
-          IconButton(
+          TextButton.icon(
             onPressed: _pickSingleDate,
-            icon: const Icon(Icons.event),
-            tooltip: "Tarih Seç",
+            icon: const Icon(Icons.event, size: 20),
+            label: const Text("Tarih Seç"),
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.red,
+            ),
           ),
         ],
       ),
@@ -3704,6 +3672,277 @@ Widget _statusChip(String label, Color color) {
       style: TextStyle(color: color, fontWeight: FontWeight.w600),
     ),
   );
+}
+
+class _MagazineBrowseScreen extends StatefulWidget {
+  final _HomeResponsiveScreenState homeState;
+
+  const _MagazineBrowseScreen({required this.homeState});
+
+  @override
+  State<_MagazineBrowseScreen> createState() => _MagazineBrowseScreenState();
+}
+
+class _MagazineBrowseScreenState extends State<_MagazineBrowseScreen> {
+  final Map<int, Future<List<Map<String, dynamic>>>> _issuesFutures = {};
+
+  Future<List<Map<String, dynamic>>> _issuesFor(int magazineId) {
+    return _issuesFutures.putIfAbsent(
+      magazineId,
+      () async => widget.homeState._magService.getIssues(magazineId),
+    );
+  }
+
+  DateTime? _issueDate(Map<String, dynamic> issue) {
+    final raw =
+        issue["added_at"]?.toString() ?? issue["created_at"]?.toString();
+    if (raw == null || raw.isEmpty) return null;
+    return DateTime.tryParse(raw);
+  }
+
+  bool _isWithinAccessWindow({
+    required DateTime issueDate,
+    required DateTime start,
+    required DateTime end,
+  }) {
+    final issueDay = DateTime(issueDate.year, issueDate.month, issueDate.day);
+    final startDay = DateTime(start.year, start.month, start.day);
+    final endDay = DateTime(end.year, end.month, end.day);
+    return !issueDay.isBefore(startDay) && !issueDay.isAfter(endDay);
+  }
+
+  Widget _magazineCard(BuildContext context, Map<String, dynamic> mag) {
+    final title = (mag["name"] ?? "-").toString();
+    final imageUrl = UploadService.normalizeUrl(
+      (mag["cover_image_url"] ?? "").toString(),
+    );
+    return InkWell(
+      onTap: () => widget.homeState._openProductDetail(
+        widget.homeState._mapMagazineDetail(mag),
+      ),
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        width: 150,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: const Color(0xFFE5E5E5)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 6,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ClipRRect(
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(14),
+              ),
+              child: safeImage(
+                imageUrl,
+                height: 150,
+                width: double.infinity,
+                fit: BoxFit.cover,
+                fallbackIcon: Icons.auto_stories,
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(10),
+              child: Text(
+                title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _issueCard({
+    required BuildContext context,
+    required Map<String, dynamic> mag,
+    required Map<String, dynamic> issue,
+    required bool canView,
+  }) {
+    final issueNumber = (issue["issue_number"] ?? "").toString();
+    final label = issueNumber.isEmpty ? "Sayı" : "Sayı $issueNumber";
+    final photo = (issue["photo_url"] ?? mag["cover_image_url"] ?? "")
+        .toString();
+    final imageUrl = UploadService.normalizeUrl(photo);
+    final fileUrl = (issue["file_url"] ?? "").toString();
+
+    return Container(
+      width: 150,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE5E5E5)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 6,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ClipRRect(
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
+            child: safeImage(
+              imageUrl,
+              height: 150,
+              width: double.infinity,
+              fit: BoxFit.cover,
+              fallbackIcon: Icons.auto_stories,
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  height: 34,
+                  width: double.infinity,
+                  child: canView
+                      ? OutlinedButton(
+                          onPressed: fileUrl.isEmpty
+                              ? null
+                              : () async {
+                                  try {
+                                    await PdfOpenHelper.downloadAndOpen(
+                                      context,
+                                      url: UploadService.normalizeUrl(fileUrl),
+                                      title:
+                                          "${(mag["name"] ?? "").toString()} - $label",
+                                      isPrivate: true,
+                                      showDialogProgress: true,
+                                    );
+                                  } catch (e) {
+                                    if (!context.mounted) return;
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text("Dosya açılamadı: $e"),
+                                      ),
+                                    );
+                                  }
+                                },
+                          child: const Text("Görüntüle"),
+                        )
+                      : OutlinedButton(
+                          onPressed: () => widget.homeState._openProductDetail(
+                            widget.homeState._mapMagazineDetail(mag),
+                          ),
+                          child: const Text("Detay"),
+                        ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final access = context.watch<AccessProvider>();
+    final mags = widget.homeState.magazines;
+
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black,
+        title: const Text("E-dergi"),
+        elevation: 1,
+      ),
+      body: SafeArea(
+        child: ListView.separated(
+          padding: const EdgeInsets.all(16),
+          itemCount: mags.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 18),
+          itemBuilder: (context, i) {
+            final mag = mags[i];
+            final magId = widget.homeState._toInt(mag["id"]);
+            if (magId == null) return const SizedBox.shrink();
+
+            final start = access.startDate("magazine", itemId: magId);
+            final end = access.expiry("magazine", itemId: magId);
+            final hasMagazineAccess = access.hasAccess(
+              "magazine",
+              itemId: magId,
+            );
+
+            return FutureBuilder<List<Map<String, dynamic>>>(
+              future: _issuesFor(magId),
+              builder: (context, snap) {
+                final issues = snap.data ?? const <Map<String, dynamic>>[];
+
+                return SizedBox(
+                  height: 238,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: 1 + issues.length,
+                    separatorBuilder: (_, __) => const SizedBox(width: 14),
+                    itemBuilder: (context, idx) {
+                      if (idx == 0) return _magazineCard(context, mag);
+                      final issue = issues[idx - 1];
+                      final issueId = widget.homeState._toInt(issue["id"]);
+                      final directIssueAccess = access.hasAccess(
+                        "magazine_issue",
+                        itemId: issueId,
+                      );
+                      final issueDate = _issueDate(issue);
+                      final windowAccess =
+                          hasMagazineAccess &&
+                          start != null &&
+                          end != null &&
+                          issueDate != null &&
+                          _isWithinAccessWindow(
+                            issueDate: issueDate,
+                            start: start,
+                            end: end,
+                          );
+                      final canView = directIssueAccess || windowAccess;
+
+                      return _issueCard(
+                        context: context,
+                        mag: mag,
+                        issue: issue,
+                        canView: canView,
+                      );
+                    },
+                  ),
+                );
+              },
+            );
+          },
+        ),
+      ),
+    );
+  }
 }
 
 class _AccessItem {

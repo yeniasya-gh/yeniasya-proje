@@ -279,7 +279,7 @@ class _AdminMagazinesPageState extends State<AdminMagazinesPage> {
                     validator: (v) {
                       final price = _parsePrice(v ?? "");
                       if (price == null) return "Geçerli bir fiyat girin";
-                      if (price <= 0) return "Fiyat 0'dan büyük olmalı";
+                      if (price < 0) return "Fiyat negatif olamaz";
                       return null;
                     },
                   );
@@ -303,7 +303,7 @@ class _AdminMagazinesPageState extends State<AdminMagazinesPage> {
                 final typeId = type["id"] as int?;
                 if (typeId == null || !priceControllers.containsKey(typeId)) continue;
                 final price = _parsePrice(priceControllers[typeId]!.text);
-                if (price == null || price <= 0) {
+                if (price == null || price < 0) {
                   await _showError("Tüm dergi tipleri için geçerli fiyat girin");
                   return;
                 }
