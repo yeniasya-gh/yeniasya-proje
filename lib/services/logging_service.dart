@@ -1,11 +1,10 @@
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
+import 'auth/auth_token_store.dart';
 
 class LoggingService {
   static const String _endpoint = "https://key-kodiak-32.hasura.app/v1/graphql";
-  static const String _adminSecret =
-      "AIY6x8zVY8NIKKD32hrGYFDCLFDUoa41287ImYp7BrLufiReDuVnQ4UWP6GamGvt";
 
   final http.Client _client = http.Client();
 
@@ -35,7 +34,8 @@ class LoggingService {
         Uri.parse(_endpoint),
         headers: {
           "content-type": "application/json",
-          "x-hasura-admin-secret": _adminSecret,
+          if (AuthTokenStore.token != null)
+            "Authorization": "Bearer ${AuthTokenStore.token}",
         },
         body: jsonEncode({
           "query": mutation,

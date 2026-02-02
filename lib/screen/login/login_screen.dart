@@ -69,12 +69,10 @@ class _LoginScreenState extends State<LoginScreen> {
   final prefs = await SharedPreferences.getInstance();
 
   final savedEmail = prefs.getString("saved_email");
-  final savedPassword = prefs.getString("saved_password");
 
-  if (savedEmail != null && savedPassword != null) {
+  if (savedEmail != null) {
     setState(() {
       emailCtrl.text = savedEmail;
-      passwordCtrl.text = savedPassword;
       rememberMe = true;
     });
   }

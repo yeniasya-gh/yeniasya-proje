@@ -3638,6 +3638,25 @@ class _NewspaperListScreen extends StatefulWidget {
 
 class _NewspaperListScreenState extends State<_NewspaperListScreen> {
   Future<void> _pickSingleDate() async {
+    final auth = context.read<AuthProvider>();
+    final access = context.read<AccessProvider>();
+    final canPick =
+        auth.isLoggedIn && access.hasAccess("newspaper_subscription");
+    if (!canPick) {
+      if (!auth.isLoggedIn) {
+        if (!mounted) return;
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const LoginScreen()),
+        );
+      } else {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("E-gazete aboneliği gerekli.")),
+        );
+      }
+      return;
+    }
     final now = DateTime.now();
     final picked = await showDatePicker(
       context: context,
@@ -3667,6 +3686,10 @@ class _NewspaperListScreenState extends State<_NewspaperListScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final auth = context.watch<AuthProvider>();
+    final hasSubscription =
+        context.watch<AccessProvider>().hasAccess("newspaper_subscription");
+    final canPickDate = auth.isLoggedIn && hasSubscription;
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.white,
@@ -3674,14 +3697,15 @@ class _NewspaperListScreenState extends State<_NewspaperListScreen> {
         title: const Text("E-Gazete"),
         elevation: 1,
         actions: [
-          TextButton.icon(
-            onPressed: _pickSingleDate,
-            icon: const Icon(Icons.event, size: 20),
-            label: const Text("Tarih Seç"),
-            style: TextButton.styleFrom(
-              foregroundColor: Colors.red,
+          if (canPickDate)
+            TextButton.icon(
+              onPressed: _pickSingleDate,
+              icon: const Icon(Icons.event, size: 20),
+              label: const Text("Tarih Seç"),
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.red,
+              ),
             ),
-          ),
         ],
       ),
       body: SafeArea(

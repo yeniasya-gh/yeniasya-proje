@@ -5,8 +5,11 @@ import '/screen/home_responsive_screen.dart';
 import '/services/auth/auth_provider.dart';
 import '/services/cart/cart_provider.dart';
 import '/services/access_provider.dart';
+import '/screen/login/login_screen.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
+
+final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -20,6 +23,10 @@ void main() async {
   authProvider.onLogout = () {
     cartProvider.clear();
     accessProvider.clear();
+    rootNavigatorKey.currentState?.pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const LoginScreen()),
+      (route) => false,
+    );
   };
 
   await authProvider.loadSession();
@@ -80,6 +87,7 @@ class MyApp extends StatelessWidget {
         child: child ?? const SizedBox.shrink(),
       ),
       home: HomeResponsiveScreen(initialUri: initialUri),
+      navigatorKey: rootNavigatorKey,
     );
   }
 }

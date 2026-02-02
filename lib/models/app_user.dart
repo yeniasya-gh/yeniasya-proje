@@ -23,10 +23,35 @@ class AppUser {
       name: json["name"],
       email: json["email"],
       phone: json["phone"],
-      roleId: json["role_id"],
-      roleName: json["role"]?["name"] ?? "user",
+      roleId: json["role_id"] ?? 0,
+      roleName: json["role"]?["name"] ?? json["role_name"] ?? "user",
       payUniqe: json["payUniqe"]?.toString() ?? json["payuniqe"]?.toString(),
     );
+  }
+
+  factory AppUser.fromAuthJson(Map<String, dynamic> json) {
+    final roleId = json["role_id"] ?? 0;
+    return AppUser(
+      id: json["id"],
+      name: json["name"],
+      email: json["email"],
+      phone: json["phone"],
+      roleId: roleId,
+      roleName: json["role_name"] ?? (roleId == 2 ? "admin" : "user"),
+      payUniqe: json["payUniqe"]?.toString() ?? json["payuniqe"]?.toString(),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      "id": id,
+      "name": name,
+      "email": email,
+      "phone": phone,
+      "role_id": roleId,
+      "role_name": roleName,
+      if (payUniqe != null) "payUniqe": payUniqe,
+    };
   }
 
   bool get isAdmin => roleName.toLowerCase() == "admin";

@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'error/error_manager.dart';
 import 'loading_manager.dart';
 import 'logging_service.dart';
+import 'auth/auth_token_store.dart';
 
 class HasuraManager {
   HasuraManager._internal();
@@ -11,8 +13,10 @@ class HasuraManager {
   final LoggingService _logger = LoggingService();
 
   static const String _endpoint = "https://key-kodiak-32.hasura.app/v1/graphql";
+  static final Uri _endpointUri = Uri.parse(_endpoint);
   static const String _adminSecret =
       "AIY6x8zVY8NIKKD32hrGYFDCLFDUoa41287ImYp7BrLufiReDuVnQ4UWP6GamGvt";
+  static const Duration _timeout = Duration(seconds: 20);
 
   final http.Client _client = http.Client();
 
@@ -23,28 +27,34 @@ class HasuraManager {
     LoadingManager.instance.show();
     var logged = false;
     try {
-      // Request log
-      // ignore: avoid_print
-      print("🟦 Hasura request");
-      // ignore: avoid_print
-      print("QUERY: ${query.trim()}");
-      // ignore: avoid_print
-      print("VARS: ${jsonEncode(variables ?? {})}");
+      _ensureSecureEndpoint();
+
+      if (kDebugMode) {
+        // ignore: avoid_print
+        print("🟦 Hasura request");
+        // ignore: avoid_print
+        print("QUERY: ${query.trim()}");
+        // ignore: avoid_print
+        print("VARS: ${jsonEncode(variables ?? {})}");
+      }
 
       final response = await _client.post(
-        Uri.parse(_endpoint),
+        _endpointUri,
         headers: {
           "content-type": "application/json",
+          if (AuthTokenStore.token != null)
+            "Authorization": "Bearer ${AuthTokenStore.token}",
           "x-hasura-admin-secret": _adminSecret,
         },
         body: jsonEncode({"query": query, "variables": variables ?? {}}),
-      );
+      ).timeout(_timeout);
 
-      // Response log
-      // ignore: avoid_print
-      print("🟩 Hasura response (${response.statusCode})");
-      // ignore: avoid_print
-      print(response.body);
+      if (kDebugMode) {
+        // ignore: avoid_print
+        print("🟩 Hasura response (${response.statusCode})");
+        // ignore: avoid_print
+        print(response.body);
+      }
 
       if (response.statusCode != 200) {
         unawaited(
@@ -54,8 +64,6 @@ class HasuraManager {
             message: "HTTP ${response.statusCode}",
             stackTrace: null,
             payload: {
-              "query": query.trim(),
-              "variables": variables,
               "response": response.body,
             },
           ),
@@ -81,8 +89,6 @@ class HasuraManager {
             message: parsed,
             stackTrace: null,
             payload: {
-              "query": query.trim(),
-              "variables": variables,
               "response": json,
             },
           ),
@@ -100,8 +106,8 @@ class HasuraManager {
             operation: "graphQLRequest",
             message: e.toString(),
             stackTrace: s.toString(),
-            payload: {"query": query.trim(), "variables": variables},
-          ),
+          payload: const {"note": "Request failed"},
+        ),
         );
         logged = true;
       }
@@ -109,6 +115,15 @@ class HasuraManager {
       throw Exception(parsed);
     } finally {
       LoadingManager.instance.hide();
+    }
+  }
+
+  void _ensureSecureEndpoint() {
+    if (_endpointUri.scheme != "https") {
+      throw Exception("Hasura endpoint must use https.");
+    }
+    if (_endpointUri.host != "key-kodiak-32.hasura.app") {
+      throw Exception("Hasura endpoint host not allowed.");
     }
   }
 }
