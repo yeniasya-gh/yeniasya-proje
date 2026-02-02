@@ -262,54 +262,26 @@ class _MagazineIssuesScreenState extends State<MagazineIssuesScreen> {
                       SizedBox(
                         width: 110,
                         height: 40,
-                        child: canView
-                            ? OutlinedButton(
-                                onPressed: (_busy || fileUrl.isEmpty)
-                                    ? null
-                                    : () => _openPdf(
-                                        context,
-                                        UploadService.normalizeUrl(fileUrl),
-                                        "Sayı $issueNumber",
-                                        issueKey: issueKey,
-                                      ),
-                                style: OutlinedButton.styleFrom(
-                                  padding: EdgeInsets.zero,
-                                  visualDensity: VisualDensity.compact,
-                                  tapTargetSize:
-                                      MaterialTapTargetSize.shrinkWrap,
-                                  alignment: Alignment.center,
-                                ),
-                                child: _openingIssueKey == issueKey
-                                    ? const SizedBox(
-                                        width: 16,
-                                        height: 16,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                        ),
-                                      )
-                                    : const Center(child: Text("Görüntüle")),
-                              )
-                            : OutlinedButton(
-                                onPressed: _busy
-                                    ? null
-                                    : () => _openIssueDetail(
-                                        context: context,
-                                        issue: issue,
-                                        issueNumber: issueNumber,
-                                        imageUrl: imageUrl,
-                                        fileUrl: UploadService.normalizeUrl(
-                                          fileUrl,
-                                        ),
-                                      ),
-                                style: OutlinedButton.styleFrom(
-                                  padding: EdgeInsets.zero,
-                                  visualDensity: VisualDensity.compact,
-                                  tapTargetSize:
-                                      MaterialTapTargetSize.shrinkWrap,
-                                  alignment: Alignment.center,
-                                ),
-                                child: const Center(child: Text("Detay")),
-                              ),
+                        child: OutlinedButton(
+                          onPressed: _busy
+                              ? null
+                              : () => _openIssueDetail(
+                                    context: context,
+                                    issue: issue,
+                                    issueNumber: issueNumber,
+                                    imageUrl: imageUrl,
+                                    fileUrl: UploadService.normalizeUrl(
+                                      fileUrl,
+                                    ),
+                                  ),
+                          style: OutlinedButton.styleFrom(
+                            padding: EdgeInsets.zero,
+                            visualDensity: VisualDensity.compact,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            alignment: Alignment.center,
+                          ),
+                          child: const Center(child: Text("Detay")),
+                        ),
                       ),
                     ],
                   ),

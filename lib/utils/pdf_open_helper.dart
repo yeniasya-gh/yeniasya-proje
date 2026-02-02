@@ -48,10 +48,12 @@ class PdfOpenHelper {
     }
 
     double progress = 0;
-    void report(double value) {
+    bool report(double value) {
       final clamped = value.clamp(0, 1).toDouble();
+      if (clamped < progress) return false; // keep progress monotonic on retry
       onProgress?.call(clamped);
       progress = clamped;
+      return true;
     }
 
     StateSetter? dialogSetState;
@@ -89,8 +91,8 @@ class PdfOpenHelper {
         url: normalized,
         isPrivate: isPrivate,
         onProgress: (p) {
-          report(p);
-          dialogSetState?.call(() {});
+          final updated = report(p);
+          if (updated) dialogSetState?.call(() {});
         },
       );
       report(1);

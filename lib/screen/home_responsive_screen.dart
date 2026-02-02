@@ -220,24 +220,33 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     setState(() => libraryLoading = true);
     try {
       final userId = context.read<AuthProvider>().user?.id;
-      if (userId != null) {
-        final orders = await _orderService.getOrdersWithItems(userId);
+      if (userId == null) {
+        if (mounted) {
+          setState(() => libraryOrders = []);
+        }
+        return;
+      }
+      final orders = await _orderService.getOrdersWithItems(userId);
+      if (mounted) {
         setState(() => libraryOrders = orders);
       }
     } catch (e) {
       debugPrint("Library load error: $e");
+    } finally {
+      if (mounted) {
+        setState(() => libraryLoading = false);
+      }
     }
-    setState(() => libraryLoading = false);
   }
 
   void _onAuthChange() {
     final auth = _authListener;
     if (auth == null) return;
+    _loadLibraryOrders();
+    _loadLibraryAccess();
     if (auth.isLoggedIn) {
       _loadData();
       _loadAccessIfNeeded();
-      _loadLibraryOrders();
-      _loadLibraryAccess();
     }
   }
 
@@ -551,6 +560,11 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     CartProvider cart, {
     required String imageUrl,
   }) async {
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    if (!auth.isLoggedIn) {
+      showLoginRequirementDialog(context);
+      return;
+    }
     try {
       final list = await _newsTypeService.getActiveTypes();
       if (!mounted) return;
@@ -969,16 +983,29 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         if (itemId == null) return _AccessItem(title: "Dergi aboneliği");
         final mag = await _magService.getMagazineById(itemId as int);
         final name = mag?["name"]?.toString() ?? "Dergi #$itemId";
+        final expiresAtRaw = entry["expires_at"]?.toString();
+        final expiresAt = expiresAtRaw == null
+            ? null
+            : DateTime.tryParse(expiresAtRaw);
+        final subtitle = expiresAt != null
+            ? "Bitiş Tarihi: ${_formatDateShort(expiresAt)}"
+            : "Dergi aboneliği";
         return _AccessItem(
           title: name,
-          subtitle: "Dergi aboneliği",
+          subtitle: subtitle,
           icon: _iconForType(type),
           onTap: () => _openMagazineIssuesFromLibrary(itemId, name),
         );
       case "newspaper_subscription":
+        final expiresAtRaw = entry["expires_at"]?.toString();
+        final expiresAt = expiresAtRaw == null
+            ? null
+            : DateTime.tryParse(expiresAtRaw);
         return _AccessItem(
           title: "Gazete aboneliği",
-          subtitle: "Abonelik aktif",
+          subtitle: expiresAt != null
+              ? "Bitiş Tarihi: ${_formatDateShort(expiresAt)}"
+              : "Abonelik aktif",
           icon: _iconForType(type),
           onTap: null,
         );
@@ -1048,31 +1075,24 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
                           itemBuilder: (_, i) {
                             final issue = visibleIssues[i];
                             final title = "Sayı ${issue["issue_number"]}";
+                            final imageUrl = issue["photo_url"]?.toString() ?? "";
                             return ListTile(
                               title: Text(title),
-                              subtitle: Text(
-                                "Eklenme: ${issue["added_at"] ?? ''}",
-                              ),
                               trailing: const Icon(Icons.chevron_right),
-                              onTap: () async {
-                                final url = issue["file_url"]?.toString();
-                                if (url == null || url.isEmpty) return;
-                                try {
-                                  await PdfOpenHelper.downloadAndOpen(
-                                    context,
-                                    url: url,
-                                    title: "$name - $title",
-                                    isPrivate: true,
-                                    showDialogProgress: true,
-                                  );
-                                } catch (e) {
-                                  if (!context.mounted) return;
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text("Dosya açılamadı: $e"),
-                                    ),
-                                  );
-                                }
+                              onTap: () {
+                                final detail = _buildMagazineIssueDetail(
+                                  issue: issue,
+                                  issueNumber: title,
+                                  magazineId: magazineId,
+                                  magazineName: name,
+                                  imageUrl: imageUrl,
+                                );
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => ProductDetailScreen(detail: detail),
+                                  ),
+                                );
                               },
                             );
                           },
@@ -1275,6 +1295,46 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     }
   }
 
+  ProductDetail _buildMagazineIssueDetail({
+    required Map<String, dynamic> issue,
+    required String issueNumber,
+    required int magazineId,
+    required String magazineName,
+    required String imageUrl,
+  }) {
+    final issueId = issue["id"] as int?;
+    final title = issueNumber.isNotEmpty
+        ? "$magazineName - $issueNumber"
+        : "$magazineName - Sayı";
+    final rawPrice = issue["price"];
+    final price = rawPrice is num
+        ? rawPrice.toDouble()
+        : _parsePrice(rawPrice);
+    final description = (issue["description"] ?? "").toString().trim();
+    final issueDate = issue["added_at"]?.toString() ??
+        issue["publish_date"]?.toString() ??
+        issue["created_at"]?.toString();
+    final metadata = {
+      "productId": issueId,
+      "fileUrl": issue["file_url"]?.toString(),
+      "magazineId": magazineId,
+      "issueDate": issueDate,
+    };
+    return ProductDetail(
+      id: "mag-issue-${issueId ?? issueNumber.hashCode}",
+      title: title,
+      subtitle: magazineName,
+      description: description.isEmpty
+          ? "Bu dergi sayısına abonelik ile erişilir."
+          : description,
+      imageUrl: UploadService.normalizeUrl(imageUrl),
+      price: price,
+      type: CartItemType.magazineIssue,
+      metadata: metadata,
+      actionLabel: "Sepete Ekle",
+    );
+  }
+
   ProductDetail _mapMagazineDetail(Map<String, dynamic> mag) {
     final hasAccess = context.read<AccessProvider>().hasAccess(
       "magazine",
@@ -1304,13 +1364,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
       "book",
       itemId: book["id"] as int?,
     );
-    final rawPrice = _parsePrice(book["price"]);
-    final discPriceRaw = book["discount_price"];
-    double price = rawPrice;
-    if (discPriceRaw != null) {
-      final dp = _parsePrice(discPriceRaw);
-      if (dp < rawPrice) price = dp;
-    }
+    final price = _effectiveBookPrice(book);
     final actionLabel = (hasAccess || price <= 0) ? "Kitabı Gör" : "Sepete Ekle";
     return ProductDetail(
       id: "book-${book["id"]}",
@@ -1327,6 +1381,19 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
       },
       actionLabel: actionLabel,
     );
+  }
+
+  double _effectiveBookPrice(Map<String, dynamic> book) {
+    final rawPrice = _parsePrice(book["price"]);
+    final discPriceRaw = book["discount_price"];
+    double price = rawPrice;
+    if (discPriceRaw != null) {
+      final dp = _parsePrice(discPriceRaw);
+      if (dp < price) {
+        price = dp;
+      }
+    }
+    return price;
   }
 
   ProductDetail _mapNewspaperDetail(Map<String, dynamic> news) {
@@ -1940,31 +2007,34 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         ),
         const SizedBox(height: 12),
         SizedBox(
-          height: isWeb ? 255 : 270,
+          height: isWeb ? 265 : 285,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             itemCount: displayList.length,
             separatorBuilder: (_, __) => const SizedBox(width: 14),
-            itemBuilder: (_, i) => _bookCard(
-              {
-                "image": displayList[i]["cover_image_url"],
-                "title": displayList[i]["name"],
-                "author": displayList[i]["category"] ?? "",
-                "price": isWeb ? "Fiyat için tıkla" : "",
-                "statusLabel": "Abonelik aktif",
-              },
-              isWeb,
-              hideAction: _hasPurchased(
+            itemBuilder: (_, i) {
+              final isSubscribed = _hasPurchased(
                 "magazine",
                 _toInt(displayList[i]["id"]),
-              ),
-              onAdd: () {
-                _openProductDetail(_mapMagazineDetail(displayList[i]));
-              },
-              onTap: () {
-                _openProductDetail(_mapMagazineDetail(displayList[i]));
-              },
-            ),
+              );
+              return _bookCard(
+                {
+                  "image": displayList[i]["cover_image_url"],
+                  "title": displayList[i]["name"],
+                  "author": displayList[i]["category"] ?? "",
+                  "price": isWeb && !isSubscribed ? "Fiyat için tıkla" : "",
+                  "statusLabel": "Abonelik aktif",
+                },
+                isWeb,
+                hideAction: isSubscribed,
+                onAdd: () {
+                  _openProductDetail(_mapMagazineDetail(displayList[i]));
+                },
+                onTap: () {
+                  _openProductDetail(_mapMagazineDetail(displayList[i]));
+                },
+              );
+            },
           ),
         ),
       ],
@@ -2002,39 +2072,40 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         ),
         const SizedBox(height: 12),
         SizedBox(
-          height: isWeb ? 255 : 270,
+          height: isWeb ? 285 : 300,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             itemCount: displayList.length,
             separatorBuilder: (_, __) => const SizedBox(width: 14),
             itemBuilder: (_, i) {
+              final effectivePrice = _effectiveBookPrice(displayList[i]);
               final item = CartItem(
                 id: "book-${displayList[i]["id"]}",
                 title: displayList[i]["title"] ?? "",
                 subtitle: displayList[i]["author_rel"]?["name"] ?? "",
                 imageUrl: displayList[i]["cover_url"] ?? "",
-                price:
-                    double.tryParse(
-                      displayList[i]["price"]?.toString() ?? "0",
-                    ) ??
-                    0,
+                price: effectivePrice,
                 quantity: 1,
                 type: CartItemType.book,
                 metadata: {"productId": displayList[i]["id"]},
               );
               final alreadyInCart = cart.contains(item);
+              final isFree = effectivePrice <= 0;
+              final purchased = _hasPurchased(
+                "book",
+                _toInt(displayList[i]["id"]),
+              );
               return _bookCard(
                 {
                   "image": displayList[i]["cover_url"],
                   "title": displayList[i]["title"],
                   "author": displayList[i]["author_rel"]?["name"] ?? "-",
-                  "price": displayList[i]["price"] != null
-                      ? "₺${double.tryParse(displayList[i]["price"].toString())?.toStringAsFixed(2) ?? ""}"
-                      : "-",
+                  "salePrice": displayList[i]["price"],
+                  "campaignPrice": displayList[i]["discount_price"],
                 },
                 isWeb,
-                hideAction: _hasPurchased("book", _toInt(displayList[i]["id"])),
-                onAdd: alreadyInCart
+                hideAction: purchased || isFree,
+                onAdd: alreadyInCart || isFree
                     ? null
                     : () => _addToCart(context, cart, item),
                 onTap: () {
@@ -2163,6 +2234,12 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
   }
 
   Widget _newspaperFilters(BuildContext context) {
+    final auth = context.watch<AuthProvider>();
+    final hasSubscription =
+        context.watch<AccessProvider>().hasAccess("newspaper_subscription");
+    if (!auth.isLoggedIn || !hasSubscription) {
+      return const SizedBox.shrink();
+    }
     Future<void> pickSingleDate() async {
       final now = DateTime.now();
       final picked = await showDatePicker(
@@ -2456,12 +2533,13 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
           ),
           itemCount: books.length,
           itemBuilder: (_, i) {
+            final effectivePrice = _effectiveBookPrice(books[i]);
             final item = CartItem(
               id: "book-${books[i]["id"]}",
               title: books[i]["title"] ?? "",
               subtitle: books[i]["author_rel"]?["name"] ?? "",
               imageUrl: books[i]["cover_url"] ?? "",
-              price: double.tryParse(books[i]["price"]?.toString() ?? "0") ?? 0,
+              price: effectivePrice,
               quantity: 1,
               type: CartItemType.book,
               metadata: {"productId": books[i]["id"]},
@@ -2472,13 +2550,13 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
                 "image": books[i]["cover_url"],
                 "title": books[i]["title"],
                 "author": books[i]["author_rel"]?["name"] ?? "-",
-                "price": books[i]["price"] != null
-                    ? "₺${double.tryParse(books[i]["price"].toString())?.toStringAsFixed(2) ?? ""}"
-                    : "-",
+                "salePrice": books[i]["price"],
+                "campaignPrice": books[i]["discount_price"],
               },
               isWeb,
-              hideAction: _hasPurchased("book", _toInt(books[i]["id"])),
-              onAdd: alreadyInCart
+              hideAction: _hasPurchased("book", _toInt(books[i]["id"])) ||
+                  effectivePrice <= 0,
+              onAdd: alreadyInCart || effectivePrice <= 0
                   ? null
                   : () => _addToCart(context, cart, item),
               onTap: () {
@@ -2762,11 +2840,11 @@ Widget _bookCard(
         children: [
           ClipRRect(
             borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
-            child: _imageWidget(item["image"], height: 150),
+            child: _imageWidget(item["image"], height: isWeb ? 140 : 150),
           ),
           Expanded(
             child: Padding(
-              padding: const EdgeInsets.all(10),
+              padding: EdgeInsets.all(isWeb ? 8 : 10),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -3085,6 +3163,13 @@ String _formatDateIso(DateTime date) {
   return "$y-$m-$d";
 }
 
+String _formatDateShort(DateTime date) {
+  final day = date.day.toString().padLeft(2, "0");
+  final month = date.month.toString().padLeft(2, "0");
+  final year = date.year.toString();
+  return "$day.$month.$year";
+}
+
 String _legacyNewspaperToken(String fileName) {
   const secret = "ya-X4qrNx9VwBK81sw2-";
   final slice = DateTime.now().toUtc().millisecondsSinceEpoch ~/ 1000 ~/ 600;
@@ -3107,6 +3192,11 @@ int _cartCount(CartProvider cart) {
 }
 
 void _addToCart(BuildContext context, CartProvider cart, CartItem item) {
+  final auth = context.read<AuthProvider>();
+  if (!auth.isLoggedIn) {
+    showLoginRequirementDialog(context);
+    return;
+  }
   final added = cart.addIfAbsent(item);
   if (added) {
     showAddedToCartDialog(context);
@@ -3772,7 +3862,6 @@ class _MagazineBrowseScreenState extends State<_MagazineBrowseScreen> {
     required BuildContext context,
     required Map<String, dynamic> mag,
     required Map<String, dynamic> issue,
-    required bool canView,
   }) {
     final issueNumber = (issue["issue_number"] ?? "").toString();
     final label = issueNumber.isEmpty ? "Sayı" : "Sayı $issueNumber";
@@ -3826,37 +3915,24 @@ class _MagazineBrowseScreenState extends State<_MagazineBrowseScreen> {
                 SizedBox(
                   height: 34,
                   width: double.infinity,
-                  child: canView
-                      ? OutlinedButton(
-                          onPressed: fileUrl.isEmpty
-                              ? null
-                              : () async {
-                                  try {
-                                    await PdfOpenHelper.downloadAndOpen(
-                                      context,
-                                      url: UploadService.normalizeUrl(fileUrl),
-                                      title:
-                                          "${(mag["name"] ?? "").toString()} - $label",
-                                      isPrivate: true,
-                                      showDialogProgress: true,
-                                    );
-                                  } catch (e) {
-                                    if (!context.mounted) return;
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text("Dosya açılamadı: $e"),
-                                      ),
-                                    );
-                                  }
-                                },
-                          child: const Text("Görüntüle"),
-                        )
-                      : OutlinedButton(
-                          onPressed: () => widget.homeState._openProductDetail(
-                            widget.homeState._mapMagazineDetail(mag),
-                          ),
-                          child: const Text("Detay"),
+                  child: OutlinedButton(
+                    onPressed: () {
+                      final detail = widget.homeState._buildMagazineIssueDetail(
+                        issue: issue,
+                        issueNumber: label,
+                        magazineId: widget.homeState._toInt(mag["id"]) ?? 0,
+                        magazineName: (mag["name"] ?? "").toString(),
+                        imageUrl: photo,
+                      );
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => ProductDetailScreen(detail: detail),
                         ),
+                      );
+                    },
+                    child: const Text("Detay"),
+                  ),
                 ),
               ],
             ),
@@ -3925,13 +4001,10 @@ class _MagazineBrowseScreenState extends State<_MagazineBrowseScreen> {
                             start: start,
                             end: end,
                           );
-                      final canView = directIssueAccess || windowAccess;
-
                       return _issueCard(
                         context: context,
                         mag: mag,
                         issue: issue,
-                        canView: canView,
                       );
                     },
                   ),

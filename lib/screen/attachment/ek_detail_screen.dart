@@ -9,6 +9,7 @@ import '../../utils/safe_image.dart';
 import '../../utils/cart_feedback.dart';
 import '../../utils/ek_normalizer.dart';
 import '../profile/pdf_viewer_screen.dart';
+import '../../services/auth/auth_provider.dart';
 
 class EkDetailScreen extends StatelessWidget {
   final Map<String, dynamic> ek;
@@ -140,6 +141,11 @@ class EkDetailScreen extends StatelessWidget {
   }
 
   void _addToCart(BuildContext context, Map<String, dynamic> ek, double price) {
+    final auth = context.read<AuthProvider>();
+    if (!auth.isLoggedIn) {
+      showLoginRequirementDialog(context);
+      return;
+    }
     final cart = context.read<CartProvider>();
     final id = _id(ek);
     final item = CartItem(

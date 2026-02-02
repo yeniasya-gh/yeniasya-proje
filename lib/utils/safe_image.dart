@@ -1,4 +1,6 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 
 import '../services/upload_service.dart';
 
@@ -24,7 +26,7 @@ Widget safeImage(
     );
   }
 
-  return _SafeNetworkImage(
+  return _CachedNetworkImage(
     url: UploadService.normalizeUrl(url),
     width: width,
     height: height,
@@ -44,14 +46,22 @@ Widget _placeholder(double? width, double? height, IconData icon) {
   );
 }
 
-class _SafeNetworkImage extends StatefulWidget {
+final CacheManager _imageCacheManager = CacheManager(
+  Config(
+    "imageCache",
+    stalePeriod: const Duration(days: 30),
+    maxNrOfCacheObjects: 600,
+  ),
+);
+
+class _CachedNetworkImage extends StatelessWidget {
   final String url;
   final double? width;
   final double? height;
   final BoxFit fit;
   final IconData fallbackIcon;
 
-  const _SafeNetworkImage({
+  const _CachedNetworkImage({
     required this.url,
     this.width,
     this.height,
@@ -60,55 +70,17 @@ class _SafeNetworkImage extends StatefulWidget {
   });
 
   @override
-  State<_SafeNetworkImage> createState() => _SafeNetworkImageState();
-}
-
-class _SafeNetworkImageState extends State<_SafeNetworkImage> {
-  late String _currentUrl;
-  int _attempt = 0;
-  static const int _maxAttempts = 2;
-
-  @override
-  void initState() {
-    super.initState();
-    _currentUrl = widget.url;
-  }
-
-  @override
   Widget build(BuildContext context) {
-    return Image.network(
-      _currentUrl,
-      key: ValueKey(_currentUrl),
-      width: widget.width,
-      height: widget.height,
-      fit: widget.fit,
-      gaplessPlayback: true,
-      loadingBuilder: (context, child, loadingProgress) {
-        if (loadingProgress == null) return child;
-        return _placeholder(widget.width, widget.height, Icons.image);
-      },
-      errorBuilder: (_, __, ___) {
-        if (_currentUrl.startsWith("data:")) {
-          return _placeholder(widget.width, widget.height, widget.fallbackIcon);
-        }
-        if (_attempt < _maxAttempts - 1) {
-          _attempt++;
-          final uri = Uri.parse(_currentUrl);
-          final busted = uri.replace(queryParameters: {
-            ...uri.queryParameters,
-            "cb": "${DateTime.now().millisecondsSinceEpoch}$_attempt",
-          });
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) {
-              setState(() {
-                _currentUrl = busted.toString();
-              });
-            }
-          });
-          return _placeholder(widget.width, widget.height, widget.fallbackIcon);
-        }
-        return _placeholder(widget.width, widget.height, widget.fallbackIcon);
-      },
+    return CachedNetworkImage(
+      cacheManager: _imageCacheManager,
+      imageUrl: url,
+      width: width,
+      height: height,
+      fit: fit,
+      fadeInDuration: const Duration(milliseconds: 150),
+      fadeOutDuration: const Duration(milliseconds: 150),
+      placeholder: (_, __) => _placeholder(width, height, Icons.image),
+      errorWidget: (_, __, ___) => _placeholder(width, height, fallbackIcon),
     );
   }
 }

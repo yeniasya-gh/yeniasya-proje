@@ -104,6 +104,11 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   }
 
   void _addToCart(BuildContext context) {
+    final auth = context.read<AuthProvider>();
+    if (!auth.isLoggedIn) {
+      showLoginRequirementDialog(context);
+      return;
+    }
     final cart = context.read<CartProvider>();
     final item = CartItem(
       id: widget.detail.id,
@@ -126,6 +131,11 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   }
 
   Future<void> _selectNewspaperSubscriptionType(BuildContext context) async {
+    final auth = context.read<AuthProvider>();
+    if (!auth.isLoggedIn) {
+      showLoginRequirementDialog(context);
+      return;
+    }
     try {
       final list = await _newsTypeService.getActiveTypes();
       if (!mounted) return;
@@ -237,6 +247,11 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     BuildContext context,
     int magazineId,
   ) async {
+    final auth = context.read<AuthProvider>();
+    if (!auth.isLoggedIn) {
+      showLoginRequirementDialog(context);
+      return;
+    }
     try {
       final list = await _magazineTypePriceService.getActiveByMagazine(
         magazineId,
@@ -351,6 +366,14 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
   bool _hasContentAccess(BuildContext context) {
     if (widget.detail.forceAccess) return true;
+    final auth = context.read<AuthProvider>();
+    final isSubscription = _isSubscriptionType(widget.detail.type);
+    if (!auth.isLoggedIn) {
+      if (widget.detail.price <= 0 && !isSubscription) {
+        return true;
+      }
+      return false;
+    }
     if (widget.detail.price <= 0) return true;
     if (_hasLocalCopy) return true;
     if (widget.detail.type == CartItemType.magazineIssue) {
@@ -399,6 +422,11 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       itemId: target["productId"] as int?,
     );
     return hasAccess;
+  }
+
+  bool _isSubscriptionType(CartItemType type) {
+    return type == CartItemType.magazine ||
+        type == CartItemType.newspaperSubscription;
   }
 
   DateTime _normalizeDay(DateTime dt) => DateTime(dt.year, dt.month, dt.day);

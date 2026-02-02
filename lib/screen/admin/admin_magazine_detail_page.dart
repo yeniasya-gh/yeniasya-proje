@@ -530,7 +530,7 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
     );
   }
 
-  String _formatDateTime(dynamic raw) {
+String _formatDateTime(dynamic raw) {
     if (raw == null) return "-";
     DateTime? dt;
     try {
@@ -539,6 +539,17 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
     if (dt == null) return raw.toString();
     final two = (int v) => v.toString().padLeft(2, '0');
     return "${two(dt.hour)}:${two(dt.minute)} ${two(dt.day)}.${two(dt.month)}.${dt.year}";
+  }
+
+  String _formatDate(dynamic raw) {
+    if (raw == null) return "-";
+    DateTime? dt;
+    try {
+      dt = DateTime.tryParse(raw.toString());
+    } catch (_) {}
+    if (dt == null) return raw.toString();
+    final two = (int v) => v.toString().padLeft(2, '0');
+    return "${two(dt.day)}.${two(dt.month)}.${dt.year}";
   }
 
   Future<void> _pickImage({
@@ -710,13 +721,8 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
                             title: Text(
                               "${(magazine["name"] ?? "").toString()} - ${issue["issue_number"]}",
                             ),
-                            subtitle: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  "Eklendi: ${_formatDateTime(issue["added_at"])}",
-                                ),
-                              ],
+                            subtitle: Text(
+                              "Eklendi: ${_formatDate(issue["added_at"])}",
                             ),
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,
