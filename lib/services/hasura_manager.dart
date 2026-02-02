@@ -1,24 +1,17 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
 import 'error/error_manager.dart';
 import 'loading_manager.dart';
 import 'logging_service.dart';
-import 'auth/auth_token_store.dart';
+import 'hasura_service.dart';
 
 class HasuraManager {
   HasuraManager._internal();
   static final HasuraManager instance = HasuraManager._internal();
   final LoggingService _logger = LoggingService();
 
-  static const String _endpoint = "https://key-kodiak-32.hasura.app/v1/graphql";
-  static final Uri _endpointUri = Uri.parse(_endpoint);
-  static const String _adminSecret =
-      "AIY6x8zVY8NIKKD32hrGYFDCLFDUoa41287ImYp7BrLufiReDuVnQ4UWP6GamGvt";
-  static const Duration _timeout = Duration(seconds: 20);
-
-  final http.Client _client = http.Client();
+  final HasuraService _service = HasuraService();
 
   Future<Map<String, dynamic>> graphQLRequest({
     required String query,
@@ -38,16 +31,10 @@ class HasuraManager {
         print("VARS: ${jsonEncode(variables ?? {})}");
       }
 
-      final response = await _client.post(
-        _endpointUri,
-        headers: {
-          "content-type": "application/json",
-          if (AuthTokenStore.token != null)
-            "Authorization": "Bearer ${AuthTokenStore.token}",
-          "x-hasura-admin-secret": _adminSecret,
-        },
-        body: jsonEncode({"query": query, "variables": variables ?? {}}),
-      ).timeout(_timeout);
+      final response = await _service.post(
+        query: query,
+        variables: variables,
+      );
 
       if (kDebugMode) {
         // ignore: avoid_print
@@ -119,10 +106,10 @@ class HasuraManager {
   }
 
   void _ensureSecureEndpoint() {
-    if (_endpointUri.scheme != "https") {
+    if (HasuraService.endpointUri.scheme != "https") {
       throw Exception("Hasura endpoint must use https.");
     }
-    if (_endpointUri.host != "key-kodiak-32.hasura.app") {
+    if (HasuraService.endpointUri.host != "cdn.yeniasyadigital.com") {
       throw Exception("Hasura endpoint host not allowed.");
     }
   }
