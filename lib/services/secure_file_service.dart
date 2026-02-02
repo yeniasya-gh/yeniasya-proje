@@ -14,6 +14,7 @@ import 'package:path_provider/path_provider.dart';
 
 import 'logging_service.dart';
 import 'upload_service.dart';
+import 'auth/auth_token_store.dart';
 
 /// Basit bir şifreli dosya cache yöneticisi.
 /// - Android/iOS: dosyalar AES ile şifreli olarak saklanır, anahtar SecureStorage'da tutulur.
@@ -140,6 +141,10 @@ class SecureFileService {
     if (!isPrivate) {
       final req = http.Request("GET", Uri.parse(normalized))
         ..headers["accept"] = "application/pdf";
+      final token = AuthTokenStore.token;
+      if (token != null && token.isNotEmpty) {
+        req.headers["Authorization"] = "Bearer $token";
+      }
       final resp = await _sendAndCollect(
         req,
         connectTimeout: const Duration(seconds: 10),
@@ -156,6 +161,13 @@ class SecureFileService {
     final path = _extractPath(normalized);
 
     if (kIsWeb) {
+      // Try direct private URL with JWT first (e.g. /private/:type/:filename).
+      final direct = await _downloadPrivateDirect(normalized, onProgress);
+      if (direct != null) return direct;
+      // Then try view-file endpoint (JWT) if available.
+      final viaViewFile = await _downloadViaViewFile(path, onProgress);
+      if (viaViewFile != null) return viaViewFile;
+      // Fallback to token flow.
       return _downloadViaViewToken(path, onProgress: onProgress);
     }
 
@@ -167,7 +179,9 @@ class SecureFileService {
         ..headers.addAll({
           "content-type": "application/json",
           "accept": "application/pdf",
-          "x-api-key": UploadService.privateAuthToken,
+          if (AuthTokenStore.token != null &&
+              AuthTokenStore.token!.isNotEmpty)
+            "Authorization": "Bearer ${AuthTokenStore.token}",
         })
         ..body = jsonEncode(payload);
       resp = await _sendAndCollect(
@@ -334,7 +348,9 @@ class SecureFileService {
               headers: {
                 "content-type": "application/json",
                 "accept": "application/json",
-                "x-api-key": UploadService.privateAuthToken,
+                if (AuthTokenStore.token != null &&
+                    AuthTokenStore.token!.isNotEmpty)
+                  "Authorization": "Bearer ${AuthTokenStore.token}",
               },
               body: jsonEncode({"path": path}),
             )
@@ -379,6 +395,68 @@ class SecureFileService {
     }
   }
 
+  Future<Uint8List?> _downloadPrivateDirect(
+    String url,
+    ValueChanged<double>? onProgress,
+  ) async {
+    try {
+      final req = http.Request("GET", Uri.parse(url))
+        ..headers["accept"] = "application/pdf";
+      final token = AuthTokenStore.token;
+      if (token != null && token.isNotEmpty) {
+        req.headers["Authorization"] = "Bearer $token";
+      }
+      final resp = await _sendAndCollect(
+        req,
+        connectTimeout: const Duration(seconds: 10),
+        inactivityTimeout: const Duration(seconds: 10),
+        overallTimeout: const Duration(minutes: 2),
+        onProgress: onProgress,
+      );
+      if (resp.statusCode == 200 &&
+          resp.bodyBytes.isNotEmpty &&
+          _looksLikePdf(resp.bodyBytes)) {
+        return resp.bodyBytes;
+      }
+    } catch (_) {
+      // Fallback to other flows.
+    }
+    return null;
+  }
+
+  Future<Uint8List?> _downloadViaViewFile(
+    String path,
+    ValueChanged<double>? onProgress,
+  ) async {
+    try {
+      final uri = Uri.parse(UploadService.normalizeUrl("/private/view-file"));
+      final req = http.Request("POST", uri)
+        ..headers.addAll({
+          "content-type": "application/json",
+          "accept": "application/pdf",
+          if (AuthTokenStore.token != null &&
+              AuthTokenStore.token!.isNotEmpty)
+            "Authorization": "Bearer ${AuthTokenStore.token}",
+        })
+        ..body = jsonEncode({"path": path});
+      final resp = await _sendAndCollect(
+        req,
+        connectTimeout: const Duration(seconds: 10),
+        inactivityTimeout: const Duration(seconds: 10),
+        overallTimeout: const Duration(minutes: 2),
+        onProgress: onProgress,
+      );
+      if (resp.statusCode == 200 &&
+          resp.bodyBytes.isNotEmpty &&
+          _looksLikePdf(resp.bodyBytes)) {
+        return resp.bodyBytes;
+      }
+    } catch (_) {
+      // Fallback to token flow.
+    }
+    return null;
+  }
+
   Future<Uint8List> _fetchPdfWithToken(
     _ViewTokenData tokenData, {
     ValueChanged<double>? onProgress,
@@ -386,6 +464,10 @@ class SecureFileService {
     final secureUrl = _buildSecureUrl(tokenData);
     final req = http.Request("GET", Uri.parse(secureUrl))
       ..headers["accept"] = "application/pdf";
+    final token = AuthTokenStore.token;
+    if (token != null && token.isNotEmpty) {
+      req.headers["Authorization"] = "Bearer $token";
+    }
     final resp = await _sendAndCollect(
       req,
       connectTimeout: const Duration(seconds: 10),

@@ -6,6 +6,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import '../../services/auth/auth_token_store.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import '../../config/payment_config.dart';
@@ -181,12 +182,15 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
     print("🟦 PaymentWebViewScreen payload: ${jsonEncode(payload)}");
     // Tüm platformlarda aynı: WebView içinde yükle, header düşmesin diye Android'de http.post + loadHtmlString.
     if (kIsWeb || Platform.isAndroid) {
+      final headers = {
+        "content-type": "application/json",
+        "x-api-key": PaymentConfig.apiKey,
+        if (AuthTokenStore.token != null && AuthTokenStore.token!.isNotEmpty)
+          "Authorization": "Bearer ${AuthTokenStore.token}",
+      };
       final resp = await http.post(
         widget.redirectUri,
-        headers: {
-          "content-type": "application/json",
-          "x-api-key": PaymentConfig.apiKey,
-        },
+        headers: headers,
         body: jsonEncode(payload),
       );
       final location = resp.headers["location"];
@@ -204,13 +208,16 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
     } else {
       // iOS: doğrudan loadRequest
       final body = Uint8List.fromList(utf8.encode(jsonEncode(payload)));
+      final headers = {
+        "content-type": "application/json",
+        "x-api-key": PaymentConfig.apiKey,
+        if (AuthTokenStore.token != null && AuthTokenStore.token!.isNotEmpty)
+          "Authorization": "Bearer ${AuthTokenStore.token}",
+      };
       await _controller.loadRequest(
         widget.redirectUri,
         method: LoadRequestMethod.post,
-        headers: {
-          "content-type": "application/json",
-          "x-api-key": PaymentConfig.apiKey,
-        },
+        headers: headers,
         body: body,
       );
     }

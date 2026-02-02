@@ -106,8 +106,8 @@ class HasuraManager {
             operation: "graphQLRequest",
             message: e.toString(),
             stackTrace: s.toString(),
-          payload: const {"note": "Request failed"},
-        ),
+            payload: const {"note": "Request failed"},
+          ),
         );
         logged = true;
       }

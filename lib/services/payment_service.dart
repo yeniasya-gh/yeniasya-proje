@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../config/payment_config.dart';
+import 'auth/auth_token_store.dart';
 
 class PaymentService {
   PaymentService({String? baseUrl, http.Client? client})
@@ -18,13 +19,16 @@ class PaymentService {
     print("🟦 PaymentService.createSession -> $uri");
     // ignore: avoid_print
     print("🟦 Payment payload: ${jsonEncode(payload)}");
+    final headers = {
+      "content-type": "application/json",
+      "x-api-key": PaymentConfig.apiKey,
+      if (AuthTokenStore.token != null && AuthTokenStore.token!.isNotEmpty)
+        "Authorization": "Bearer ${AuthTokenStore.token}",
+    };
     final resp = await _client
         .post(
           uri,
-          headers: {
-            "content-type": "application/json",
-            "x-api-key": PaymentConfig.apiKey,
-          },
+          headers: headers,
           body: jsonEncode(payload),
         )
         .timeout(const Duration(seconds: 20));
@@ -60,13 +64,16 @@ class PaymentService {
     // ignore: avoid_print
     print("🟦 PaymentService.queryCards -> $uri (customer=$customer)");
 
+    final headers = {
+      "content-type": "application/json",
+      "x-api-key": PaymentConfig.apiKey,
+      if (AuthTokenStore.token != null && AuthTokenStore.token!.isNotEmpty)
+        "Authorization": "Bearer ${AuthTokenStore.token}",
+    };
     final resp = await _client
         .post(
           uri,
-          headers: {
-            "content-type": "application/json",
-            "x-api-key": PaymentConfig.apiKey,
-          },
+          headers: headers,
           body: jsonEncode({"customer": customer}),
         )
         .timeout(const Duration(seconds: 20));
@@ -99,13 +106,16 @@ class PaymentService {
     // ignore: avoid_print
     print("🟦 PaymentService.deleteCard -> $uri (token=$cardToken)");
 
+    final headers = {
+      "content-type": "application/json",
+      "x-api-key": PaymentConfig.apiKey,
+      if (AuthTokenStore.token != null && AuthTokenStore.token!.isNotEmpty)
+        "Authorization": "Bearer ${AuthTokenStore.token}",
+    };
     final resp = await _client
         .post(
           uri,
-          headers: {
-            "content-type": "application/json",
-            "x-api-key": PaymentConfig.apiKey,
-          },
+          headers: headers,
           body: jsonEncode({"cardToken": cardToken}),
         )
         .timeout(const Duration(seconds: 20));

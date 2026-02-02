@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'auth/auth_token_store.dart';
 import '../config/mail_config.dart';
 
 class MailManager {
@@ -116,6 +117,8 @@ class MailManager {
 
     final payload = {
       "to": to,
+      "fromName": fromName,
+      "from_name": fromName,
       "subject": subject,
       "text": _htmlToText(html),
       "html": html,
@@ -135,12 +138,15 @@ class MailManager {
   }
 
   Future<void> _postJson(Map<String, dynamic> payload) async {
+    final headers = {
+      "Content-Type": "application/json",
+      "x-mail-token": mailToken,
+      if (AuthTokenStore.token != null && AuthTokenStore.token!.isNotEmpty)
+        "Authorization": "Bearer ${AuthTokenStore.token}",
+    };
     final response = await http.post(
       Uri.parse(mailApiUrl),
-      headers: {
-        "Content-Type": "application/json",
-        "x-mail-token": mailToken,
-      },
+      headers: headers,
       body: jsonEncode(payload),
     );
 

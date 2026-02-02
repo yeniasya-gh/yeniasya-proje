@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'auth_token_store.dart';
 
 class AuthApiService {
   AuthApiService({String? baseUrl, http.Client? client})
@@ -16,9 +17,14 @@ class AuthApiService {
     String? phone,
   }) async {
     final uri = Uri.parse("$_baseUrl/auth/register");
+    final headers = {
+      "content-type": "application/json",
+      if (AuthTokenStore.token != null && AuthTokenStore.token!.isNotEmpty)
+        "Authorization": "Bearer ${AuthTokenStore.token}",
+    };
     final resp = await _client.post(
       uri,
-      headers: {"content-type": "application/json"},
+      headers: headers,
       body: jsonEncode({
         "name": name,
         "email": email,
@@ -42,9 +48,14 @@ class AuthApiService {
     required String password,
   }) async {
     final uri = Uri.parse("$_baseUrl/auth/login");
+    final headers = {
+      "content-type": "application/json",
+      if (AuthTokenStore.token != null && AuthTokenStore.token!.isNotEmpty)
+        "Authorization": "Bearer ${AuthTokenStore.token}",
+    };
     final resp = await _client.post(
       uri,
-      headers: {"content-type": "application/json"},
+      headers: headers,
       body: jsonEncode({"email": email, "password": password}),
     );
 

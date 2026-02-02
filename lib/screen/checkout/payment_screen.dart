@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:http/http.dart' as http;
+import '../../services/auth/auth_token_store.dart';
 import 'package:flutter/services.dart';
 import '../../services/order_service.dart';
 import '../../services/error/error_manager.dart';
@@ -538,14 +539,19 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
       // POST kart bilgileriyle redirect endpoint'ine
       final redirectUri = _paymentService.redirectUri();
-      final resp = await http.post(
-        redirectUri,
-        headers: {
-          "content-type": "application/json",
-          "x-api-key": PaymentConfig.apiKey,
-        },
-        body: jsonEncode(payload.toJson()),
-      ).timeout(const Duration(seconds: 30));
+      final headers = {
+        "content-type": "application/json",
+        "x-api-key": PaymentConfig.apiKey,
+        if (AuthTokenStore.token != null && AuthTokenStore.token!.isNotEmpty)
+          "Authorization": "Bearer ${AuthTokenStore.token}",
+      };
+      final resp = await http
+          .post(
+            redirectUri,
+            headers: headers,
+            body: jsonEncode(payload.toJson()),
+          )
+          .timeout(const Duration(seconds: 30));
 
       // ignore: avoid_print
       print("🟦 PaymentScreen._handleWebPayment -> response: ${resp.statusCode}");

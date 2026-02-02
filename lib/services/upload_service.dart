@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import 'logging_service.dart';
+import 'auth/auth_token_store.dart';
 
 enum UploadFileType { book, magazine, newspaper, supplement, slider }
 
@@ -99,6 +100,10 @@ class UploadService {
     final request = http.MultipartRequest("POST", uri)
       ..fields["type"] = _mapType(type)
       ..files.add(_buildFile(bytes, filename));
+    final token = AuthTokenStore.token;
+    if (token != null && token.isNotEmpty) {
+      request.headers["Authorization"] = "Bearer $token";
+    }
 
     print("📤 Dosya istek paketine eklendi");
     print("📬 İstek gönderiliyor...");
@@ -138,8 +143,11 @@ class UploadService {
     final uri = Uri.parse("$_baseUrl/upload/private");
     final request = http.MultipartRequest("POST", uri)
       ..fields["type"] = "kitap"
-      ..files.add(_buildFile(bytes, filename))
-      ..headers["x-api-key"] = _privateAuthToken;
+      ..files.add(_buildFile(bytes, filename));
+    final token = AuthTokenStore.token;
+    if (token != null && token.isNotEmpty) {
+      request.headers["Authorization"] = "Bearer $token";
+    }
 
     try {
       final streamed = await request.send();
@@ -164,8 +172,11 @@ class UploadService {
     final uri = Uri.parse("$_baseUrl/upload/private");
     final request = http.MultipartRequest("POST", uri)
       ..fields["type"] = _mapType(type)
-      ..files.add(_buildFile(bytes, filename))
-      ..headers["x-api-key"] = _privateAuthToken;
+      ..files.add(_buildFile(bytes, filename));
+    final token = AuthTokenStore.token;
+    if (token != null && token.isNotEmpty) {
+      request.headers["Authorization"] = "Bearer $token";
+    }
 
     try {
       final streamed = await request.send();

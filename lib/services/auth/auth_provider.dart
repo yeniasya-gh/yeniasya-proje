@@ -114,17 +114,8 @@ class AuthProvider with ChangeNotifier {
         _user = existing;
         // Google giriş için JWT endpointi eklenmeli.
         await NotificationService().registerDeviceToken(userId: existing.id, forceRefresh: true);
-        try {
-          await MailManager.instance.sendWelcomeEmail(
-            to: existing.email,
-            name: existing.name,
-          );
-        } catch (e) {
-          // ignore: avoid_print
-          print("🔴 [Mail] Welcome mail gönderilemedi: $e");
-        }
-      notifyListeners();
-      return SocialLoginResult(user: existing);
+        notifyListeners();
+        return SocialLoginResult(user: existing);
       }
 
       return SocialLoginResult(draft: SocialDraft(email: email, name: name));

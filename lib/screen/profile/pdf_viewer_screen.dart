@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:http/http.dart' as http;
+import '../../services/auth/auth_token_store.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 
@@ -58,14 +59,16 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     final tokenUri = Uri.parse(UploadService.normalizeUrl("/private/view-token"));
     setState(() => _testBusy = true);
     try {
+      final tokenHeaders = {
+        "content-type": "application/json",
+        "accept": "application/json",
+        if (AuthTokenStore.token != null && AuthTokenStore.token!.isNotEmpty)
+          "Authorization": "Bearer ${AuthTokenStore.token}",
+      };
       final tokenResp = await http
           .post(
             tokenUri,
-            headers: {
-              "content-type": "application/json",
-              "accept": "application/json",
-              "x-api-key": UploadService.privateAuthToken,
-            },
+            headers: tokenHeaders,
             body: jsonEncode({"path": targetPath}),
           )
           .timeout(const Duration(seconds: 10));
@@ -82,10 +85,15 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
             : Uri.parse(UploadService.normalizeUrl("/private/view-secure"))
                 .replace(queryParameters: {"token": token ?? ""}).toString();
         if (viewSecure.isNotEmpty) {
+          final pdfHeaders = {
+            "accept": "application/pdf",
+            if (AuthTokenStore.token != null && AuthTokenStore.token!.isNotEmpty)
+              "Authorization": "Bearer ${AuthTokenStore.token}",
+          };
           final pdfResp = await http
               .get(
                 Uri.parse(viewSecure.toString()),
-                headers: {"accept": "application/pdf"},
+                headers: pdfHeaders,
               )
               .timeout(const Duration(seconds: 10));
           debugPrint("🧪 PDF fetch status: ${pdfResp.statusCode}");
@@ -217,7 +225,13 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     }
 
     if (kIsWeb) {
-      final resp = await http.get(Uri.parse(normalized)).timeout(const Duration(seconds: 20));
+      final headers = {
+        if (AuthTokenStore.token != null && AuthTokenStore.token!.isNotEmpty)
+          "Authorization": "Bearer ${AuthTokenStore.token}",
+      };
+      final resp = await http
+          .get(Uri.parse(normalized), headers: headers)
+          .timeout(const Duration(seconds: 20));
       if (resp.statusCode == 200 && resp.bodyBytes.isNotEmpty) {
         return resp.bodyBytes;
       }
