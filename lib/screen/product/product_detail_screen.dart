@@ -131,6 +131,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   }
 
   Future<void> _selectNewspaperSubscriptionType(BuildContext context) async {
+    if (widget.detail.forceAccess) return;
     final auth = context.read<AuthProvider>();
     if (!auth.isLoggedIn) {
       showLoginRequirementDialog(context);
@@ -247,6 +248,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     BuildContext context,
     int magazineId,
   ) async {
+    if (widget.detail.forceAccess) return;
     final auth = context.read<AuthProvider>();
     if (!auth.isLoggedIn) {
       showLoginRequirementDialog(context);
@@ -1440,6 +1442,12 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
   String _buttonLabel(ProductDetail detail, bool hasAccess) {
     if (hasAccess) {
+      if (detail.forceAccess &&
+          (detail.type == CartItemType.magazine ||
+              detail.type == CartItemType.magazineIssue ||
+              detail.type == CartItemType.newspaperSubscription)) {
+        return "Görüntüle";
+      }
       switch (detail.type) {
         case CartItemType.book:
           return "Kitap erişimi aktif";
@@ -1481,6 +1489,16 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         style: const TextStyle(
           fontSize: 18,
           fontWeight: FontWeight.w800,
+          color: Colors.red,
+        ),
+      );
+    }
+    if (widget.detail.forceAccess) {
+      return const Text(
+        "Ücretsiz",
+        style: TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.w700,
           color: Colors.red,
         ),
       );

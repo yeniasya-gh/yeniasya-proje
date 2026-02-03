@@ -5,7 +5,6 @@ import '/screen/home_responsive_screen.dart';
 import '/services/auth/auth_provider.dart';
 import '/services/cart/cart_provider.dart';
 import '/services/access_provider.dart';
-import '/screen/login/login_screen.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 
@@ -24,7 +23,7 @@ void main() async {
     cartProvider.clear();
     accessProvider.clear();
     rootNavigatorKey.currentState?.pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const LoginScreen()),
+      MaterialPageRoute(builder: (_) => HomeResponsiveScreen(initialUri: Uri.base)),
       (route) => false,
     );
   };
@@ -81,10 +80,13 @@ class MyApp extends StatelessWidget {
           unselectedItemColor: Colors.grey,
         ),
       ),
-      builder: (context, child) => SafeArea(
-        top: false,
-        bottom: true,
-        child: child ?? const SizedBox.shrink(),
+      builder: (context, child) => ColoredBox(
+        color: Colors.white,
+        child: SafeArea(
+          top: false,
+          bottom: false,
+          child: child ?? const SizedBox.shrink(),
+        ),
       ),
       home: HomeResponsiveScreen(initialUri: initialUri),
       navigatorKey: rootNavigatorKey,

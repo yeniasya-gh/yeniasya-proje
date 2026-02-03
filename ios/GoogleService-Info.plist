@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CLIENT_ID</key>
+	<string>921079372710-8npk6tcfr5b4e4jvsr69ckik4kma309d.apps.googleusercontent.com</string>
+	<key>REVERSED_CLIENT_ID</key>
+	<string>com.googleusercontent.apps.921079372710-8npk6tcfr5b4e4jvsr69ckik4kma309d</string>
+	<key>ANDROID_CLIENT_ID</key>
+	<string>921079372710-g24ul48s7s83obst2861vmsgogbg5arp.apps.googleusercontent.com</string>
+	<key>API_KEY</key>
+	<string>AIzaSyA5MVk4qIcYQrnc1jLsnNFRYiRe3Q_7xrY</string>
+	<key>GCM_SENDER_ID</key>
+	<string>921079372710</string>
+	<key>PLIST_VERSION</key>
+	<string>1</string>
+	<key>BUNDLE_ID</key>
+	<string>com.yeniasya.books</string>
+	<key>PROJECT_ID</key>
+	<string>yeniasya-d401b</string>
+	<key>STORAGE_BUCKET</key>
+	<string>yeniasya-d401b.firebasestorage.app</string>
+	<key>IS_ADS_ENABLED</key>
+	<false></false>
+	<key>IS_ANALYTICS_ENABLED</key>
+	<false></false>
+	<key>IS_APPINVITE_ENABLED</key>
+	<true></true>
+	<key>IS_GCM_ENABLED</key>
+	<true></true>
+	<key>IS_SIGNIN_ENABLED</key>
+	<true></true>
+	<key>GOOGLE_APP_ID</key>
+	<string>1:921079372710:ios:99bb544b24e5961684cd67</string>
+</dict>
+</plist>

@@ -441,11 +441,18 @@ class _AdminBooksPageState extends State<AdminBooksPage> {
                     ? payload["book_url"] as String
                     : null;
                 if (pickedPdfBytes != null && pickedPdfName != null) {
-                  bookUrl = await _uploadService.uploadPrivate(
-                    type: UploadFileType.book,
-                    bytes: pickedPdfBytes!,
-                    filename: pickedPdfName!,
-                  );
+                  final isFree = price <= 0;
+                  bookUrl = isFree
+                      ? await _uploadService.uploadPublic(
+                          type: UploadFileType.book,
+                          bytes: pickedPdfBytes!,
+                          filename: pickedPdfName!,
+                        )
+                      : await _uploadService.uploadPrivate(
+                          type: UploadFileType.book,
+                          bytes: pickedPdfBytes!,
+                          filename: pickedPdfName!,
+                        );
                 }
 
                 await _bookService.addBook(
@@ -709,11 +716,18 @@ class _AdminBooksPageState extends State<AdminBooksPage> {
                     ? payload["book_url"] as String
                     : null;
                 if (pickedPdfBytes != null && pickedPdfName != null) {
-                  bookUrl = await _uploadService.uploadPrivate(
-                    type: UploadFileType.book,
-                    bytes: pickedPdfBytes!,
-                    filename: pickedPdfName!,
-                  );
+                  final isFree = price <= 0;
+                  bookUrl = isFree
+                      ? await _uploadService.uploadPublic(
+                          type: UploadFileType.book,
+                          bytes: pickedPdfBytes!,
+                          filename: pickedPdfName!,
+                        )
+                      : await _uploadService.uploadPrivate(
+                          type: UploadFileType.book,
+                          bytes: pickedPdfBytes!,
+                          filename: pickedPdfName!,
+                        );
                 }
 
                 await _bookService.updateBook(

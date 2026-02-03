@@ -5,6 +5,8 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:crypto/crypto.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import '../../models/app_user.dart';
 import 'auth_api_service.dart';
 import 'auth_token_store.dart';
@@ -33,6 +35,20 @@ class AuthProvider with ChangeNotifier {
     const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
     final rand = Random.secure();
     return List.generate(16, (_) => chars[rand.nextInt(chars.length)]).join();
+  }
+
+  String _generateNonce([int length = 32]) {
+    const charset =
+        '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-._';
+    final rand = Random.secure();
+    return List.generate(length, (_) => charset[rand.nextInt(charset.length)])
+        .join();
+  }
+
+  String _sha256ofString(String input) {
+    final bytes = utf8.encode(input);
+    final digest = sha256.convert(bytes);
+    return digest.toString();
   }
 
   Future<void> loadSession() async {
@@ -84,8 +100,18 @@ class AuthProvider with ChangeNotifier {
 
   Future<SocialLoginResult> signInWithGoogle() async {
     try {
+      final clientId = kIsWeb
+          ? const String.fromEnvironment(
+              "GOOGLE_WEB_CLIENT_ID",
+              defaultValue: "",
+            )
+          : const String.fromEnvironment(
+              "GOOGLE_IOS_CLIENT_ID",
+              defaultValue:
+                  "921079372710-8npk6tcfr5b4e4jvsr69ckik4kma309d.apps.googleusercontent.com",
+            );
       final GoogleSignInAccount? googleUser = await GoogleSignIn(
-        clientId: "921079372710-ma27ah75aficaj4187kd4bnsls6386rr.apps.googleusercontent.com",
+        clientId: clientId.isEmpty ? null : clientId,
       ).signIn();
       if (googleUser == null) {
         return SocialLoginResult(error: "İşlem iptal edildi");
@@ -125,6 +151,69 @@ class AuthProvider with ChangeNotifier {
         return SocialLoginResult(error: "Google penceresi kapatıldı, tekrar deneyin.");
       }
       return SocialLoginResult(error: msg);
+    }
+  }
+
+  Future<SocialLoginResult> signInWithApple() async {
+    try {
+      final available = await SignInWithApple.isAvailable();
+      if (!available) {
+        return SocialLoginResult(error: "Apple ile giriş kullanılamıyor.");
+      }
+      final rawNonce = _generateNonce();
+      final nonce = _sha256ofString(rawNonce);
+
+      final credential = await SignInWithApple.getAppleIDCredential(
+        scopes: [AppleIDAuthorizationScopes.email, AppleIDAuthorizationScopes.fullName],
+        nonce: nonce,
+      );
+
+      final idToken = credential.identityToken;
+      if (idToken == null || idToken.isEmpty) {
+        return SocialLoginResult(error: "Apple token alınamadı.");
+      }
+
+      final oauth = OAuthProvider("apple.com").credential(
+        idToken: idToken,
+        rawNonce: rawNonce,
+      );
+      final result = await FirebaseAuth.instance.signInWithCredential(oauth);
+      final email =
+          credential.email ?? result.user?.email ?? result.user?.uid;
+      if (email == null || email.isEmpty) {
+        return SocialLoginResult(
+          error: "Apple e-posta bilgisi alınamadı.",
+        );
+      }
+      final name = credential.givenName?.trim().isNotEmpty == true
+          ? "${credential.givenName ?? ""} ${credential.familyName ?? ""}".trim()
+          : (result.user?.displayName ??
+              email.split("@").first);
+
+      AppUser? existing;
+      try {
+        existing = await _userService.getUserByEmail(email);
+      } catch (_) {
+        return SocialLoginResult(
+          error: "Apple giriş için JWT endpointi gerekli.",
+        );
+      }
+      if (existing != null) {
+        _isLoggedIn = true;
+        _user = existing;
+        await NotificationService().registerDeviceToken(
+          userId: existing.id,
+          forceRefresh: true,
+        );
+        notifyListeners();
+        return SocialLoginResult(user: existing);
+      }
+
+      return SocialLoginResult(
+        draft: SocialDraft(email: email, name: name),
+      );
+    } catch (e) {
+      return SocialLoginResult(error: e.toString());
     }
   }
 

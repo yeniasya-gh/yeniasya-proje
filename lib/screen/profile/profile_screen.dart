@@ -6,6 +6,7 @@ import '../../services/admin/admin_book_service.dart';
 import '../../services/admin/admin_magazine_service.dart';
 import '../../services/auth/auth_provider.dart';
 import '../../services/user_content_access_service.dart';
+import '../../services/app_flag_service.dart';
 import '../../utils/route_guard.dart';
 import '../address/address_list_screen.dart';
 import '../admin/admin_panel_screen.dart';
@@ -27,8 +28,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final _accessService = UserContentAccessService();
   final _bookService = AdminBookService();
   final _magService = AdminMagazineService();
+  final _flagService = AppFlagService();
 
   bool _loadingAccess = false;
+  bool _freeMagNews = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadFlags();
+  }
+
+  Future<void> _loadFlags() async {
+    try {
+      final flags = await _flagService.fetchFlags(version: "");
+      if (!mounted) return;
+      setState(() {
+        _freeMagNews = flags.hideMagazines && flags.hideNewspapers;
+      });
+    } catch (_) {
+      // ignore: empty_catches
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -475,13 +496,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
         final name = mag?["name"]?.toString() ?? "Dergi #$itemId";
         return _AccessItem(
           title: name,
-          subtitle: "Dergi aboneliği",
+          subtitle: _freeMagNews ? "Ücretsiz" : "Dergi aboneliği",
           onTap: () => _openMagazineIssues(itemId, name),
         );
       case "newspaper_subscription":
         return _AccessItem(
           title: "Gazete aboneliği",
-          subtitle: "Abonelik aktif",
+          subtitle: _freeMagNews ? "Ücretsiz" : "Abonelik aktif",
           onTap: null,
         );
       default:

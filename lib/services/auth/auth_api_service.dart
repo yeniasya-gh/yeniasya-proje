@@ -71,4 +71,40 @@ class AuthApiService {
     }
     return data;
   }
+
+  Future<Map<String, dynamic>> guestToken({
+    String? username,
+    String? password,
+  }) async {
+    final uri = Uri.parse("$_baseUrl/auth/guest-token");
+    final headers = {
+      "content-type": "application/json",
+      if (AuthTokenStore.token != null && AuthTokenStore.token!.isNotEmpty)
+        "Authorization": "Bearer ${AuthTokenStore.token}",
+    };
+    final resp = await _client.post(
+      uri,
+      headers: headers,
+      body: jsonEncode({
+        "username": username ??
+            const String.fromEnvironment(
+              "GUEST_USERNAME",
+              defaultValue: "yeniasyaguest",
+            ),
+        "password": password ??
+            const String.fromEnvironment(
+              "GUEST_PASSWORD",
+              defaultValue: "yeniasya.guest.pass.2026",
+            ),
+      }),
+    );
+    if (resp.statusCode < 200 || resp.statusCode >= 300) {
+      throw Exception("Guest token failed (${resp.statusCode}): ${resp.body}");
+    }
+    final data = jsonDecode(resp.body) as Map<String, dynamic>;
+    if (data["ok"] != true) {
+      throw Exception(data["message"]?.toString() ?? "Guest token failed");
+    }
+    return data;
+  }
 }

@@ -1,8 +1,12 @@
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../services/auth/auth_provider.dart';
 import '../register/register_bottom_sheet.dart';
 import '../register/social_register_bottom_sheet.dart';
+import '../home_responsive_screen.dart';
+import '../../main.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
@@ -30,6 +34,18 @@ class _LoginScreenState extends State<LoginScreen> {
     passwordCtrl.addListener(_onTextChanged);
   }
 
+  void _goHome() {
+    if (!mounted) return;
+    final nav = rootNavigatorKey.currentState;
+    if (nav == null) return;
+    nav.pushAndRemoveUntil(
+      MaterialPageRoute(
+        builder: (_) => HomeResponsiveScreen(initialUri: Uri.base),
+      ),
+      (route) => false,
+    );
+  }
+
   Future<void> _handleGoogleSignIn() async {
     final auth = context.read<AuthProvider>();
     setState(() => socialLoading = true);
@@ -37,7 +53,7 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => socialLoading = false);
 
     if (result.user != null) {
-      if (mounted) Navigator.pop(context);
+      _goHome();
       return;
     }
 
@@ -53,7 +69,42 @@ class _LoginScreenState extends State<LoginScreen> {
         builder: (_) => SocialRegisterBottomSheet(draft: result.draft!),
       );
       if (completed == true && mounted) {
-        Navigator.pop(context);
+        _goHome();
+      }
+      return;
+    }
+
+    if (result.error != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(result.error!)),
+      );
+    }
+  }
+
+  Future<void> _handleAppleSignIn() async {
+    final auth = context.read<AuthProvider>();
+    setState(() => socialLoading = true);
+    final result = await auth.signInWithApple();
+    setState(() => socialLoading = false);
+
+    if (result.user != null) {
+      _goHome();
+      return;
+    }
+
+    if (result.draft != null && mounted) {
+      final completed = await showModalBottomSheet<bool>(
+        context: context,
+        isScrollControlled: true,
+        useRootNavigator: true,
+        backgroundColor: Colors.white,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        builder: (_) => SocialRegisterBottomSheet(draft: result.draft!),
+      );
+      if (completed == true && mounted) {
+        _goHome();
       }
       return;
     }
@@ -98,26 +149,39 @@ class _LoginScreenState extends State<LoginScreen> {
     final auth = context.watch<AuthProvider>();
     final isWeb = MediaQuery.of(context).size.width > 900;
 
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        title: const Text("Üye Girişi"),
+    return WillPopScope(
+      onWillPop: () async {
+        final nav = rootNavigatorKey.currentState;
+        if (nav == null) return true;
+        if (nav.canPop()) return true;
+        nav.pushAndRemoveUntil(
+          MaterialPageRoute(
+            builder: (_) => HomeResponsiveScreen(initialUri: Uri.base),
+          ),
+          (route) => false,
+        );
+        return false;
+      },
+      child: Scaffold(
         backgroundColor: Colors.white,
-        elevation: 1,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
+        appBar: AppBar(
+          title: const Text("Üye Girişi"),
+          backgroundColor: Colors.white,
+          elevation: 1,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => Navigator.pop(context),
+          ),
         ),
-      ),
 
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: EdgeInsets.symmetric(
-              horizontal: isWeb ? 0 : 16,
-              vertical: 24,
-            ),
-            child: Column(
+        body: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: EdgeInsets.symmetric(
+                horizontal: isWeb ? 0 : 16,
+                vertical: 24,
+              ),
+              child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 const SizedBox(height: 10),
@@ -302,7 +366,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                       setState(() => isLoading = false);
 
                                       if (auth.isLoggedIn) {
-                                        Navigator.pop(context);
+                                        _goHome();
                                       }
                                     }
                                   : null,
@@ -349,6 +413,40 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
 
                           const SizedBox(height: 10),
+
+                          if (!kIsWeb && Platform.isIOS) ...[
+                            SizedBox(
+                              height: 48,
+                              child: OutlinedButton.icon(
+                                icon: socialLoading
+                                    ? const SizedBox(
+                                        width: 18,
+                                        height: 18,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      )
+                                    : const Icon(
+                                        FontAwesomeIcons.apple,
+                                        color: Colors.black87,
+                                      ),
+                                label: const Text(
+                                  "Apple ile devam et",
+                                  style: TextStyle(fontWeight: FontWeight.w600),
+                                ),
+                                style: OutlinedButton.styleFrom(
+                                  side: const BorderSide(color: Colors.red),
+                                  foregroundColor: Colors.red,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(14),
+                                  ),
+                                ),
+                                onPressed:
+                                    socialLoading ? null : _handleAppleSignIn,
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                          ],
 
                           if (auth.errorMessage != null)
                             Padding(
@@ -403,6 +501,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
                 const SizedBox(height: 32),
               ],
+              ),
             ),
           ),
         ),

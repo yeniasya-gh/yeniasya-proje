@@ -42,6 +42,7 @@ import '../utils/ek_normalizer.dart';
 import 'attachment/ek_detail_screen.dart';
 import 'slider/slider_detail_screen.dart';
 import 'slider/slider_webview_screen.dart';
+import 'privacy/privacy_screen.dart';
 
 enum HomeSection { home, magazines, books, newspapers, attachments }
 
@@ -95,6 +96,9 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
 
   bool get _hideMagazines => _appFlags.hideMagazines;
   bool get _hideNewspapers => _appFlags.hideNewspapers;
+  bool get _freeMagNews => _hideMagazines && _hideNewspapers;
+  bool get _effectiveHideMagazines => _hideMagazines && !_freeMagNews;
+  bool get _effectiveHideNewspapers => _hideNewspapers && !_freeMagNews;
   bool get _storeFlagEnabled => _hideMagazines || _hideNewspapers;
 
   @override
@@ -112,7 +116,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
   }
 
   Future<void> _loadData({bool showLoading = true}) async {
-    if (showLoading) {
+    if (showLoading && mounted) {
       setState(() => loading = true);
     }
     try {
@@ -133,6 +137,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
       final sliderItems = results[4] as List<Map<String, dynamic>>;
       final homeBooks = results[5] as List<Map<String, dynamic>>;
       final homeMags = results[6] as List<Map<String, dynamic>>;
+      if (!mounted) return;
       setState(() {
         sliders = sliderItems;
         _sliderIndex = 0;
@@ -148,7 +153,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     } catch (e) {
       debugPrint("Home load error: $e");
     }
-    if (showLoading) {
+    if (showLoading && mounted) {
       setState(() => loading = false);
     }
   }
@@ -165,10 +170,10 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
       setState(() {
         _appFlags = flags;
         _flagsLoaded = true;
-        if (_hideMagazines && _section == HomeSection.magazines) {
+        if (_effectiveHideMagazines && _section == HomeSection.magazines) {
           _section = HomeSection.home;
         }
-        if (_hideNewspapers && _section == HomeSection.newspapers) {
+        if (_effectiveHideNewspapers && _section == HomeSection.newspapers) {
           _section = HomeSection.home;
         }
       });
@@ -247,7 +252,23 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     if (auth.isLoggedIn) {
       _loadData();
       _loadAccessIfNeeded();
+    } else {
+      _resetAfterLogout();
     }
+  }
+
+  void _resetAfterLogout() {
+    if (!mounted) return;
+    setState(() {
+      loading = true;
+      _flagsLoaded = false;
+      _section = HomeSection.home;
+      _mobileNavIndex = 0;
+      libraryOrders = [];
+      libraryAccess = [];
+    });
+    _loadAppFlags();
+    _loadData();
   }
 
   Future<void> _loadLibraryAccess() async {
@@ -271,8 +292,8 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     final uri = widget.initialUri!;
     final type = uri.queryParameters["type"];
     final id = int.tryParse(uri.queryParameters["id"] ?? "");
-    if ((_hideMagazines && type == "magazine") ||
-        (_hideNewspapers &&
+    if ((_effectiveHideMagazines && type == "magazine") ||
+        (_effectiveHideNewspapers &&
             (type == "newspaper" || type == "newspaper_subscription"))) {
       return;
     }
@@ -473,8 +494,8 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
   }
 
   bool _openSliderTarget(String type, int id) {
-    if ((_hideMagazines && type == "magazine") ||
-        (_hideNewspapers &&
+    if ((_effectiveHideMagazines && type == "magazine") ||
+        (_effectiveHideNewspapers &&
             (type == "newspaper_subscription" || type == "newspaper"))) {
       return false;
     }
@@ -528,12 +549,13 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
       MaterialPageRoute(
         builder: (_) => SearchScreen(
           books: books,
-          magazines: _hideMagazines ? [] : magazines,
-          newspapers: _hideNewspapers ? [] : newspapers,
+          magazines: _effectiveHideMagazines ? [] : magazines,
+          newspapers: _effectiveHideNewspapers ? [] : newspapers,
           attachments: attachments,
           initialQuery: initialQuery,
-          hideMagazines: _hideMagazines,
-          hideNewspapers: _hideNewspapers,
+          hideMagazines: _effectiveHideMagazines,
+          hideNewspapers: _effectiveHideNewspapers,
+          freeMagNews: _freeMagNews,
         ),
         fullscreenDialog: true,
       ),
@@ -882,6 +904,13 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
 
   bool _hasPurchased(String type, int? itemId) {
     if (itemId == null) return false;
+    if (_freeMagNews &&
+        (type == "magazine" ||
+            type == "newspaper_subscription" ||
+            type == "newspaper" ||
+            type == "magazine_issue")) {
+      return true;
+    }
     final access = context.read<AccessProvider>();
     if (access.hasAccess(type, itemId: itemId)) return true;
     if (libraryOrders.isEmpty) return false;
@@ -1005,7 +1034,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
           title: "Gazete aboneliği",
           subtitle: expiresAt != null
               ? "Bitiş Tarihi: ${_formatDateShort(expiresAt)}"
-              : "Abonelik aktif",
+              : (_freeMagNews ? "Ücretsiz" : "Abonelik aktif"),
           icon: _iconForType(type),
           onTap: null,
         );
@@ -1307,9 +1336,9 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         ? "$magazineName - $issueNumber"
         : "$magazineName - Sayı";
     final rawPrice = issue["price"];
-    final price = rawPrice is num
-        ? rawPrice.toDouble()
-        : _parsePrice(rawPrice);
+    final price = _freeMagNews
+        ? 0.0
+        : (rawPrice is num ? rawPrice.toDouble() : _parsePrice(rawPrice));
     final description = (issue["description"] ?? "").toString().trim();
     final issueDate = issue["added_at"]?.toString() ??
         issue["publish_date"]?.toString() ??
@@ -1325,21 +1354,25 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
       title: title,
       subtitle: magazineName,
       description: description.isEmpty
-          ? "Bu dergi sayısına abonelik ile erişilir."
+          ? (_freeMagNews
+              ? "Bu içerik ücretsiz olarak erişime açıktır."
+              : "Bu dergi sayısına abonelik ile erişilir.")
           : description,
       imageUrl: UploadService.normalizeUrl(imageUrl),
       price: price,
       type: CartItemType.magazineIssue,
       metadata: metadata,
       actionLabel: "Sepete Ekle",
+      forceAccess: _freeMagNews,
     );
   }
 
   ProductDetail _mapMagazineDetail(Map<String, dynamic> mag) {
-    final hasAccess = context.read<AccessProvider>().hasAccess(
-      "magazine",
-      itemId: mag["id"] as int?,
-    );
+    final hasAccess = _freeMagNews ||
+        context.read<AccessProvider>().hasAccess(
+          "magazine",
+          itemId: mag["id"] as int?,
+        );
     final actionLabel = hasAccess ? "E-dergiyi Gör" : "Abone Ol";
     return ProductDetail(
       id: "mag-${mag["id"]}",
@@ -1356,6 +1389,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         "period": mag["period"],
       },
       actionLabel: actionLabel,
+      forceAccess: _freeMagNews,
     );
   }
 
@@ -1398,9 +1432,10 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
 
   ProductDetail _mapNewspaperDetail(Map<String, dynamic> news) {
     final dateStr = news["publish_date"]?.toString() ?? "";
-    final hasSub = context.read<AccessProvider>().hasAccess(
-      "newspaper_subscription",
-    );
+    final hasSub = _freeMagNews ||
+        context.read<AccessProvider>().hasAccess(
+          "newspaper_subscription",
+        );
     final title = "E-Gazete";
     final fileUrl = news["file_url"]?.toString();
     return ProductDetail(
@@ -1411,7 +1446,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
           ? "Yayın tarihi: $dateStr"
           : "Günlük gazete aboneliği.",
       imageUrl: news["image_url"] ?? "",
-      price: 1.0,
+      price: _freeMagNews ? 0.0 : 1.0,
       type: CartItemType.newspaperSubscription,
       metadata: {
         "productId": "gazete-abonelik",
@@ -1420,6 +1455,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         "period": news["period"],
       },
       actionLabel: hasSub ? "Görüntüle" : "Abone Ol",
+      forceAccess: _freeMagNews,
     );
   }
 
@@ -1433,6 +1469,12 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     final isWeb = screenWidth > 900;
     final isTablet = screenWidth > 600 && screenWidth <= 900;
     final hasSlider = sliders.isNotEmpty;
+    final path = widget.initialUri?.path ?? "";
+    final isPrivacyRoute = path == "/privacy" || path == "/privacy/";
+
+    if (isPrivacyRoute) {
+      return const PrivacyScreen();
+    }
 
     if (loading || !_flagsLoaded) {
       return const Scaffold(
@@ -1443,6 +1485,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
 
     return Scaffold(
       backgroundColor: Colors.white,
+      extendBody: false,
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
@@ -1473,10 +1516,10 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
                         Row(
                           children: [
                             _menuItem("Anasayfa", HomeSection.home),
-                            if (!_hideMagazines)
+                            if (!_effectiveHideMagazines)
                               _menuItem("E-Dergi", HomeSection.magazines),
                             _menuItem("E-Kitap", HomeSection.books),
-                            if (!_hideNewspapers)
+                            if (!_effectiveHideNewspapers)
                               _menuItem("E-Gazete", HomeSection.newspapers),
                             _menuItem("Ekler", HomeSection.attachments),
                           ],
@@ -1615,6 +1658,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         ),
       ),
       body: SafeArea(
+        top: false,
         child: _mobileNavIndex == 2 && !isWeb
             ? _libraryView(context, this)
             : Stack(
@@ -1665,60 +1709,69 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
       ),
       bottomNavigationBar: isWeb
           ? null
-          : BottomNavigationBar(
-              elevation: 12,
-              backgroundColor: Colors.white,
-              selectedItemColor: Colors.red,
-              unselectedItemColor: Colors.grey,
-              type: BottomNavigationBarType.fixed,
-              currentIndex: _mobileNavIndex,
-              onTap: (index) {
-                setState(() => _mobileNavIndex = index);
-                if (index == 0) {
-                  setState(() => _section = HomeSection.home);
-                }
-                if (index == 1) {
-                  _openSearch();
-                }
-                if (index == 2) {
-                  _loadLibraryOrders();
-                }
-                if (index == 3) {
-                  if (auth.isLoggedIn) {
-                    Navigator.push(
-                      context,
-                      RouteGuard.guard(
-                        context: context,
-                        routeName: "/profile",
-                        builder: (_) => const ProfileScreen(),
-                      ),
-                    );
-                  } else {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const LoginScreen()),
-                    );
-                  }
-                }
-              },
-              items: [
-                const BottomNavigationBarItem(
-                  icon: Icon(Icons.home),
-                  label: "Ana Sayfa",
+          : Container(
+              color: Colors.white,
+              child: MediaQuery.removePadding(
+                context: context,
+                removeBottom: true,
+                child: BottomNavigationBar(
+                  elevation: 12,
+                  backgroundColor: Colors.white,
+                  selectedItemColor: Colors.red,
+                  unselectedItemColor: Colors.grey,
+                  type: BottomNavigationBarType.fixed,
+                  currentIndex: _mobileNavIndex,
+                  onTap: (index) {
+                    setState(() => _mobileNavIndex = index);
+                    if (index == 0) {
+                      setState(() => _section = HomeSection.home);
+                    }
+                    if (index == 1) {
+                      _openSearch();
+                    }
+                    if (index == 2) {
+                      _loadLibraryOrders();
+                    }
+                    if (index == 3) {
+                      if (auth.isLoggedIn) {
+                        Navigator.push(
+                          context,
+                          RouteGuard.guard(
+                            context: context,
+                            routeName: "/profile",
+                            builder: (_) => const ProfileScreen(),
+                          ),
+                        );
+                      } else {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const LoginScreen(),
+                          ),
+                        );
+                      }
+                    }
+                  },
+                  items: [
+                    const BottomNavigationBarItem(
+                      icon: Icon(Icons.home),
+                      label: "Ana Sayfa",
+                    ),
+                    const BottomNavigationBarItem(
+                      icon: Icon(Icons.search),
+                      label: "Ara",
+                    ),
+                    const BottomNavigationBarItem(
+                      icon: Icon(Icons.library_books_outlined),
+                      label: "Kütüphanem",
+                    ),
+                    BottomNavigationBarItem(
+                      icon: const Icon(Icons.person_outline),
+                      label: auth.isLoggedIn ? "Profil" : "Giriş Yap",
+                    ),
+                  ],
                 ),
-                const BottomNavigationBarItem(
-                  icon: Icon(Icons.search),
-                  label: "Ara",
-                ),
-                const BottomNavigationBarItem(
-                  icon: Icon(Icons.library_books_outlined),
-                  label: "Kütüphanem",
-                ),
-                BottomNavigationBarItem(
-                  icon: const Icon(Icons.person_outline),
-                  label: auth.isLoggedIn ? "Profil" : "Giriş Yap",
-                ),
-              ],
+              ),
             ),
     );
   }
@@ -1726,7 +1779,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
   Widget _buildBodyContent(bool isWeb, bool isTablet, CartProvider cart) {
     switch (_section) {
       case HomeSection.magazines:
-        if (_hideMagazines) return const SizedBox.shrink();
+        if (_effectiveHideMagazines) return const SizedBox.shrink();
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1746,7 +1799,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
           ],
         );
       case HomeSection.newspapers:
-        if (_hideNewspapers) return const SizedBox.shrink();
+        if (_effectiveHideNewspapers) return const SizedBox.shrink();
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1779,9 +1832,10 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         );
       case HomeSection.home:
       default:
-        final hasNewspaperShowcase = !_hideNewspapers && newspapers.isNotEmpty;
+        final hasNewspaperShowcase =
+            !_effectiveHideNewspapers && newspapers.isNotEmpty;
         final hasMagazineShowcase =
-            !_hideMagazines &&
+            !_effectiveHideMagazines &&
             _buildHomeShowcaseList(
               baseItems: magazines,
               selectedEntries: homeMagazineEntries,
@@ -1977,7 +2031,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
   }
 
   Widget _magazineShowcase(BuildContext context, bool isWeb) {
-    if (_hideMagazines) return const SizedBox.shrink();
+    if (_effectiveHideMagazines) return const SizedBox.shrink();
     final displayList = _buildHomeShowcaseList(
       baseItems: magazines,
       selectedEntries: homeMagazineEntries,
@@ -2013,17 +2067,18 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
             itemCount: displayList.length,
             separatorBuilder: (_, __) => const SizedBox(width: 14),
             itemBuilder: (_, i) {
-              final isSubscribed = _hasPurchased(
-                "magazine",
-                _toInt(displayList[i]["id"]),
-              );
+              final isSubscribed = _freeMagNews ||
+                  _hasPurchased(
+                    "magazine",
+                    _toInt(displayList[i]["id"]),
+                  );
               return _bookCard(
                 {
                   "image": displayList[i]["cover_image_url"],
                   "title": displayList[i]["name"],
                   "author": displayList[i]["category"] ?? "",
                   "price": isWeb && !isSubscribed ? "Fiyat için tıkla" : "",
-                  "statusLabel": "Abonelik aktif",
+                  "statusLabel": _freeMagNews ? "Ücretsiz" : "Abonelik aktif",
                 },
                 isWeb,
                 hideAction: isSubscribed,
@@ -2052,7 +2107,6 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     );
     if (displayList.isEmpty) return const SizedBox.shrink();
 
-    final showRead = access.hasAccess("newspaper_subscription");
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -2124,7 +2178,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     bool isWeb,
     CartProvider cart,
   ) {
-    if (_hideNewspapers) return const SizedBox.shrink();
+    if (_effectiveHideNewspapers) return const SizedBox.shrink();
     if (newspapers.isEmpty) return const SizedBox.shrink();
     final access = context.watch<AccessProvider>();
     const fallbackImage = "assets/images/gazete.jpg";
@@ -2142,7 +2196,8 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
       };
     }).toList();
 
-    final showRead = access.hasAccess("newspaper_subscription");
+    final showRead =
+        _freeMagNews || access.hasAccess("newspaper_subscription");
     final subscriptionImage = items.isNotEmpty
         ? (items.first["image"] as String? ?? fallbackImage)
         : fallbackImage;
@@ -2225,10 +2280,10 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
                 showRead: showRead,
                 onTap: () => _openProductDetail(
                   _mapNewspaperDetail(items[i]["raw"] as Map<String, dynamic>),
+                  ),
                 ),
               ),
             ),
-          ),
       ],
     );
   }
@@ -2237,7 +2292,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     final auth = context.watch<AuthProvider>();
     final hasSubscription =
         context.watch<AccessProvider>().hasAccess("newspaper_subscription");
-    if (!auth.isLoggedIn || !hasSubscription) {
+    if (!_freeMagNews && (!auth.isLoggedIn || !hasSubscription)) {
       return const SizedBox.shrink();
     }
     Future<void> pickSingleDate() async {
@@ -2434,7 +2489,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
   }
 
   Widget _magazineListGrid(BuildContext context, bool isWeb) {
-    if (_hideMagazines) return const SizedBox.shrink();
+    if (_effectiveHideMagazines) return const SizedBox.shrink();
     final cart = Provider.of<CartProvider>(context, listen: false);
     final access = Provider.of<AccessProvider>(context, listen: false);
     final crossAxisCount = isWeb ? 4 : (isTabletLayout(context) ? 2 : 1);
@@ -2472,19 +2527,20 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
           ),
           itemCount: magazines.length,
           itemBuilder: (_, i) {
-            final hideAction = _hasPurchased(
-              "magazine",
-              _toInt(magazines[i]["id"]),
-            );
+            final hideAction = !_freeMagNews &&
+                _hasPurchased(
+                  "magazine",
+                  _toInt(magazines[i]["id"]),
+                );
             return _magazineCard(
               {
                 "image": magazines[i]["cover_image_url"],
                 "title": magazines[i]["name"],
                 "desc": magazines[i]["description"] ?? magazines[i]["category"],
-                "price": "",
+                "price": _freeMagNews ? "Ücretsiz" : "",
               },
               hideAction: hideAction,
-              onAdd: hideAction
+              onAdd: _freeMagNews || hideAction
                   ? null
                   : () {
                       _openProductDetail(_mapMagazineDetail(magazines[i]));
@@ -2574,12 +2630,13 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     bool isWeb,
     List<Map<String, dynamic>> items,
   ) {
-    if (_hideNewspapers) return const SizedBox.shrink();
+    if (_effectiveHideNewspapers) return const SizedBox.shrink();
     final crossAxisCount = isWeb ? 3 : 2;
-    final hasSub = Provider.of<AccessProvider>(
-      context,
-      listen: false,
-    ).hasAccess("newspaper_subscription");
+    final hasSub = _freeMagNews ||
+        Provider.of<AccessProvider>(
+          context,
+          listen: false,
+        ).hasAccess("newspaper_subscription");
     return LayoutBuilder(
       builder: (context, constraints) {
         return GridView.builder(
@@ -2606,9 +2663,10 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
               },
               compact: true,
               imageHeight: isWeb ? (hasSub ? 150 : 140) : (hasSub ? 130 : 120),
-              showRead: context.read<AccessProvider>().hasAccess(
-                "newspaper_subscription",
-              ),
+              showRead: _freeMagNews ||
+                  context.read<AccessProvider>().hasAccess(
+                    "newspaper_subscription",
+                  ),
               onTap: () => _openProductDetail(_mapNewspaperDetail(items[i])),
             );
           },
@@ -3251,8 +3309,8 @@ Widget _librarySubscriptionCard(
   BuildContext context,
   _HomeResponsiveScreenState state,
 ) {
-  final showMag = !state._hideMagazines;
-  final showNews = !state._hideNewspapers;
+  final showMag = !state._effectiveHideMagazines;
+  final showNews = !state._effectiveHideNewspapers;
   final tiles = <Widget>[
     _libraryMenuTile(
       Icons.menu_book_outlined,
@@ -3641,7 +3699,8 @@ class _NewspaperListScreenState extends State<_NewspaperListScreen> {
     final auth = context.read<AuthProvider>();
     final access = context.read<AccessProvider>();
     final canPick =
-        auth.isLoggedIn && access.hasAccess("newspaper_subscription");
+        widget.homeState._freeMagNews ||
+        (auth.isLoggedIn && access.hasAccess("newspaper_subscription"));
     if (!canPick) {
       if (!auth.isLoggedIn) {
         if (!mounted) return;
@@ -3689,7 +3748,8 @@ class _NewspaperListScreenState extends State<_NewspaperListScreen> {
     final auth = context.watch<AuthProvider>();
     final hasSubscription =
         context.watch<AccessProvider>().hasAccess("newspaper_subscription");
-    final canPickDate = auth.isLoggedIn && hasSubscription;
+    final canPickDate =
+        widget.homeState._freeMagNews || (auth.isLoggedIn && hasSubscription);
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.white,
