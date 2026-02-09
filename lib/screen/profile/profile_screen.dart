@@ -31,7 +31,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final _flagService = AppFlagService();
 
   bool _loadingAccess = false;
-  bool _freeMagNews = false;
+  bool _hideMagazines = false;
+  bool _hideNewspapers = false;
 
   @override
   void initState() {
@@ -44,7 +45,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final flags = await _flagService.fetchFlags(version: "");
       if (!mounted) return;
       setState(() {
-        _freeMagNews = flags.hideMagazines && flags.hideNewspapers;
+        _hideMagazines = flags.hideMagazines;
+        _hideNewspapers = flags.hideNewspapers;
       });
     } catch (_) {
       // ignore: empty_catches
@@ -262,6 +264,40 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _subscriptionCard(AuthProvider auth) {
+    final tiles = <Widget>[
+      _menuTile(
+        Icons.menu_book_outlined,
+        "Kitaplar",
+        onTap: () => _openAccess(auth, "book", "Kitaplarım"),
+      ),
+    ];
+    if (!_hideMagazines) {
+      tiles.addAll([
+        const Divider(height: 1, indent: 56),
+        _menuTile(
+          Icons.library_books,
+          "Dergiler",
+          onTap: () => _openAccess(auth, "magazine", "Dergi Abonelikleri"),
+        ),
+        const Divider(height: 1, indent: 56),
+        _menuTile(
+          Icons.history_edu,
+          "Dergi Sayıları",
+          onTap: () => _openAccess(auth, "magazine_issue", "Dergi Sayılarım"),
+        ),
+      ]);
+    }
+    if (!_hideNewspapers) {
+      tiles.addAll([
+        const Divider(height: 1, indent: 56),
+        _menuTile(
+          Icons.newspaper,
+          "Gazete Aboneliği",
+          onTap: () =>
+              _openAccess(auth, "newspaper_subscription", "Gazete Aboneliği"),
+        ),
+      ]);
+    }
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
@@ -276,31 +312,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ],
       ),
       child: Column(
-        children: [
-          _menuTile(
-            Icons.menu_book_outlined,
-            "Kitaplar",
-            onTap: () => _openAccess(auth, "book", "Kitaplarım"),
-          ),
-          const Divider(height: 1, indent: 56),
-          _menuTile(
-            Icons.library_books,
-            "Dergiler",
-            onTap: () => _openAccess(auth, "magazine", "Dergi Abonelikleri"),
-          ),
-          const Divider(height: 1, indent: 56),
-          _menuTile(
-            Icons.history_edu,
-            "Dergi Sayıları",
-            onTap: () => _openAccess(auth, "magazine_issue", "Dergi Sayılarım"),
-          ),
-          const Divider(height: 1, indent: 56),
-          _menuTile(
-            Icons.newspaper,
-            "Gazete Aboneliği",
-            onTap: () => _openAccess(auth, "newspaper_subscription", "Gazete Aboneliği"),
-          ),
-        ],
+        children: tiles,
       ),
     );
   }
@@ -496,13 +508,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
         final name = mag?["name"]?.toString() ?? "Dergi #$itemId";
         return _AccessItem(
           title: name,
-          subtitle: _freeMagNews ? "Ücretsiz" : "Dergi aboneliği",
+          subtitle: "Dergi aboneliği",
           onTap: () => _openMagazineIssues(itemId, name),
         );
       case "newspaper_subscription":
         return _AccessItem(
           title: "Gazete aboneliği",
-          subtitle: _freeMagNews ? "Ücretsiz" : "Abonelik aktif",
+          subtitle: "Abonelik aktif",
           onTap: null,
         );
       default:

@@ -14,7 +14,6 @@ class SearchScreen extends StatefulWidget {
   final String initialQuery;
   final bool hideMagazines;
   final bool hideNewspapers;
-  final bool freeMagNews;
 
   const SearchScreen({
     super.key,
@@ -25,7 +24,6 @@ class SearchScreen extends StatefulWidget {
     this.initialQuery = "",
     this.hideMagazines = false,
     this.hideNewspapers = false,
-    this.freeMagNews = false,
   });
 
   @override
@@ -202,12 +200,10 @@ class _SearchScreenState extends State<SearchScreen> {
             ? "Satın alındı"
             : null;
       case "magazine":
-        if (widget.freeMagNews) return "Ücretsiz";
         return access.hasAccess("magazine", itemId: _toInt(item["id"]))
             ? "Abonelik aktif"
             : null;
       case "newspaper":
-        if (widget.freeMagNews) return "Ücretsiz";
         return access.hasAccess("newspaper_subscription")
             ? "Abonelik aktif"
             : null;

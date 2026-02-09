@@ -258,7 +258,7 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
   String _accessTypeLabel(String type) {
     switch (type) {
       case "book":
-        return "E-kitap";
+        return "Kitap";
       case "magazine":
         return "E-dergi";
       case "magazine_issue":

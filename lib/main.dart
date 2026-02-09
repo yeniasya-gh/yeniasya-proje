@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_web_plugins/url_strategy.dart';
 import 'package:provider/provider.dart';
 import '/screen/home_responsive_screen.dart';
 import '/services/auth/auth_provider.dart';
@@ -12,6 +14,9 @@ final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  if (kIsWeb) {
+    usePathUrlStrategy();
+  }
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   final authProvider = AuthProvider();
@@ -23,7 +28,9 @@ void main() async {
     cartProvider.clear();
     accessProvider.clear();
     rootNavigatorKey.currentState?.pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => HomeResponsiveScreen(initialUri: Uri.base)),
+      MaterialPageRoute(
+        builder: (_) => HomeResponsiveScreen(initialUri: Uri.base),
+      ),
       (route) => false,
     );
   };
@@ -57,10 +64,7 @@ class MyApp extends StatelessWidget {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      supportedLocales: const [
-        Locale('tr', 'TR'),
-        Locale('en', 'US'),
-      ],
+      supportedLocales: const [Locale('tr', 'TR'), Locale('en', 'US')],
       locale: const Locale('tr', 'TR'),
       theme: ThemeData(
         useMaterial3: true,

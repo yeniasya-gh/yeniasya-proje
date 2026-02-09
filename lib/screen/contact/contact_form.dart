@@ -6,8 +6,13 @@ import '../../services/error/error_manager.dart';
 
 class ContactForm extends StatefulWidget {
   final bool popOnSuccess;
+  final bool showCompanyInfo;
 
-  const ContactForm({super.key, this.popOnSuccess = true});
+  const ContactForm({
+    super.key,
+    this.popOnSuccess = true,
+    this.showCompanyInfo = false,
+  });
 
   @override
   State<ContactForm> createState() => _ContactFormState();
@@ -40,7 +45,29 @@ class _ContactFormState extends State<ContactForm> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text("Bize Ulaşın", style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+              const Text(
+                "Bize Ulaşın",
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+              ),
+              if (widget.showCompanyInfo) ...[
+                const SizedBox(height: 12),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.grey.shade300),
+                  ),
+                  child: const Text(
+                    "Yeni Asya AŞ.\n"
+                    "Adres: 15 Temmuz Mah., 1508 Sk., No: 3, 34212, Güneşli, İstanbul\n"
+                    "E-posta: bilgiislem@yeniasya.com.tr\n"
+                    "KEP: yeniasya@kep.gov.tr",
+                    style: TextStyle(fontSize: 14, height: 1.4),
+                  ),
+                ),
+              ],
               const SizedBox(height: 12),
               TextFormField(
                 controller: _subjectCtrl,
@@ -48,7 +75,8 @@ class _ContactFormState extends State<ContactForm> {
                   labelText: "Konu Başlığı",
                   border: OutlineInputBorder(),
                 ),
-                validator: (v) => (v == null || v.trim().isEmpty) ? "Konu girin" : null,
+                validator: (v) =>
+                    (v == null || v.trim().isEmpty) ? "Konu girin" : null,
               ),
               const SizedBox(height: 12),
               TextFormField(
@@ -59,7 +87,8 @@ class _ContactFormState extends State<ContactForm> {
                   border: OutlineInputBorder(),
                 ),
                 maxLines: 6,
-                validator: (v) => (v == null || v.trim().isEmpty) ? "Mesaj girin" : null,
+                validator: (v) =>
+                    (v == null || v.trim().isEmpty) ? "Mesaj girin" : null,
               ),
               const SizedBox(height: 16),
               SizedBox(
@@ -80,15 +109,19 @@ class _ContactFormState extends State<ContactForm> {
                             );
                             if (!mounted) return;
                             ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text("Mesajınız iletildi")),
+                              const SnackBar(
+                                content: Text("Mesajınız iletildi"),
+                              ),
                             );
                             if (widget.popOnSuccess) Navigator.pop(context);
                           } catch (e) {
-                            final parsed = ErrorManager.parseGraphQLError(e.toString());
+                            final parsed = ErrorManager.parseGraphQLError(
+                              e.toString(),
+                            );
                             if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text(parsed)),
-                              );
+                              ScaffoldMessenger.of(
+                                context,
+                              ).showSnackBar(SnackBar(content: Text(parsed)));
                             }
                           } finally {
                             if (mounted) setState(() => _loading = false);
@@ -99,7 +132,10 @@ class _ContactFormState extends State<ContactForm> {
                     foregroundColor: Colors.white,
                   ),
                   child: _loading
-                      ? const CircularProgressIndicator(color: Colors.white, strokeWidth: 2)
+                      ? const CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2,
+                        )
                       : const Text("Gönder"),
                 ),
               ),

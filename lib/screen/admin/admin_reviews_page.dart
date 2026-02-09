@@ -195,7 +195,7 @@ class _AdminReviewsPageState extends State<AdminReviewsPage> {
   String _productTypeLabel(dynamic raw) {
     switch ((raw ?? "").toString()) {
       case "book":
-        return "E-Kitap";
+        return "Kitap";
       case "magazine":
         return "E-Dergi";
       case "magazine_issue":
