@@ -1,12 +1,15 @@
+import "dart:async";
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../services/admin/admin_book_service.dart';
 import '../../services/admin/admin_magazine_service.dart';
+import '../../services/access_provider.dart';
 import '../../services/auth/auth_provider.dart';
+import '../../services/revenuecat_service.dart';
 import '../../services/user_content_access_service.dart';
-import '../../services/app_flag_service.dart';
 import '../../utils/route_guard.dart';
 import '../address/address_list_screen.dart';
 import '../admin/admin_panel_screen.dart';
@@ -28,34 +31,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final _accessService = UserContentAccessService();
   final _bookService = AdminBookService();
   final _magService = AdminMagazineService();
-  final _flagService = AppFlagService();
 
   bool _loadingAccess = false;
-  bool _hideMagazines = false;
-  bool _hideNewspapers = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadFlags();
-  }
-
-  Future<void> _loadFlags() async {
-    try {
-      final flags = await _flagService.fetchFlags(version: "");
-      if (!mounted) return;
-      setState(() {
-        _hideMagazines = flags.hideMagazines;
-        _hideNewspapers = flags.hideNewspapers;
-      });
-    } catch (_) {
-      // ignore: empty_catches
-    }
-  }
+  bool _deletingAccount = false;
 
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
+    final rc = context.watch<RevenueCatService>();
     final displayName = auth.user?.name ?? "Kullanıcı Adı";
 
     return Scaffold(
@@ -99,7 +82,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                   const SizedBox(height: 8),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
                     decoration: BoxDecoration(
                       color: const Color(0xFFFFE5E5),
                       borderRadius: BorderRadius.circular(20),
@@ -116,6 +102,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ),
             const SizedBox(height: 30),
+            const Text(
+              "Üyelik Durumu",
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 12),
+            _membershipStatusCard(auth, rc),
+            const SizedBox(height: 16),
             if (kIsWeb) ...[
               const Text(
                 "Abonelikler / İçerikler",
@@ -145,7 +138,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ],
               ),
             ],
-            const SizedBox(height: 30),
+            SizedBox(height: kIsWeb ? 30 : 0),
             _menuCard(
               items: [
                 _menuTile(
@@ -154,7 +147,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   onTap: () {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (_) => const PersonalInfoScreen()),
+                      MaterialPageRoute(
+                        builder: (_) => const PersonalInfoScreen(),
+                      ),
                     );
                   },
                 ),
@@ -165,7 +160,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   onTap: () {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (_) => const SavedCardsScreen()),
+                      MaterialPageRoute(
+                        builder: (_) => const SavedCardsScreen(),
+                      ),
                     );
                   },
                 ),
@@ -223,7 +220,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             title: const Text("Bize Ulaşın"),
                             elevation: 1,
                           ),
-                          body: const SafeArea(child: ContactForm(popOnSuccess: true)),
+                          body: const SafeArea(
+                            child: ContactForm(popOnSuccess: true),
+                          ),
                         ),
                       ),
                     );
@@ -256,11 +255,405 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ),
             ),
+            const SizedBox(height: 8),
+            Center(
+              child: TextButton(
+                onPressed: _deletingAccount
+                    ? null
+                    : () => _confirmDeleteAccount(auth),
+                child: Text(
+                  _deletingAccount ? "Hesap siliniyor..." : "Hesabımı Sil",
+                  style: const TextStyle(
+                    color: Colors.red,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
             const SizedBox(height: 30),
           ],
         ),
       ),
     );
+  }
+
+  Widget _membershipStatusCard(AuthProvider auth, RevenueCatService rc) {
+    final access = context.watch<AccessProvider>();
+    final hasRevenueCatSubscription = rc.isYeniasyaProActive;
+    final hasBackendAccess = access.hasAccess("newspaper_subscription");
+    final hasAnyAccess = hasRevenueCatSubscription || hasBackendAccess;
+    final statusColor = hasAnyAccess ? const Color(0xFF0F9D58) : Colors.black54;
+    final user = auth.user;
+    final busy = rc.isPaywallInProgress || rc.isRestoreInProgress;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  "E-Gazete",
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                ),
+              ),
+              Text(
+                hasAnyAccess ? "Abonelik Var" : "Abonelik Yok",
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: statusColor,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (!rc.supportsNativePurchaseUi)
+            const Text(
+              "Abonelik satın alma işlemleri mobil uygulamada desteklenir.",
+              style: TextStyle(fontSize: 12, color: Colors.black54),
+            ),
+          if (rc.supportsNativePurchaseUi) ...[
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: busy
+                        ? null
+                        : () => _onSubscribePressed(auth: auth, rc: rc),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red,
+                      foregroundColor: Colors.white,
+                    ),
+                    child: busy
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : Text(
+                            hasRevenueCatSubscription
+                                ? "Abonelik Aktif"
+                                : hasBackendAccess
+                                ? "Erişim Aktif"
+                                : "Abonelik Al",
+                          ),
+                  ),
+                ),
+                if (hasRevenueCatSubscription) ...[
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: busy
+                          ? null
+                          : () => _onOpenCustomerCenter(auth: auth, rc: rc),
+                      child: const Text("Aboneliği Yönet"),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.center,
+              child: TextButton(
+                onPressed: busy
+                    ? null
+                    : () => _onRestorePressed(auth: auth, rc: rc),
+                child: const Text("Satın Alımları Geri Yükle"),
+              ),
+            ),
+          ],
+          if (user == null)
+            const Text(
+              "Abonelik yönetimi için giriş yapmalısınız.",
+              style: TextStyle(fontSize: 12, color: Colors.black54),
+            ),
+          if (rc.errorMessage != null && rc.errorMessage!.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                rc.errorMessage!,
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: Colors.red,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          if (rc.lastBackendWarning != null &&
+              rc.lastBackendWarning!.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                rc.lastBackendWarning!,
+                style: const TextStyle(fontSize: 12, color: Colors.orange),
+              ),
+            ),
+          if (kDebugMode && rc.supportsNativePurchaseUi)
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: _backendChecklistCard(rc),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _onSubscribePressed({
+    required AuthProvider auth,
+    required RevenueCatService rc,
+  }) async {
+    final user = auth.user;
+    if (user == null) {
+      _showInfo("Abonelik satın almak için giriş yapmalısınız.");
+      return;
+    }
+    await rc.syncWithAuthUser(user);
+    final result = await rc.presentYeniasyaProPaywall(userId: user.id);
+    if (!mounted) return;
+
+    if (result.name == "purchased" || result.name == "restored") {
+      _showInfo("Abonelik başarıyla aktif edildi.");
+      unawaited(context.read<AccessProvider>().load(user.id));
+      return;
+    }
+    if (result.name == "notPresented" && rc.isYeniasyaProActive) {
+      _showInfo("Aboneliğiniz zaten aktif.");
+      return;
+    }
+    if (result.name == "cancelled") {
+      _showInfo("İşlem iptal edildi.");
+      return;
+    }
+    _showInfo(rc.errorMessage ?? "Abonelik işlemi tamamlanamadı.");
+  }
+
+  Future<void> _onRestorePressed({
+    required AuthProvider auth,
+    required RevenueCatService rc,
+  }) async {
+    final user = auth.user;
+    if (user == null) {
+      _showInfo("Önce giriş yapmalısınız.");
+      return;
+    }
+    await rc.syncWithAuthUser(user);
+    await rc.restorePurchases(userId: user.id);
+    if (!mounted) return;
+    if (rc.isYeniasyaProActive) {
+      _showInfo("Abonelik geri yüklendi.");
+      unawaited(context.read<AccessProvider>().load(user.id));
+    } else {
+      _showInfo(
+        rc.errorMessage ?? "Geri yüklenecek aktif abonelik bulunamadı.",
+      );
+    }
+  }
+
+  Future<void> _onOpenCustomerCenter({
+    required AuthProvider auth,
+    required RevenueCatService rc,
+  }) async {
+    final user = auth.user;
+    if (user == null) {
+      _showInfo("Önce giriş yapmalısınız.");
+      return;
+    }
+    await rc.syncWithAuthUser(user);
+    await rc.presentCustomerCenter(userId: user.id);
+    if (!mounted) return;
+    if (rc.errorMessage != null && rc.errorMessage!.isNotEmpty) {
+      _showInfo(rc.errorMessage!);
+    }
+  }
+
+  Future<void> _confirmDeleteAccount(AuthProvider auth) async {
+    final user = auth.user;
+    if (user == null || _deletingAccount) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text("Hesabı Sil"),
+          content: const Text(
+            "Hesabınızı ve ilişkili verilerinizi kalıcı olarak silmek üzeresiniz. Bu işlem geri alınamaz.",
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text("Vazgeç"),
+            ),
+            TextButton(
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text("Hesabı Sil"),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _deletingAccount = true);
+    final deleted = await auth.deleteAccount();
+    if (!mounted) return;
+    setState(() => _deletingAccount = false);
+
+    if (deleted) {
+      _showInfo("Hesabınız başarıyla silindi.");
+      Navigator.popUntil(context, (route) => route.isFirst);
+      return;
+    }
+
+    _showInfo(
+      auth.errorMessage ??
+          "Hesap silme işlemi tamamlanamadı. Lütfen tekrar deneyin.",
+    );
+  }
+
+  void _showInfo(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Widget _backendChecklistCard(RevenueCatService rc) {
+    final identityOk = rc.isIdentityMatched;
+    final identityLabel = rc.identityStatusLabel;
+    final syncStatus = _statusText(
+      rc.lastBackendSyncSuccess,
+      pendingText: "Bekliyor",
+      successText: "Başarılı",
+      errorText: "Hatalı",
+    );
+    final eventStatus = _statusText(
+      rc.lastBackendEventSuccess,
+      pendingText: "Bekliyor",
+      successText: "Başarılı",
+      errorText: "Hatalı",
+    );
+    final syncTime = _timeLabel(rc.lastBackendSyncAt);
+    final eventTime = _timeLabel(rc.lastBackendEventAt);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8F8F8),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFFE9E9E9)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            "Sync Checklist (debug)",
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 6),
+          _checkRow(
+            "Kimlik",
+            "$identityLabel (${rc.currentAppUserId ?? "-"})",
+            color: identityOk ? const Color(0xFF0F9D58) : Colors.red,
+          ),
+          _checkRow(
+            "Son sync",
+            "$syncStatus • $syncTime",
+            color: _statusColor(rc.lastBackendSyncSuccess),
+          ),
+          _checkRow(
+            "Son event",
+            "$eventStatus • $eventTime",
+            color: _statusColor(rc.lastBackendEventSuccess),
+          ),
+          _checkRow(
+            "Event sonucu",
+            rc.lastBackendEventResult ?? "-",
+            color: Colors.black87,
+          ),
+          if (rc.expectedAppUserId != null && rc.expectedAppUserId!.isNotEmpty)
+            _checkRow(
+              "Beklenen RC ID",
+              rc.expectedAppUserId!,
+              color: Colors.black87,
+            ),
+          if (rc.lastBackendSyncError != null &&
+              rc.lastBackendSyncError!.isNotEmpty)
+            _checkRow("Sync hata", rc.lastBackendSyncError!, color: Colors.red),
+          if (rc.lastBackendEventError != null &&
+              rc.lastBackendEventError!.isNotEmpty)
+            _checkRow(
+              "Event hata",
+              rc.lastBackendEventError!,
+              color: Colors.red,
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _checkRow(String label, String value, {required Color color}) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 2),
+      child: RichText(
+        text: TextSpan(
+          style: const TextStyle(fontSize: 11, color: Colors.black87),
+          children: [
+            TextSpan(
+              text: "$label: ",
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+            TextSpan(
+              text: value,
+              style: TextStyle(color: color),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _statusText(
+    bool? status, {
+    required String pendingText,
+    required String successText,
+    required String errorText,
+  }) {
+    if (status == null) return pendingText;
+    return status ? successText : errorText;
+  }
+
+  Color _statusColor(bool? status) {
+    if (status == null) return Colors.black54;
+    return status ? const Color(0xFF0F9D58) : Colors.red;
+  }
+
+  String _timeLabel(DateTime? dt) {
+    if (dt == null) return "-";
+    String two(int value) => value.toString().padLeft(2, "0");
+    return "${two(dt.hour)}:${two(dt.minute)}:${two(dt.second)}";
   }
 
   Widget _subscriptionCard(AuthProvider auth) {
@@ -271,33 +664,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
         onTap: () => _openAccess(auth, "book", "Kitaplarım"),
       ),
     ];
-    if (!_hideMagazines) {
-      tiles.addAll([
-        const Divider(height: 1, indent: 56),
-        _menuTile(
-          Icons.library_books,
-          "Dergiler",
-          onTap: () => _openAccess(auth, "magazine", "Dergi Abonelikleri"),
-        ),
-        const Divider(height: 1, indent: 56),
-        _menuTile(
-          Icons.history_edu,
-          "Dergi Sayıları",
-          onTap: () => _openAccess(auth, "magazine_issue", "Dergi Sayılarım"),
-        ),
-      ]);
-    }
-    if (!_hideNewspapers) {
-      tiles.addAll([
-        const Divider(height: 1, indent: 56),
-        _menuTile(
-          Icons.newspaper,
-          "Gazete Aboneliği",
-          onTap: () =>
-              _openAccess(auth, "newspaper_subscription", "Gazete Aboneliği"),
-        ),
-      ]);
-    }
+    tiles.addAll([
+      const Divider(height: 1, indent: 56),
+      _menuTile(
+        Icons.library_books,
+        "Dergiler",
+        onTap: () => _openAccess(auth, "magazine", "Dergi Abonelikleri"),
+      ),
+      const Divider(height: 1, indent: 56),
+      _menuTile(
+        Icons.history_edu,
+        "Dergi Sayıları",
+        onTap: () => _openAccess(auth, "magazine_issue", "Dergi Sayılarım"),
+      ),
+      const Divider(height: 1, indent: 56),
+      _menuTile(
+        Icons.newspaper,
+        "Gazete Aboneliği",
+        onTap: () =>
+            _openAccess(auth, "newspaper_subscription", "Gazete Aboneliği"),
+      ),
+    ]);
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
@@ -305,15 +692,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 10,
             offset: const Offset(0, 5),
           ),
         ],
       ),
-      child: Column(
-        children: tiles,
-      ),
+      child: Column(children: tiles),
     );
   }
 
@@ -325,7 +710,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 10,
             offset: const Offset(0, 5),
           ),
@@ -335,26 +720,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _menuTile(
-    IconData icon,
-    String text, {
-    VoidCallback? onTap,
-  }) {
+  Widget _menuTile(IconData icon, String text, {VoidCallback? onTap}) {
     return ListTile(
       leading: Icon(icon, color: Colors.black54),
       title: Text(
         text,
-        style: const TextStyle(
-          fontSize: 15,
-          fontWeight: FontWeight.w500,
-        ),
+        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
       ),
       trailing: const Icon(Icons.chevron_right),
       onTap: onTap ?? () {},
     );
   }
 
-  Future<void> _openAccess(AuthProvider auth, String itemType, String title) async {
+  Future<void> _openAccess(
+    AuthProvider auth,
+    String itemType,
+    String title,
+  ) async {
     if (_loadingAccess) return;
     final userId = auth.user?.id;
     if (userId == null) return;
@@ -362,12 +744,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
     setState(() => _loadingAccess = true);
     List<Map<String, dynamic>> entries = [];
     try {
-      entries = await _accessService.getAccess(userId: userId, itemType: itemType);
+      entries = await _accessService.getAccess(
+        userId: userId,
+        itemType: itemType,
+      );
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Erişim alınamadı: $e")),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text("Erişim alınamadı: $e")));
       }
     } finally {
       if (mounted) setState(() => _loadingAccess = false);
@@ -394,7 +779,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                     IconButton(
                       icon: const Icon(Icons.close),
                       onPressed: () => Navigator.pop(context),
@@ -407,43 +798,47 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 child: _loadingAccess
                     ? const Center(child: CircularProgressIndicator())
                     : entries.isEmpty
-                        ? const Center(child: Text("Kayıt bulunamadı"))
-                        : ListView.separated(
-                            itemCount: entries.length,
-                            separatorBuilder: (_, __) => const Divider(height: 1),
-                            itemBuilder: (_, i) {
-                              final entry = entries[i];
-                              return FutureBuilder<_AccessItem>(
-                                future: _resolveAccessItem(itemType, entry),
-                                builder: (_, snap) {
-                                  if (!snap.hasData) {
-                                    return const ListTile(
-                                      title: Text("Yükleniyor..."),
-                                      trailing: SizedBox(
-                                        width: 20,
-                                        height: 20,
-                                        child: CircularProgressIndicator(strokeWidth: 2),
-                                      ),
-                                    );
-                                  }
-                                  final data = snap.data!;
-                                  return ListTile(
-                                    leading: CircleAvatar(
-                                      backgroundColor: Colors.red.shade100,
-                                      foregroundColor: Colors.red,
-                                      child: const Icon(Icons.book),
+                    ? const Center(child: Text("Kayıt bulunamadı"))
+                    : ListView.separated(
+                        itemCount: entries.length,
+                        separatorBuilder: (_, __) => const Divider(height: 1),
+                        itemBuilder: (_, i) {
+                          final entry = entries[i];
+                          return FutureBuilder<_AccessItem>(
+                            future: _resolveAccessItem(itemType, entry),
+                            builder: (_, snap) {
+                              if (!snap.hasData) {
+                                return const ListTile(
+                                  title: Text("Yükleniyor..."),
+                                  trailing: SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
                                     ),
-                                    title: Text(data.title),
-                                    subtitle: data.subtitle != null ? Text(data.subtitle!) : null,
-                                    trailing: data.onTap != null
-                                        ? const Icon(Icons.chevron_right)
-                                        : const SizedBox.shrink(),
-                                    onTap: data.onTap,
-                                  );
-                                },
+                                  ),
+                                );
+                              }
+                              final data = snap.data!;
+                              return ListTile(
+                                leading: CircleAvatar(
+                                  backgroundColor: Colors.red.shade100,
+                                  foregroundColor: Colors.red,
+                                  child: const Icon(Icons.book),
+                                ),
+                                title: Text(data.title),
+                                subtitle: data.subtitle != null
+                                    ? Text(data.subtitle!)
+                                    : null,
+                                trailing: data.onTap != null
+                                    ? const Icon(Icons.chevron_right)
+                                    : const SizedBox.shrink(),
+                                onTap: data.onTap,
                               );
                             },
-                          ),
+                          );
+                        },
+                      ),
               ),
             ],
           ),
@@ -452,7 +847,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Future<_AccessItem> _resolveAccessItem(String type, Map<String, dynamic> entry) async {
+  Future<_AccessItem> _resolveAccessItem(
+    String type,
+    Map<String, dynamic> entry,
+  ) async {
     final itemId = entry["item_id"];
     switch (type) {
       case "book":
@@ -545,7 +943,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text("$name Sayıları", style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+                    Text(
+                      "$name Sayıları",
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
                     IconButton(
                       icon: const Icon(Icons.close),
                       onPressed: () => Navigator.pop(context),
@@ -565,7 +969,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           final title = "Sayı ${issue["issue_number"]}";
                           return ListTile(
                             title: Text(title),
-                            subtitle: Text("Eklenme: ${issue["added_at"] ?? ''}"),
+                            subtitle: Text(
+                              "Eklenme: ${issue["added_at"] ?? ''}",
+                            ),
                             trailing: const Icon(Icons.chevron_right),
                             onTap: () {
                               final url = issue["file_url"]?.toString();

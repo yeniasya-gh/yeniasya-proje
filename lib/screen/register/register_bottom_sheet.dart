@@ -59,14 +59,17 @@ class _RegisterBottomSheetState extends State<RegisterBottomSheet> {
                 TextFormField(
                   controller: phoneCtrl,
                   keyboardType: TextInputType.phone,
-                  decoration: _input("Telefon", Icons.phone),
+                  decoration: _input("Telefon (Opsiyonel)", Icons.phone),
                   inputFormatters: [
                     FilteringTextInputFormatter.digitsOnly,
                     LengthLimitingTextInputFormatter(10),
                   ],
                   validator: (v) {
                     final digits = v?.replaceAll(RegExp(r'\D'), '') ?? "";
-                    return digits.length < 10 ? "Geçerli bir telefon giriniz" : null;
+                    if (digits.isEmpty) return null;
+                    return digits.length < 10
+                        ? "Geçerli bir telefon giriniz"
+                        : null;
                   },
                 ),
                 const SizedBox(height: 16),
@@ -127,14 +130,20 @@ class _RegisterBottomSheetState extends State<RegisterBottomSheet> {
                             if (!formKey.currentState!.validate()) return;
 
                             setState(() => isLoading = true);
+                            final normalizedPhone = normalizePhoneNumber(
+                              phoneCtrl.text,
+                            );
 
                             final newUser = await auth.register(
                               name: nameCtrl.text,
-                              phone: normalizePhoneNumber(phoneCtrl.text),
+                              phone: normalizedPhone.isEmpty
+                                  ? null
+                                  : normalizedPhone,
                               email: emailCtrl.text,
                               password: passCtrl.text,
                             );
 
+                            if (!context.mounted) return;
                             setState(() => isLoading = false);
 
                             if (newUser != null) {

@@ -32,7 +32,8 @@ class AuthProvider with ChangeNotifier {
   static const keyUserJson = "session_user_json";
 
   String _generateRandomPassword() {
-    const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    const chars =
+        "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
     final rand = Random.secure();
     return List.generate(16, (_) => chars[rand.nextInt(chars.length)]).join();
   }
@@ -41,8 +42,10 @@ class AuthProvider with ChangeNotifier {
     const charset =
         '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-._';
     final rand = Random.secure();
-    return List.generate(length, (_) => charset[rand.nextInt(charset.length)])
-        .join();
+    return List.generate(
+      length,
+      (_) => charset[rand.nextInt(charset.length)],
+    ).join();
   }
 
   String _sha256ofString(String input) {
@@ -51,31 +54,48 @@ class AuthProvider with ChangeNotifier {
     return digest.toString();
   }
 
+  String? _normalizedValue(String? value) {
+    final trimmed = value?.trim();
+    if (trimmed == null || trimmed.isEmpty) return null;
+    return trimmed;
+  }
+
   Future<void> loadSession() async {
-    final prefs = await SharedPreferences.getInstance();
-    await AuthTokenStore.load();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await AuthTokenStore.load();
 
-    if (AuthTokenStore.token == null ||
-        AuthTokenStore.expiresAt == null ||
-        AuthTokenStore.isExpired) {
+      if (AuthTokenStore.token == null ||
+          AuthTokenStore.expiresAt == null ||
+          AuthTokenStore.isExpired) {
+        await logout();
+        return;
+      }
+
+      final rawUser = prefs.getString(keyUserJson);
+      if (rawUser == null || rawUser.isEmpty) {
+        await logout();
+        return;
+      }
+
+      final decoded = jsonDecode(rawUser);
+      if (decoded is! Map) {
+        throw const FormatException("Session user payload must be a map.");
+      }
+
+      final userMap = Map<String, dynamic>.from(decoded);
+      _user = AppUser.fromJson(userMap);
+      _isLoggedIn = true;
+
+      final expiresAt = AuthTokenStore.expiresAt;
+      if (expiresAt != null) _scheduleExpiry(expiresAt);
+
+      notifyListeners();
+    } catch (e) {
+      // If stored auth data is stale/corrupted, clear it instead of crashing on launch.
+      debugPrint("🔴 [Auth] loadSession failed, clearing session: $e");
       await logout();
-      return;
     }
-
-    final rawUser = prefs.getString(keyUserJson);
-    if (rawUser == null || rawUser.isEmpty) {
-      await logout();
-      return;
-    }
-
-    final userMap = jsonDecode(rawUser) as Map<String, dynamic>;
-    _user = AppUser.fromJson(userMap);
-    _isLoggedIn = true;
-
-    final expiresAt = AuthTokenStore.expiresAt;
-    if (expiresAt != null) _scheduleExpiry(expiresAt);
-
-    notifyListeners();
   }
 
   Future<void> _saveSession({
@@ -100,27 +120,48 @@ class AuthProvider with ChangeNotifier {
 
   Future<SocialLoginResult> signInWithGoogle() async {
     try {
+      const webClientId = String.fromEnvironment(
+        "GOOGLE_WEB_CLIENT_ID",
+        defaultValue: "",
+      );
+      const iosClientId = String.fromEnvironment(
+        "GOOGLE_IOS_CLIENT_ID",
+        defaultValue:
+            "921079372710-8npk6tcfr5b4e4jvsr69ckik4kma309d.apps.googleusercontent.com",
+      );
+
+      final isApplePlatform =
+          !kIsWeb &&
+          (defaultTargetPlatform == TargetPlatform.iOS ||
+              defaultTargetPlatform == TargetPlatform.macOS);
       final clientId = kIsWeb
-          ? const String.fromEnvironment(
-              "GOOGLE_WEB_CLIENT_ID",
-              defaultValue: "",
-            )
-          : const String.fromEnvironment(
-              "GOOGLE_IOS_CLIENT_ID",
-              defaultValue:
-                  "921079372710-8npk6tcfr5b4e4jvsr69ckik4kma309d.apps.googleusercontent.com",
-            );
+          ? (webClientId.isEmpty ? null : webClientId)
+          : (isApplePlatform && iosClientId.isNotEmpty ? iosClientId : null);
+      final serverClientId = !kIsWeb && webClientId.isNotEmpty
+          ? webClientId
+          : null;
+
       final GoogleSignInAccount? googleUser = await GoogleSignIn(
-        clientId: clientId.isEmpty ? null : clientId,
+        clientId: clientId,
+        serverClientId: serverClientId,
       ).signIn();
       if (googleUser == null) {
         return SocialLoginResult(error: "İşlem iptal edildi");
       }
 
       final GoogleSignInAuthentication gAuth = await googleUser.authentication;
+      final accessToken = gAuth.accessToken;
+      final idToken = gAuth.idToken;
+      if ((accessToken == null || accessToken.isEmpty) &&
+          (idToken == null || idToken.isEmpty)) {
+        return SocialLoginResult(
+          error:
+              "Google kimlik doğrulaması tamamlanamadı. Lütfen tekrar deneyin.",
+        );
+      }
       final credential = GoogleAuthProvider.credential(
-        accessToken: gAuth.accessToken,
-        idToken: gAuth.idToken,
+        accessToken: accessToken?.isEmpty == true ? null : accessToken,
+        idToken: idToken?.isEmpty == true ? null : idToken,
       );
       await FirebaseAuth.instance.signInWithCredential(credential);
 
@@ -139,16 +180,43 @@ class AuthProvider with ChangeNotifier {
         _isLoggedIn = true;
         _user = existing;
         // Google giriş için JWT endpointi eklenmeli.
-        await NotificationService().registerDeviceToken(userId: existing.id, forceRefresh: true);
+        await NotificationService().registerDeviceToken(
+          userId: existing.id,
+          forceRefresh: true,
+        );
         notifyListeners();
         return SocialLoginResult(user: existing);
       }
 
-      return SocialLoginResult(draft: SocialDraft(email: email, name: name));
+      return SocialLoginResult(
+        draft: SocialDraft(email: email, name: name),
+      );
     } catch (e) {
       final msg = e.toString();
       if (msg.contains("popup_closed")) {
-        return SocialLoginResult(error: "Google penceresi kapatıldı, tekrar deneyin.");
+        return SocialLoginResult(
+          error: "Google penceresi kapatıldı, tekrar deneyin.",
+        );
+      }
+      final lower = msg.toLowerCase();
+      if (lower.contains("sign_in_canceled") ||
+          lower.contains("12501") ||
+          lower.contains("canceled")) {
+        return SocialLoginResult(error: "Google giriş işlemi iptal edildi.");
+      }
+      if (lower.contains("network_error")) {
+        return SocialLoginResult(
+          error:
+              "Ağ bağlantısı hatası. İnternetinizi kontrol edip tekrar deneyin.",
+        );
+      }
+      if (lower.contains("apiexception: 10") ||
+          lower.contains("developer_error") ||
+          lower.contains("sign_in_failed")) {
+        return SocialLoginResult(
+          error:
+              "Google giriş yapılandırması geçersiz. Uygulama SHA-1 / OAuth ayarlarını kontrol edin.",
+        );
       }
       return SocialLoginResult(error: msg);
     }
@@ -164,31 +232,35 @@ class AuthProvider with ChangeNotifier {
       final nonce = _sha256ofString(rawNonce);
 
       final credential = await SignInWithApple.getAppleIDCredential(
-        scopes: [AppleIDAuthorizationScopes.email, AppleIDAuthorizationScopes.fullName],
+        scopes: [
+          AppleIDAuthorizationScopes.email,
+          AppleIDAuthorizationScopes.fullName,
+        ],
         nonce: nonce,
       );
 
-      final idToken = credential.identityToken;
-      if (idToken == null || idToken.isEmpty) {
+      final idToken = _normalizedValue(credential.identityToken);
+      if (idToken == null) {
         return SocialLoginResult(error: "Apple token alınamadı.");
       }
 
-      final oauth = OAuthProvider("apple.com").credential(
-        idToken: idToken,
-        rawNonce: rawNonce,
+      final oauth = AppleAuthProvider.credentialWithIDToken(
+        idToken,
+        rawNonce,
+        AppleFullPersonName(
+          givenName: _normalizedValue(credential.givenName),
+          familyName: _normalizedValue(credential.familyName),
+        ),
       );
       final result = await FirebaseAuth.instance.signInWithCredential(oauth);
-      final email =
-          credential.email ?? result.user?.email ?? result.user?.uid;
+      final email = credential.email ?? result.user?.email ?? result.user?.uid;
       if (email == null || email.isEmpty) {
-        return SocialLoginResult(
-          error: "Apple e-posta bilgisi alınamadı.",
-        );
+        return SocialLoginResult(error: "Apple e-posta bilgisi alınamadı.");
       }
       final name = credential.givenName?.trim().isNotEmpty == true
-          ? "${credential.givenName ?? ""} ${credential.familyName ?? ""}".trim()
-          : (result.user?.displayName ??
-              email.split("@").first);
+          ? "${credential.givenName ?? ""} ${credential.familyName ?? ""}"
+                .trim()
+          : (result.user?.displayName ?? email.split("@").first);
 
       AppUser? existing;
       try {
@@ -212,9 +284,52 @@ class AuthProvider with ChangeNotifier {
       return SocialLoginResult(
         draft: SocialDraft(email: email, name: name),
       );
+    } on SignInWithAppleAuthorizationException catch (e) {
+      if (e.code == AuthorizationErrorCode.canceled) {
+        return SocialLoginResult(error: "Apple giriş işlemi iptal edildi.");
+      }
+      return SocialLoginResult(error: _mapAppleSignInError(e));
+    } on FirebaseAuthException catch (e) {
+      return SocialLoginResult(error: _mapAppleSignInError(e));
     } catch (e) {
-      return SocialLoginResult(error: e.toString());
+      return SocialLoginResult(error: _mapAppleSignInError(e));
     }
+  }
+
+  String _mapAppleSignInError(Object error) {
+    if (error is FirebaseAuthException) {
+      final code = error.code.toLowerCase();
+      final msg = (error.message ?? "").toLowerCase();
+      final raw = error.toString().toLowerCase();
+
+      if (code == "invalid-credential" ||
+          code == "invalid-oauth-response" ||
+          msg.contains("invalid oauth response from apple.com") ||
+          raw.contains("invalid oauth response from apple.com")) {
+        return "Apple kimlik doğrulaması geçersiz döndü. Firebase Apple Sign-In ayarlarında Team ID, Key ID, Service ID ve Private Key bilgilerini kontrol edin.";
+      }
+      if (code == "operation-not-allowed") {
+        return "Firebase üzerinde Apple ile giriş etkin değil.";
+      }
+      if (code == "missing-or-invalid-nonce") {
+        return "Apple nonce doğrulaması başarısız oldu. Uygulamayı kapatıp tekrar deneyin.";
+      }
+      if (code == "network-request-failed") {
+        return "Ağ bağlantısı hatası. İnternetinizi kontrol edip tekrar deneyin.";
+      }
+      if (code == "account-exists-with-different-credential") {
+        return "Bu e-posta başka bir giriş yöntemiyle kayıtlı. O yöntemle giriş yapıp Apple hesabını bağlayın.";
+      }
+      return error.message ?? error.code;
+    }
+
+    final raw = error.toString();
+    final lower = raw.toLowerCase();
+    if (lower.contains("authorizationerrorcode.canceled") ||
+        lower.contains("sign_in_canceled")) {
+      return "Apple giriş işlemi iptal edildi.";
+    }
+    return raw;
   }
 
   Future<AppUser?> registerSocialUser({
@@ -230,9 +345,7 @@ class AuthProvider with ChangeNotifier {
         password: password,
         phone: phone,
       );
-      final user = AppUser.fromAuthJson(
-        data["user"] as Map<String, dynamic>,
-      );
+      final user = AppUser.fromAuthJson(data["user"] as Map<String, dynamic>);
       final token = data["token"]?.toString();
       final rawExp = data["expiresAt"]?.toString();
       final expiresAt = rawExp != null && rawExp.isNotEmpty
@@ -246,7 +359,10 @@ class AuthProvider with ChangeNotifier {
       _user = user;
       await _saveSession(user: user, expiresAt: expiresAt);
       _scheduleExpiry(expiresAt);
-      await NotificationService().registerDeviceToken(userId: user.id, forceRefresh: true);
+      await NotificationService().registerDeviceToken(
+        userId: user.id,
+        forceRefresh: true,
+      );
       try {
         await MailManager.instance.sendWelcomeEmail(
           to: user.email,
@@ -275,9 +391,7 @@ class AuthProvider with ChangeNotifier {
     _errorMessage = null;
     try {
       final data = await _authApi.login(email: email, password: password);
-      final user = AppUser.fromAuthJson(
-        data["user"] as Map<String, dynamic>,
-      );
+      final user = AppUser.fromAuthJson(data["user"] as Map<String, dynamic>);
       final token = data["token"]?.toString();
       final rawExp = data["expiresAt"]?.toString();
       final expiresAt = rawExp != null && rawExp.isNotEmpty
@@ -293,7 +407,10 @@ class AuthProvider with ChangeNotifier {
       _user = user;
       await _saveSession(user: user, expiresAt: expiresAt);
       _scheduleExpiry(expiresAt);
-      await NotificationService().registerDeviceToken(userId: user.id, forceRefresh: true);
+      await NotificationService().registerDeviceToken(
+        userId: user.id,
+        forceRefresh: true,
+      );
 
       final prefs = await SharedPreferences.getInstance();
       if (rememberMe) {
@@ -330,9 +447,7 @@ class AuthProvider with ChangeNotifier {
         password: password,
         phone: phone,
       );
-      final user = AppUser.fromAuthJson(
-        data["user"] as Map<String, dynamic>,
-      );
+      final user = AppUser.fromAuthJson(data["user"] as Map<String, dynamic>);
       final token = data["token"]?.toString();
       final rawExp = data["expiresAt"]?.toString();
       final expiresAt = rawExp != null && rawExp.isNotEmpty
@@ -348,7 +463,10 @@ class AuthProvider with ChangeNotifier {
       _user = user;
       await _saveSession(user: user, expiresAt: expiresAt);
       _scheduleExpiry(expiresAt);
-      await NotificationService().registerDeviceToken(userId: user.id, forceRefresh: true);
+      await NotificationService().registerDeviceToken(
+        userId: user.id,
+        forceRefresh: true,
+      );
       try {
         await MailManager.instance.sendWelcomeEmail(
           to: user.email,
@@ -397,10 +515,7 @@ class AuthProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> updateProfile({
-    required String name,
-    String? phone,
-  }) async {
+  Future<void> updateProfile({required String name, String? phone}) async {
     final current = _user;
     if (current == null) return;
     final updated = await _userService.updateProfile(
@@ -426,6 +541,31 @@ class AuthProvider with ChangeNotifier {
       newPassword: newPassword,
     );
   }
+
+  Future<bool> deleteAccount() async {
+    final current = _user;
+    if (current == null) {
+      _errorMessage = "Aktif kullanıcı bulunamadı.";
+      notifyListeners();
+      return false;
+    }
+
+    _errorMessage = null;
+    try {
+      final deleted = await _userService.deleteAccount(id: current.id);
+      if (!deleted) {
+        _errorMessage = "Hesap silinemedi.";
+        notifyListeners();
+        return false;
+      }
+      await logout();
+      return true;
+    } catch (e) {
+      _errorMessage = e.toString().replaceFirst("Exception:", "").trim();
+      notifyListeners();
+      return false;
+    }
+  }
 }
 
 class SocialDraft {
@@ -433,11 +573,7 @@ class SocialDraft {
   final String name;
   final String? phone;
 
-  SocialDraft({
-    required this.email,
-    required this.name,
-    this.phone,
-  });
+  SocialDraft({required this.email, required this.name, this.phone});
 }
 
 class SocialLoginResult {

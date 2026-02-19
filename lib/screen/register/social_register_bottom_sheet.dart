@@ -10,7 +10,8 @@ class SocialRegisterBottomSheet extends StatefulWidget {
   const SocialRegisterBottomSheet({super.key, required this.draft});
 
   @override
-  State<SocialRegisterBottomSheet> createState() => _SocialRegisterBottomSheetState();
+  State<SocialRegisterBottomSheet> createState() =>
+      _SocialRegisterBottomSheetState();
 }
 
 class _SocialRegisterBottomSheetState extends State<SocialRegisterBottomSheet> {
@@ -48,7 +49,10 @@ class _SocialRegisterBottomSheetState extends State<SocialRegisterBottomSheet> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text("Kayıt Ol", style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+                const Text(
+                  "Kayıt Ol",
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+                ),
                 const SizedBox(height: 6),
                 Text(
                   widget.draft.email,
@@ -58,17 +62,26 @@ class _SocialRegisterBottomSheetState extends State<SocialRegisterBottomSheet> {
                 TextFormField(
                   controller: nameCtrl,
                   decoration: _input("Ad Soyad", Icons.person),
-                  validator: (v) => (v == null || v.trim().isEmpty) ? "Ad soyad giriniz" : null,
+                  validator: (v) => (v == null || v.trim().isEmpty)
+                      ? "Ad soyad giriniz"
+                      : null,
                 ),
                 const SizedBox(height: 16),
                 TextFormField(
                   controller: phoneCtrl,
                   keyboardType: TextInputType.phone,
-                  decoration: _input("Telefon", Icons.phone),
+                  decoration: _input("Telefon (Opsiyonel)", Icons.phone),
                   inputFormatters: [
                     FilteringTextInputFormatter.digitsOnly,
                     LengthLimitingTextInputFormatter(10),
                   ],
+                  validator: (v) {
+                    final digits = v?.replaceAll(RegExp(r'\D'), '') ?? "";
+                    if (digits.isEmpty) return null;
+                    return digits.length < 10
+                        ? "Geçerli bir telefon giriniz"
+                        : null;
+                  },
                 ),
                 const SizedBox(height: 24),
                 SizedBox(
@@ -78,14 +91,18 @@ class _SocialRegisterBottomSheetState extends State<SocialRegisterBottomSheet> {
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.red,
                       foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
                     ),
                     onPressed: loading
                         ? null
                         : () async {
                             if (!formKey.currentState!.validate()) return;
-                            setState(() => loading = true);
-                            setState(() => errorText = null);
+                            setState(() {
+                              loading = true;
+                              errorText = null;
+                            });
                             final user = await auth.registerSocialUser(
                               email: widget.draft.email,
                               name: nameCtrl.text,
@@ -93,16 +110,22 @@ class _SocialRegisterBottomSheetState extends State<SocialRegisterBottomSheet> {
                                   ? null
                                   : normalizePhoneNumber(phoneCtrl.text),
                             );
+                            if (!context.mounted) return;
                             setState(() => loading = false);
-                            if (!mounted) return;
                             if (user != null) {
                               Navigator.pop(context, true);
                             } else {
-                              setState(() => errorText = auth.errorMessage ?? "Kayıt başarısız");
+                              setState(
+                                () => errorText =
+                                    auth.errorMessage ?? "Kayıt başarısız",
+                              );
                             }
                           },
                     child: loading
-                        ? const CircularProgressIndicator(color: Colors.white, strokeWidth: 2)
+                        ? const CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2,
+                          )
                         : const Text("Kaydı Tamamla"),
                   ),
                 ),
@@ -111,7 +134,10 @@ class _SocialRegisterBottomSheetState extends State<SocialRegisterBottomSheet> {
                     padding: const EdgeInsets.only(top: 10),
                     child: Text(
                       errorText!,
-                      style: const TextStyle(color: Colors.red, fontWeight: FontWeight.w600),
+                      style: const TextStyle(
+                        color: Colors.red,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
               ],

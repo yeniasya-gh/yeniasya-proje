@@ -120,7 +120,7 @@ class UserService {
   }
 
   Future<AppUser?> getUserById(int id) async {
-  const String query = r'''
+    const String query = r'''
     query GetUser($id: bigint!) {
       users_by_pk(id: $id) {
         id
@@ -134,19 +134,19 @@ class UserService {
     }
   ''';
 
-  final data = await _hasura.graphQLRequest(
-    query: query,
-    variables: {"id": id},
-  );
+    final data = await _hasura.graphQLRequest(
+      query: query,
+      variables: {"id": id},
+    );
 
-  final json = data["users_by_pk"];
+    final json = data["users_by_pk"];
 
-  if (json == null) {
-    return null;
+    if (json == null) {
+      return null;
+    }
+
+    return AppUser.fromJson(json);
   }
-
-  return AppUser.fromJson(json);
-}
 
   Future<AppUser?> updateProfile({
     required int id,
@@ -201,14 +201,71 @@ class UserService {
 
     final data = await _hasura.graphQLRequest(
       query: mutation,
-      variables: {
-        "id": id,
-        "current": currentHashed,
-        "next": newHashed,
-      },
+      variables: {"id": id, "current": currentHashed, "next": newHashed},
     );
 
     final rows = data["update_users"]?["affected_rows"] as int? ?? 0;
     return rows > 0;
+  }
+
+  Future<bool> deleteAccount({required int id}) async {
+    const hardDeleteMutation = r'''
+      mutation DeleteAccount($id: bigint!) {
+        delete_users_by_pk(id: $id) {
+          id
+        }
+      }
+    ''';
+
+    try {
+      final data = await _hasura.graphQLRequest(
+        query: hardDeleteMutation,
+        variables: {"id": id},
+      );
+      if (data["delete_users_by_pk"] != null) {
+        return true;
+      }
+    } catch (_) {
+      // Fallback: hesabı anonimleştirip pasife al.
+    }
+
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final deletedEmail = "deleted_${id}_$now@yeniasya.local";
+    final deletedPassword = HashHelper.hashPassword("deleted_${id}_$now");
+
+    const softDeleteMutation = r'''
+      mutation DeactivateAccount(
+        $id: bigint!,
+        $name: String!,
+        $email: String!,
+        $password: String!
+      ) {
+        update_users_by_pk(
+          pk_columns: {id: $id},
+          _set: {
+            name: $name,
+            email: $email,
+            phone: null,
+            password: $password,
+            is_active: false,
+            firebase_token: null
+          }
+        ) {
+          id
+        }
+      }
+    ''';
+
+    final fallbackData = await _hasura.graphQLRequest(
+      query: softDeleteMutation,
+      variables: {
+        "id": id,
+        "name": "Silinmiş Hesap",
+        "email": deletedEmail,
+        "password": deletedPassword,
+      },
+    );
+
+    return fallbackData["update_users_by_pk"] != null;
   }
 }

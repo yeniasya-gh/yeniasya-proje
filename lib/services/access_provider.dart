@@ -57,6 +57,7 @@ class AccessProvider extends ChangeNotifier {
     notifyListeners();
     try {
       final entries = await _service.getAll(userId: userId);
+      final now = DateTime.now();
       for (final key in _access.keys) {
         _access[key] = <int?>{};
         _expires[key] = <int?, DateTime?>{};
@@ -71,9 +72,12 @@ class AccessProvider extends ChangeNotifier {
         } else if (rawId != null) {
           itemId = int.tryParse(rawId.toString());
         }
-        _access.putIfAbsent(type, () => <int?>{}).add(itemId);
         final expiresRaw = e["expires_at"]?.toString();
         final expDt = expiresRaw == null ? null : DateTime.tryParse(expiresRaw);
+        if (expDt != null && !expDt.isAfter(now)) {
+          continue;
+        }
+        _access.putIfAbsent(type, () => <int?>{}).add(itemId);
         final expMap = _expires.putIfAbsent(type, () => <int?, DateTime?>{});
         if (!expMap.containsKey(itemId)) {
           expMap[itemId] = expDt;

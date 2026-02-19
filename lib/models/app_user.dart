@@ -18,27 +18,30 @@ class AppUser {
   });
 
   factory AppUser.fromJson(Map<String, dynamic> json) {
+    final roleId = _readInt(json["role_id"]) ?? 0;
+    final payIdentity = _readPayIdentity(json);
     return AppUser(
-      id: json["id"],
-      name: json["name"],
-      email: json["email"],
-      phone: json["phone"],
-      roleId: json["role_id"] ?? 0,
-      roleName: json["role"]?["name"] ?? json["role_name"] ?? "user",
-      payUniqe: json["payUniqe"]?.toString() ?? json["payuniqe"]?.toString(),
+      id: _readRequiredInt(json["id"], fieldName: "id"),
+      name: _readString(json["name"]) ?? "",
+      email: _readString(json["email"]) ?? "",
+      phone: _readString(json["phone"]),
+      roleId: roleId,
+      roleName: _readRoleName(json, fallbackRoleId: roleId),
+      payUniqe: payIdentity,
     );
   }
 
   factory AppUser.fromAuthJson(Map<String, dynamic> json) {
-    final roleId = json["role_id"] ?? 0;
+    final roleId = _readInt(json["role_id"]) ?? 0;
+    final payIdentity = _readPayIdentity(json);
     return AppUser(
-      id: json["id"],
-      name: json["name"],
-      email: json["email"],
-      phone: json["phone"],
+      id: _readRequiredInt(json["id"], fieldName: "id"),
+      name: _readString(json["name"]) ?? "",
+      email: _readString(json["email"]) ?? "",
+      phone: _readString(json["phone"]),
       roleId: roleId,
-      roleName: json["role_name"] ?? (roleId == 2 ? "admin" : "user"),
-      payUniqe: json["payUniqe"]?.toString() ?? json["payuniqe"]?.toString(),
+      roleName: _readRoleName(json, fallbackRoleId: roleId),
+      payUniqe: payIdentity,
     );
   }
 
@@ -55,4 +58,70 @@ class AppUser {
   }
 
   bool get isAdmin => roleName.toLowerCase() == "admin";
+
+  // RevenueCat ile users tablosu arasında ortak kimlik:
+  // önce payUniqe, yoksa users.id.
+  String get revenueCatUserId {
+    final candidate = payUniqe?.trim();
+    if (candidate != null && candidate.isNotEmpty) {
+      return candidate;
+    }
+    return id.toString();
+  }
+
+  static String? _readPayIdentity(Map<String, dynamic> json) {
+    final keys = <String>[
+      "payUniqe",
+      "payuniqe",
+      "pay_unique",
+      "payUnique",
+      "revenuecat_user_id",
+    ];
+    for (final key in keys) {
+      final value = json[key]?.toString().trim();
+      if (value != null && value.isNotEmpty) {
+        return value;
+      }
+    }
+    return null;
+  }
+
+  static String _readRoleName(
+    Map<String, dynamic> json, {
+    required int fallbackRoleId,
+  }) {
+    final roleRaw = json["role"];
+    if (roleRaw is Map) {
+      final nested = _readString(roleRaw["name"]);
+      if (nested != null) return nested;
+    } else {
+      final direct = _readString(roleRaw);
+      if (direct != null) return direct;
+    }
+
+    return _readString(json["role_name"]) ??
+        (fallbackRoleId == 2 ? "admin" : "user");
+  }
+
+  static int _readRequiredInt(dynamic value, {required String fieldName}) {
+    final parsed = _readInt(value);
+    if (parsed == null) {
+      throw FormatException("Invalid `$fieldName` value: $value");
+    }
+    return parsed;
+  }
+
+  static int? _readInt(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    if (value == null) return null;
+    return int.tryParse(value.toString());
+  }
+
+  static String? _readString(dynamic value) {
+    if (value == null) return null;
+    final normalized = value.toString().trim();
+    if (normalized.isEmpty) return null;
+    return normalized;
+  }
 }

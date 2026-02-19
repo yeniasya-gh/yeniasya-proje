@@ -29,12 +29,16 @@ Future<void> showAddedToCartDialog(BuildContext context) {
   );
 }
 
-Future<void> showLoginRequirementDialog(BuildContext context) {
+Future<void> showLoginRequirementDialog(
+  BuildContext context, {
+  String message =
+      "Sepete ekleme işlemi yapabilmek için üye girişi yapmanız gerekmektedir.",
+}) {
   return showDialog<void>(
     context: context,
     builder: (dialogContext) => AlertDialog(
       title: const Text("Giriş Yapmalısınız"),
-      content: const Text("Sepete ekleme işlemi yapabilmek için üye girişi yapmanız gerekmektedir."),
+      content: Text(message),
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(dialogContext),

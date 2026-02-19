@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../utils/safe_image.dart';
 import '../../services/access_provider.dart';
+import '../../services/revenuecat_service.dart';
 import '../../services/upload_service.dart';
 
 class SearchScreen extends StatefulWidget {
@@ -12,8 +13,8 @@ class SearchScreen extends StatefulWidget {
   final List<Map<String, dynamic>> newspapers;
   final List<Map<String, dynamic>> attachments;
   final String initialQuery;
-  final bool hideMagazines;
-  final bool hideNewspapers;
+  final bool showMagazines;
+  final bool showNewspapers;
 
   const SearchScreen({
     super.key,
@@ -22,8 +23,8 @@ class SearchScreen extends StatefulWidget {
     required this.newspapers,
     required this.attachments,
     this.initialQuery = "",
-    this.hideMagazines = false,
-    this.hideNewspapers = false,
+    this.showMagazines = true,
+    this.showNewspapers = true,
   });
 
   @override
@@ -51,12 +52,11 @@ class _SearchScreenState extends State<SearchScreen> {
   Widget build(BuildContext context) {
     final results = _filterResults(_query);
     final access = context.watch<AccessProvider>();
-    final hintSegments = [
-      "Kitap",
-      if (!widget.hideMagazines) "dergi",
-      if (!widget.hideNewspapers) "gazete",
-      "ek",
-    ];
+    final rc = context.watch<RevenueCatService>();
+    final hintSegments = <String>["Kitap"];
+    if (widget.showMagazines) hintSegments.add("dergi");
+    if (widget.showNewspapers) hintSegments.add("gazete");
+    hintSegments.add("ek");
     final hintText = "${hintSegments.join(", ")} ara";
 
     return Scaffold(
@@ -94,27 +94,35 @@ class _SearchScreenState extends State<SearchScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _section("Kitaplar", results.books, "book", access: access),
-              const SizedBox(height: 18),
-              if (!widget.hideMagazines) ...[
+              _section(
+                "Kitaplar",
+                results.books,
+                "book",
+                access: access,
+                rc: rc,
+              ),
+              if (widget.showMagazines) ...[
+                const SizedBox(height: 18),
                 _section(
                   "Dergiler",
                   results.magazines,
                   "magazine",
                   access: access,
+                  rc: rc,
                 ),
-                const SizedBox(height: 18),
               ],
-              if (!widget.hideNewspapers) ...[
+              if (widget.showNewspapers) ...[
+                const SizedBox(height: 18),
                 _section(
                   "Gazeteler",
                   results.newspapers,
                   "newspaper",
                   access: access,
+                  rc: rc,
                 ),
-                const SizedBox(height: 18),
               ],
-              _section("Ekler", results.ekler, "ek", access: access),
+              const SizedBox(height: 18),
+              _section("Ekler", results.ekler, "ek", access: access, rc: rc),
             ],
           ),
         ),
@@ -133,21 +141,17 @@ class _SearchScreenState extends State<SearchScreen> {
       return t.contains(lower) || a.contains(lower);
     }).toList();
 
-    final mags = widget.hideMagazines
-        ? <Map<String, dynamic>>[]
-        : widget.magazines.where((m) {
-            final t = (m["name"] ?? "").toString().toLowerCase();
-            final c = (m["category"] ?? "").toString().toLowerCase();
-            return t.contains(lower) || c.contains(lower);
-          }).toList();
+    final mags = widget.magazines.where((m) {
+      final t = (m["name"] ?? "").toString().toLowerCase();
+      final c = (m["category"] ?? "").toString().toLowerCase();
+      return t.contains(lower) || c.contains(lower);
+    }).toList();
 
-    final news = widget.hideNewspapers
-        ? <Map<String, dynamic>>[]
-        : widget.newspapers.where((n) {
-            final d = (n["publish_date"] ?? "").toString().toLowerCase();
-            final t = (n["title"] ?? "gazete").toLowerCase();
-            return d.contains(lower) || t.contains(lower);
-          }).toList();
+    final news = widget.newspapers.where((n) {
+      final d = (n["publish_date"] ?? "").toString().toLowerCase();
+      final t = (n["title"] ?? "gazete").toLowerCase();
+      return d.contains(lower) || t.contains(lower);
+    }).toList();
 
     final eks = widget.attachments.where((e) {
       final name = (e["ad"] ?? "").toString().toLowerCase();
@@ -163,6 +167,7 @@ class _SearchScreenState extends State<SearchScreen> {
     List<Map<String, dynamic>> items,
     String type, {
     required AccessProvider access,
+    required RevenueCatService rc,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -178,7 +183,7 @@ class _SearchScreenState extends State<SearchScreen> {
             style: TextStyle(color: Colors.black54),
           )
         else
-          ...items.map((i) => _resultTile(i, type, access: access)),
+          ...items.map((i) => _resultTile(i, type, access: access, rc: rc)),
       ],
     );
   }
@@ -193,6 +198,7 @@ class _SearchScreenState extends State<SearchScreen> {
     Map<String, dynamic> item,
     String type,
     AccessProvider access,
+    RevenueCatService rc,
   ) {
     switch (type) {
       case "book":
@@ -204,7 +210,8 @@ class _SearchScreenState extends State<SearchScreen> {
             ? "Abonelik aktif"
             : null;
       case "newspaper":
-        return access.hasAccess("newspaper_subscription")
+        return (access.hasAccess("newspaper_subscription") ||
+                rc.isYeniasyaProActive)
             ? "Abonelik aktif"
             : null;
       case "ek":
@@ -220,6 +227,7 @@ class _SearchScreenState extends State<SearchScreen> {
     Map<String, dynamic> item,
     String type, {
     required AccessProvider access,
+    required RevenueCatService rc,
   }) {
     final title =
         (type == "ek"
@@ -248,7 +256,7 @@ class _SearchScreenState extends State<SearchScreen> {
                       "assets/images/gazete.jpg"))
             .toString();
 
-    final status = _statusLabelFor(item, type, access);
+    final status = _statusLabelFor(item, type, access, rc);
 
     return ListTile(
       contentPadding: EdgeInsets.zero,

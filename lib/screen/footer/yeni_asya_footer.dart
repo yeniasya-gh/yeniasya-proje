@@ -11,13 +11,14 @@ KEP: yeniasya@kep.gov.tr
 ''';
 
 const String kPrivacyPolicyContent = '''
-YENİ ASYA AŞ. — GİZLİLİK POLİTİKASI (KURUMSAL SON SÜRÜM)
+YENİ ASYA AŞ. — GİZLİLİK POLİTİKASI
 Son Güncelleme Tarihi: …/…/2026
 Yayınlayan: Yeni Asya AŞ.
 
 1. Giriş ve Amaç
-Bu Gizlilik Politikası, Yeni Asya AŞ. ("Şirket") tarafından işletilen yeniasya.com.tr internet sitesi ile Yeni Asya eGazete mobil uygulaması üzerinden elde edilen kişisel verilerin işlenmesine ilişkin usul ve esasları açıklamak amacıyla hazırlanmıştır.
-Şirket, kullanıcıların kişisel verilerinin gizliliğine ve güvenliğine önem verir; tüm veri işleme faaliyetleri KVKK, 5651, 6563, Türk Borçlar Kanunu ve ilgili ikincil düzenlemelere uygun şekilde yürütülür.
+Bu Gizlilik Politikası, Yeni Asya AŞ. (“Şirket”) tarafından işletilen yeniasya.com.tr internet sitesi ile Yeni Asya eGazete mobil uygulaması (birlikte “Platform”) üzerinden elde edilen kişisel verilerin işlenmesine ilişkin usul ve esasları açıklamak amacıyla hazırlanmıştır.
+Şirket, kullanıcıların kişisel verilerinin gizliliğine ve güvenliğine önem verir; veri işleme faaliyetleri KVKK, 5651, 6563, Türk Borçlar Kanunu ve ilgili ikincil düzenlemelere uygun şekilde yürütülür.
+Platform’un indirilmesi, erişilmesi veya kullanılması halinde işbu Gizlilik Politikası’nda belirtilen veri işleme faaliyetleri kapsamında kişisel verilerinizin işlenmesini kabul etmiş sayılırsınız.
 
 2. Veri Sorumlusu Bilgileri
 Yeni Asya AŞ.
@@ -28,81 +29,179 @@ KEP: yeniasya@kep.gov.tr
 3. İşlenen Kişisel Veri Kategorileri
 - Kimlik Bilgileri: Ad, soyad
 - İletişim Bilgileri: E-posta, telefon
-- Üyelik ve İşlem Bilgileri: Üyelik kayıtları, abonelik işlemleri
-- Cihaz ve Teknik Veriler: IP adresi, tarayıcı bilgisi, log kayıtları
-- Çerez Verileri: Zorunlu, performans, reklam çerezleri
-- Talep/Şikayet Verileri
+- Üyelik ve İşlem Bilgileri: Üyelik kayıtları, abonelik işlemleri, erişim geçmişi
+- Cihaz ve Teknik Veriler: IP adresi, cihaz türü, işletim sistemi, uygulama sürümü, tarayıcı bilgisi, hata kayıtları, log kayıtları
+- Kullanım/Analitik Veriler: Platform’da ziyaret edilen sayfalar/ekranlar, ziyaret tarihi ve saati, sayfada/ekranda geçirilen süre, uygulamada geçirilen toplam süre
+- Çerez Verileri (Web için): Zorunlu, performans/analitik, işlevsel, reklam/pazarlama çerezleri
+- Talep/Şikayet Verileri: İletişim formları, destek talepleri, geri bildirimler
+Konum Verileri: Platform, mobil cihazınızın kesin (precise) konum bilgisini toplamaz. (Bazı cihaz ayarları veya üçüncü taraf servisler yaklaşık konum üretebilir; Şirket, kesin konumu talep etmez.)
 
-4. Kişisel Verilerin İşlenme Amaçları
-- Üyelik oluşturma ve hizmet sunumu
-- Egazete erişimi ve dijital içerik sağlama
-- Güvenlik, log kaydı ve dolandırıcılık önleme
-- Kullanıcı deneyiminin iyileştirilmesi
-- Pazarlama ve kampanya bilgilendirmeleri (açık rıza ile)
-- Yasal yükümlülüklerin yerine getirilmesi
+4. Kişisel Verilerin Toplanma Yöntemi
+Kişisel verileriniz;
+- Platform üzerinden üyelik oluşturmanız, form doldurmanız, abonelik işlemi yapmanız,
+- Siteyi/uygulamayı kullanmanız sırasında otomatik olarak oluşan log ve analitik kayıtları,
+- Çerezler (web) ve benzeri teknolojiler,
+kanallarıyla otomatik veya kısmen otomatik olmayan yöntemlerle toplanabilir.
 
-5. Kişisel Verilerin İşlenme Hukuki Sebepleri
-Veriler;
-- KVKK m.5/2 (a), (c), (ç), (e), (f)
-- Açık rıza (KVKK m.5/1)
-- 5651 sayılı Kanun
-- 6563 sayılı Kanun
-kapsamında işlenmektedir.
+5. Kişisel Verilerin İşlenme Amaçları
+Kişisel verileriniz aşağıdaki amaçlarla işlenebilir:
+- Üyelik oluşturma, hesap yönetimi ve hizmet sunumu
+- eGazete erişimi ve dijital içerik sağlama
+- Platform’un güvenliğinin sağlanması, log kaydı tutulması, dolandırıcılık ve kötüye kullanımın önlenmesi
+- Kullanıcı deneyiminin iyileştirilmesi, performans/analitik çalışmalar
+- Hata tespiti, uygulama geliştirme, bakım ve destek süreçleri
+- Yasal yükümlülüklerin yerine getirilmesi ve yetkili kurum taleplerinin yanıtlanması
+- Bilgilendirme mesajları (önemli duyurular, zorunlu bildirimler)
+- Pazarlama ve kampanya bilgilendirmeleri (yalnızca gerekli hallerde ve açık rıza bulunması halinde)
+Şirket, kullanıcı tarafından sağlanan iletişim bilgilerini, zaman zaman önemli bilgilendirmeler, zorunlu bildirimler ve (varsa) açık rıza kapsamındaki kampanya duyuruları için kullanabilir.
 
-6. Kişisel Verilerin Aktarılması
-Veriler;
-- Sunucu ve altyapı hizmeti sağlayıcıları
-- Tedarikçiler
-- Yetkili kamu kurumları
-ile paylaşılabilir.
+6. Kişisel Verilerin İşlenme Hukuki Sebepleri
+Kişisel verileriniz;
+- KVKK m.5/2 (a), (c), (ç), (e), (f) kapsamındaki şartlara dayanarak,
+- Gerekli hallerde açık rıza (KVKK m.5/1),
+- 5651 sayılı Kanun ve ikincil mevzuat kapsamında loglama yükümlülükleri,
+- 6563 sayılı Kanun kapsamındaki yükümlülükler,
+doğrultusunda işlenmektedir.
 
-7. Saklama Süreleri
+7. Üçüncü Taraf Hizmetler ve Üçüncü Taraflara Aktarım
+Platform, bazı özelliklerin sunulması ve hizmet kalitesinin artırılması amacıyla üçüncü taraf servislerden yararlanabilir. Bu servisler kendi gizlilik politikalarına tabidir.
+Platform’da kullanılabilecek üçüncü taraf servis örnekleri (zaman içinde değişebilir):
+- Google Play Services
+- Google Analytics for Firebase
+- RevenueCat (abonelik/ödeme altyapısı)
+
+7.1. Hangi veriler aktarılabilir?
+Şirket, hizmetin geliştirilmesi amacıyla yalnızca gerekli olduğu ölçüde, anonimleştirilmiş veya toplulaştırılmış (aggregated) verileri periyodik olarak dış servislerle paylaşabilir. Ayrıca, uygulamanın çalışması için zorunlu teknik veriler (ör. cihaz/uygulama ölçümleri) ilgili servisler tarafından işlenebilir.
+
+7.2. Paylaşım/ifşa halleri
+Şirket, kullanıcı tarafından sağlanan ve otomatik toplanan verileri şu hallerde üçüncü kişilerle paylaşabilir/ifşa edebilir:
+- Kanunen zorunlu olması halinde (mahkeme kararı, savcılık talebi, resmi yazı vb. hukuki süreçlere uyum),
+- Şirket’in iyi niyetli değerlendirmesine göre; haklarını korumak, kullanıcı güvenliğini veya başkalarının güvenliğini sağlamak, dolandırıcılığı soruşturmak veya kamu otoritesi taleplerine yanıt vermek için gerekli olması halinde,
+- Şirket adına hizmet veren ve verileri bağımsız amaçlarla kullanmayan; yalnızca talimatla işleyen güvenilir hizmet sağlayıcılarla (barındırma, altyapı, analiz, müşteri destek vb.) ve bu sağlayıcıların işbu politikaya uygun hareket etmeyi kabul etmesi kaydıyla.
+
+8. Çerezler ve Benzeri Teknolojiler (Web)
+Web sitesi üzerinde çerezler kullanılabilir. Çerez türleri:
+- Zorunlu çerezler
+- Performans/analitik çerezler
+- Reklam/pazarlama çerezleri (varsa ve açık rıza gerektiriyorsa rıza ile)
+Çerez tercihlerinizi tarayıcı ayarlarınızdan yönetebilirsiniz.
+
+9. Kullanıcı Tercihleri ve Vazgeçme (Opt-Out) Hakları
+Kullanıcı, Platform’un veri toplamasını durdurmak için Uygulama’yı cihazından kaldırabilir. Bu işlem, mobil cihazınızın standart kaldırma yöntemleri veya uygulama mağazası üzerinden yapılabilir.
+Pazarlama iletişimleri (varsa) için sağlanan izinler, kullanıcı tarafından her zaman geri alınabilir.
+
+10. Veri Saklama Süreleri (Data Retention)
+Kişisel verileriniz, işleme amaçları için gerekli süre boyunca ve ilgili mevzuatta öngörülen asgari süreler kadar saklanır:
 - Log kayıtları: 5651 gereği 2 yıl
-- Üyelik verileri: üyelik devam ettiği sürece
-- Çerezler: türüne göre 1 gün - 2 yıl
+- Üyelik verileri: Üyelik devam ettiği sürece + makul süre
+- Talep/şikayet kayıtları: İlgili talep sonuçlandıktan sonra makul süre
+- Çerezler: Türüne göre 1 gün - 2 yıl
+Kullanıcı, Uygulama üzerinden sağladığı kişisel verilerin silinmesini talep etmek isterse bilgiislem@yeniasya.com.tr adresi üzerinden başvurabilir. Şirket, talebi makul süre içinde ve mevzuat çerçevesinde değerlendirir.
 
-8. KVKK Kapsamındaki Haklarınız
+11. Veri Güvenliği
+Şirket, işlenen kişisel verilerin gizliliğini korumak ve güvenliğini sağlamak amacıyla fiziksel, elektronik ve idari tedbirler uygular. Buna rağmen internet üzerinden yapılan veri iletimlerinin %100 güvenli olduğu garanti edilemez; kullanıcı da kendi cihaz güvenliğinden sorumludur.
+
+12. KVKK Kapsamındaki Haklarınız
 KVKK m.11 uyarınca;
-- Bilgi talep etme
-- Silme/düzeltme
-- İşlemeyi kısıtlama
-- İtiraz
-- Veri taşınabilirliği
+- Kişisel verilerinizin işlenip işlenmediğini öğrenme,
+- İşlenmişse bilgi talep etme,
+- İşleme amacını ve bunların amacına uygun kullanılıp kullanılmadığını öğrenme,
+- Yurt içinde/yurt dışında aktarıldığı üçüncü kişileri bilme,
+- Eksik/yanlış işlenmişse düzeltilmesini isteme,
+- KVKK’da öngörülen şartlar çerçevesinde silinmesini/yok edilmesini isteme,
+- Yapılan işlemlerin aktarıldığı üçüncü kişilere bildirilmesini isteme,
+- İşlenen verilerin münhasıran otomatik sistemler ile analiz edilmesi suretiyle aleyhe bir sonucun ortaya çıkmasına itiraz etme,
+- Kanuna aykırı işleme nedeniyle zarara uğranması hâlinde zararın giderilmesini talep etme,
 haklarına sahipsiniz.
 Başvuru: bilgiislem@yeniasya.com.tr
+
+13. Değişiklikler
+İşbu Gizlilik Politikası, herhangi bir nedenle zaman zaman güncellenebilir. Güncellemeler bu sayfada yayımlanır ve yayımlandığı tarihte yürürlüğe girer. Platform’u kullanmaya devam etmeniz, değişiklikleri kabul ettiğiniz anlamına gelir. Değişiklikler için bu sayfayı düzenli olarak kontrol etmeniz önerilir.
+
+14. Açık Rıza ve Onay (Your Consent)
+Platform’u kullanarak, kişisel verilerinizin işbu Gizlilik Politikası’nda belirtilen şekilde işlenmesine onay vermiş olursunuz. Açık rıza gerektiren hallerde (ör. pazarlama çerezleri/pazarlama iletişimi) ayrıca rızanız alınır.
+
+15. İletişim
+Gizlilik uygulamalarımız hakkında sorularınız veya talepleriniz için bizimle iletişime geçebilirsiniz:
+E-posta: bilgiislem@yeniasya.com.tr
+KEP: yeniasya@kep.gov.tr
 ''';
 
 const String kTermsOfUseContent = '''
-YENİ ASYA AŞ. — KULLANIM KOŞULLARI (KURUMSAL SON SÜRÜM)
+YENİ ASYA AŞ. — KULLANIM KOŞULLARI
 Son Güncelleme Tarihi: …/…/2026
 
 1. Taraflar ve Sözleşmenin Konusu
-Bu Kullanım Koşulları, Yeni Asya AŞ. tarafından işletilen yeniasya.com.tr ve Yeni Asya eGazete uygulamasının kullanımına ilişkin şartları düzenler.
+İşbu Kullanım Koşulları (“Sözleşme”), Yeni Asya AŞ. (“Şirket” veya “Hizmet Sağlayıcı”) tarafından işletilen yeniasya.com.tr internet sitesi ile Yeni Asya eGazete mobil uygulamasının (bundan böyle birlikte “Platform” veya “Uygulama”) kullanımına ilişkin şart ve kuralları düzenler.
+
+Platform’u indirmeniz, erişmeniz veya kullanmanız halinde işbu Sözleşme hükümlerini okuduğunuzu, anladığınızı ve kabul ettiğinizi beyan etmiş sayılırsınız. Bu şartları kabul etmiyorsanız Platform’u kullanmamalısınız.
 
 2. Hizmet Tanımı
-Şirket; haber, analiz, yorum, egazete, video ve dijital içerik hizmetleri sunar.
+Şirket; haber, analiz, yorum, e-gazete, video ve diğer dijital içerik hizmetleri sunar. Şirket, Platform’u daha faydalı ve verimli hale getirmek amacıyla içerikleri, özellikleri ve hizmet kapsamını dilediği zaman değiştirme, güncelleme veya yeni özellik ekleme hakkını saklı tutar.
+
+Platform, freemium (ücretsiz + ücretli) model kapsamında sunulabilir. Ücretli hizmet, abonelik veya uygulama içi satın alma olması halinde, ilgili ücretlendirme koşulları kullanıcıya açıkça bildirilecektir.
 
 3. Kullanıcı Yükümlülükleri
 Kullanıcı;
-- Doğru bilgi vermek
-- Siteyi hukuka aykırı amaçlarla kullanmamak
-- Telif haklarına riayet etmek
-- Hesap güvenliğini sağlamak
-ile yükümlüdür.
+- Platform’a kayıt olurken veya kullanırken doğru ve güncel bilgi vermeyi,
+- Platform’u hukuka, kamu düzenine ve genel ahlaka aykırı amaçlarla kullanmamayı,
+- Platform üzerinden sunulan içerik ve hizmetlerde telif haklarına riayet etmeyi,
+- Hesap bilgilerini gizli tutmayı ve üçüncü kişilerle paylaşmamayı,
+- Kendi cihazının güvenliğini sağlamayı,
+kabul eder.
+
+Kullanıcı, cihazının güvenliğinden bizzat sorumludur. Şirket, cihazınızın jailbreak/root yapılması (resmî işletim sistemi kısıtlarının kaldırılması) durumunda ortaya çıkabilecek güvenlik açıkları, kötü amaçlı yazılımlar, veri kaybı ve Platform’un çalışmaması gibi sonuçlardan sorumlu değildir. Root/jailbreak işlemleri Platform’un doğru çalışmasını engelleyebilir.
 
 4. Fikri Mülkiyet Hakları
-Sitede yer alan tüm içeriklerin telif hakkı Yeni Asya AŞ.'ye aittir.
-İzinsiz kopyalanamaz, çoğaltılamaz, dağıtılamaz.
+Platform’da yer alan tüm içerikler (metin, görsel, video, tasarım, logo, marka, arayüz, yazılım, veri tabanı vb.) üzerindeki telif, marka ve diğer fikrî mülkiyet hakları Yeni Asya AŞ.’ye veya ilgili hak sahibine aittir.
 
-5. Sorumluluk Reddi
-Şirket; teknik aksaklıklar, kesintiler, veri kayıpları ve üçüncü taraf saldırılarından doğan zararlardan sorumlu tutulamaz.
+İçerikler; Şirket’in yazılı izni olmadan kopyalanamaz, çoğaltılamaz, dağıtılamaz, yayımlanamaz, işlenemez, kaynak kodu çıkarılamaz, tercüme edilemez veya türev eser oluşturulamaz. Şirket markaları ve logoları izinsiz kullanılamaz.
 
-6. Üyeliğin Askıya Alınması veya Sonlandırılması
-Kullanıcı kurallara aykırı davranırsa üyelik durdurulabilir veya sonlandırılabilir.
+5. Kişisel Veriler ve Gizlilik
+Platform, hizmetin sunulabilmesi amacıyla kullanıcıların sağladığı bazı kişisel verileri saklayabilir ve işleyebilir. Kullanıcı, kişisel verilerin işlenmesine ilişkin detayların Gizlilik Politikası ve ilgili aydınlatma metinlerinde yer aldığını kabul eder.
 
-7. Uygulanacak Hukuk ve Yetkili Mahkeme
-İşbu sözleşme Türk Hukuku'na tabidir.
-Yetkili mahkeme: İstanbul Merkez Mahkemeleri ve İcra Daireleri
+Kullanıcı, cihazına yetkisiz erişimi engellemek, şifrelerini korumak ve güvenli kullanım için gerekli tedbirleri almakla yükümlüdür.
+
+6. Üçüncü Taraf Hizmetler
+Platform, belirli özelliklerin sağlanması için üçüncü taraf servislerden faydalanabilir. Bu servislerin kendi kullanım koşulları ve gizlilik politikaları bulunur. Kullanıcı, bu hizmetleri kullanırken ilgili üçüncü tarafların şartlarının da geçerli olabileceğini kabul eder.
+
+Platform’da kullanılabilecek üçüncü taraf servis örnekleri (listelenenler değişebilir):
+- Google Play Services
+- Google Analytics for Firebase
+- RevenueCat (abonelik/ödeme altyapısı)
+
+Şirket, üçüncü taraf servislerin erişilebilirliği, kesintisiz çalışması veya bu servislerden doğabilecek sonuçlardan sınırlı ölçüde sorumludur.
+
+7. İnternet Bağlantısı, Veri Kullanımı ve Cihaz Sorumluluğu
+Platform’un bazı işlevleri aktif internet bağlantısı gerektirir (Wi-Fi veya mobil veri). Wi-Fi erişiminizin olmaması veya mobil veri paketinizin bitmesi nedeniyle Platform’un tam kapasitede çalışmamasından Şirket sorumlu tutulamaz.
+
+Platform’u Wi-Fi dışında kullanmanız halinde mobil operatörünüzün şartları geçerli olur; veri kullanım ücretleri ve dolaşım (roaming) ücretleri gibi maliyetlerden kullanıcı sorumludur. Cihazın faturasını ödeyen kişi siz değilseniz gerekli izni aldığınızı kabul edersiniz.
+
+Kullanıcı, cihazının şarjı ve çalışır durumda olmasından sorumludur. Cihazın şarjının bitmesi veya donanımsal/yazılımsal sorunlar nedeniyle hizmete erişememekten Şirket sorumlu değildir.
+
+8. Sorumluluk Reddi ve Sınırlamalar
+Şirket, Platform’un her zaman güncel ve doğru olması için makul çabayı gösterir; ancak bazı bilgiler üçüncü taraf kaynaklardan sağlanabilir. Kullanıcı, Platform’daki içerik ve işlevleri kendi sorumluluğu altında kullandığını kabul eder.
+
+Şirket; teknik aksaklıklar, bakım çalışmaları, kesintiler, veri kaybı, gecikmeler, üçüncü taraf saldırıları, üçüncü taraf servis kesintileri veya mücbir sebepler nedeniyle ortaya çıkabilecek doğrudan veya dolaylı zararlardan, yürürlükteki mevzuatın izin verdiği ölçüde sorumlu tutulamaz.
+
+9. Üyeliğin Askıya Alınması veya Sonlandırılması
+Kullanıcının işbu Sözleşme’ye aykırı davranması, hukuka aykırı kullanım, güvenlik ihlali veya Şirket’in meşru menfaatlerini zedeleyebilecek hareketlerde bulunması halinde Şirket, kullanıcı hesabını geçici olarak askıya alma veya kalıcı olarak sonlandırma hakkını saklı tutar.
+
+Şirket, Platform’u dilediği zaman güncelleyebilir, kullanımını durdurabilir veya sona erdirebilir. Platform’un kullanımının sona ermesi halinde:
+(a) Kullanıcıya tanınan haklar ve lisanslar sona erer,
+(b) Kullanıcı Platform’u kullanmayı bırakmalı ve gerekirse cihazından kaldırmalıdır.
+
+10. Değişiklikler
+Şirket, işbu Kullanım Koşulları’nı dönemsel olarak güncelleyebilir. Güncellemeler Platform’da yayımlandığı tarihte yürürlüğe girer. Kullanıcı, bu sayfayı düzenli olarak kontrol etmekle sorumludur. Şirket, değişiklikleri Platform üzerinden yayımlayarak veya uygun gördüğü yöntemlerle kullanıcıya duyurabilir.
+
+11. Uygulanacak Hukuk ve Yetkili Mahkeme
+İşbu Sözleşme Türk Hukuku’na tabidir. Uyuşmazlıkların çözümünde İstanbul Merkez Mahkemeleri ve İcra Daireleri yetkilidir.
+
+12. İletişim
+İşbu Kullanım Koşulları ile ilgili soru ve önerileriniz için Şirket ile aşağıdaki kanallardan iletişime geçebilirsiniz:
+E-posta: app@yeniasya.com.tr
+Adres: 15 Temmuz Mah., 1508 Sk., No: 3, 34212, Güneşli, İstanbul
+Telefon: 0 (212) 655 88 59
 ''';
 
 const String kCookiePolicyContent = '''

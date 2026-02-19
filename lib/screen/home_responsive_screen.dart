@@ -4,10 +4,8 @@ import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
-import 'package:package_info_plus/package_info_plus.dart';
 import 'package:provider/provider.dart';
 import 'package:crypto/crypto.dart';
-import '../models/app_flags.dart';
 import '../services/access_provider.dart';
 import '/screen/footer/yeni_asya_footer.dart';
 import '/services/auth/auth_provider.dart';
@@ -15,7 +13,6 @@ import '/screen/login/login_screen.dart';
 import '/screen/profile/profile_screen.dart';
 import '/utils/route_guard.dart';
 import '/screen/cart/cart_screen.dart';
-import '/screen/order/order_list_screen.dart';
 import '/screen/order/order_detail_screen.dart';
 import '../services/admin/admin_magazine_service.dart';
 import '../services/admin/admin_book_service.dart';
@@ -26,11 +23,10 @@ import '../services/cart/cart_provider.dart';
 import '../models/cart_item.dart';
 import '../services/order_service.dart';
 import '../services/user_content_access_service.dart';
-import '../services/newspaper_subscription_type_service.dart';
+import '../services/revenuecat_service.dart';
+import '../services/app_feature_flags_service.dart';
 import '../services/upload_service.dart';
-import '../services/access_provider.dart';
 import '../services/home_showcase_service.dart';
-import '../services/app_flag_service.dart';
 import '../screen/profile/pdf_viewer_screen.dart';
 import '../utils/cart_feedback.dart';
 import '../utils/price_utils.dart';
@@ -65,10 +61,9 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
   final EkService _ekService = EkService();
   final OrderService _orderService = OrderService();
   final UserContentAccessService _accessService = UserContentAccessService();
-  final NewspaperSubscriptionTypeService _newsTypeService =
-      NewspaperSubscriptionTypeService();
   final HomeShowcaseService _homeShowcaseService = HomeShowcaseService();
-  final AppFlagService _appFlagService = AppFlagService();
+  final AppFeatureFlagsService _appFeatureFlagsService =
+      AppFeatureFlagsService();
 
   final PageController _sliderController = PageController();
   Timer? _sliderTimer;
@@ -90,16 +85,10 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
   bool _loadingAccessSheet = false;
   bool _deepLinkHandled = false;
   bool _standaloneRouteHandled = false;
-  bool _flagsLoaded = false;
+  bool _hideMagazines = false;
+  bool _hideNewspapers = false;
   AuthProvider? _authListener;
   DateTime? _newsSelectedDate;
-  AppFlags _appFlags = AppFlags.defaults;
-
-  bool get _hideMagazines => _appFlags.hideMagazines;
-  bool get _hideNewspapers => _appFlags.hideNewspapers;
-  bool get _effectiveHideMagazines => _hideMagazines;
-  bool get _effectiveHideNewspapers => _hideNewspapers;
-  bool get _storeFlagEnabled => _hideMagazines || _hideNewspapers;
 
   @override
   void initState() {
@@ -108,7 +97,6 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
       _authListener = context.read<AuthProvider>();
       _authListener?.addListener(_onAuthChange);
     });
-    _loadAppFlags();
     _loadData();
     _loadAccessIfNeeded();
     _loadLibraryOrders();
@@ -120,6 +108,12 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
       setState(() => loading = true);
     }
     try {
+      final visibilityFuture = _appFeatureFlagsService
+          .getVisibilityForCurrentApp()
+          .catchError((error) {
+            debugPrint("App feature flags load error: $error");
+            return const AppFeatureVisibility();
+          });
       final results = await Future.wait([
         _magService.getMagazines(),
         _bookService.getAllBooks(),
@@ -128,6 +122,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         _sliderService.getAll(onlyActive: true),
         _homeShowcaseService.getByType("book", onlyActive: true),
         _homeShowcaseService.getByType("magazine", onlyActive: true),
+        visibilityFuture,
       ]);
 
       final mag = results[0] as List<Map<String, dynamic>>;
@@ -137,6 +132,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
       final sliderItems = results[4] as List<Map<String, dynamic>>;
       final homeBooks = results[5] as List<Map<String, dynamic>>;
       final homeMags = results[6] as List<Map<String, dynamic>>;
+      final visibility = results[7] as AppFeatureVisibility;
       if (!mounted) return;
       setState(() {
         sliders = sliderItems;
@@ -147,6 +143,12 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         attachments = eks;
         homeBookEntries = homeBooks;
         homeMagazineEntries = homeMags;
+        _hideMagazines = visibility.hideMagazines;
+        _hideNewspapers = visibility.hideNewspapers;
+        if ((_hideMagazines && _section == HomeSection.magazines) ||
+            (_hideNewspapers && _section == HomeSection.newspapers)) {
+          _section = HomeSection.home;
+        }
       });
       _startSliderAuto();
       await _handleInitialDeepLink();
@@ -158,39 +160,10 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     }
   }
 
-  Future<void> _loadAppFlags() async {
-    try {
-      final info = await PackageInfo.fromPlatform();
-      final build = info.buildNumber;
-      final version = build.isNotEmpty
-          ? "${info.version}+$build"
-          : info.version;
-      final flags = await _appFlagService.fetchFlags(version: version);
-      if (!mounted) return;
-      setState(() {
-        _appFlags = flags;
-        _flagsLoaded = true;
-        if (_effectiveHideMagazines && _section == HomeSection.magazines) {
-          _section = HomeSection.home;
-        }
-        if (_effectiveHideNewspapers && _section == HomeSection.newspapers) {
-          _section = HomeSection.home;
-        }
-      });
-    } catch (e) {
-      debugPrint("App flag load error: $e");
-      if (!mounted) return;
-      setState(() {
-        _flagsLoaded = true;
-      });
-    }
-  }
-
   Future<void> _refreshHome() async {
     await _loadData(showLoading: false);
     await _loadLibraryOrders();
     await _loadLibraryAccess();
-    await _loadAppFlags();
     _loadAccessIfNeeded();
   }
 
@@ -261,13 +234,11 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     if (!mounted) return;
     setState(() {
       loading = true;
-      _flagsLoaded = false;
       _section = HomeSection.home;
       _mobileNavIndex = 0;
       libraryOrders = [];
       libraryAccess = [];
     });
-    _loadAppFlags();
     _loadData();
   }
 
@@ -292,11 +263,6 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     final uri = widget.initialUri!;
     final type = uri.queryParameters["type"];
     final id = int.tryParse(uri.queryParameters["id"] ?? "");
-    if ((_effectiveHideMagazines && type == "magazine") ||
-        (_effectiveHideNewspapers &&
-            (type == "newspaper" || type == "newspaper_subscription"))) {
-      return;
-    }
     if (type == null || id == null) return;
 
     ProductDetail? detail;
@@ -306,6 +272,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         if (data.isNotEmpty) detail = _mapBookDetail(data);
         break;
       case "magazine":
+        if (_hideMagazines) break;
         final data = magazines.firstWhere(
           (m) => m["id"] == id,
           orElse: () => {},
@@ -315,6 +282,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
       case "magazine_issue":
         break;
       case "newspaper_subscription":
+        if (_hideNewspapers) break;
         final data = newspapers.firstWhere(
           (n) => n["id"] == id,
           orElse: () => {},
@@ -494,11 +462,6 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
   }
 
   bool _openSliderTarget(String type, int id) {
-    if ((_effectiveHideMagazines && type == "magazine") ||
-        (_effectiveHideNewspapers &&
-            (type == "newspaper_subscription" || type == "newspaper"))) {
-      return false;
-    }
     switch (type) {
       case "book":
         final data = books.firstWhere((b) => b["id"] == id, orElse: () => {});
@@ -508,6 +471,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         }
         return false;
       case "magazine":
+        if (_hideMagazines) return false;
         final data = magazines.firstWhere(
           (m) => m["id"] == id,
           orElse: () => {},
@@ -519,6 +483,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         return false;
       case "newspaper_subscription":
       case "newspaper":
+        if (_hideNewspapers) return false;
         final data = newspapers.firstWhere(
           (n) => n["id"] == id,
           orElse: () => {},
@@ -549,12 +514,12 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
       MaterialPageRoute(
         builder: (_) => SearchScreen(
           books: books,
-          magazines: _effectiveHideMagazines ? [] : magazines,
-          newspapers: _effectiveHideNewspapers ? [] : newspapers,
+          magazines: magazines,
+          newspapers: newspapers,
           attachments: attachments,
           initialQuery: initialQuery,
-          hideMagazines: _effectiveHideMagazines,
-          hideNewspapers: _effectiveHideNewspapers,
+          showMagazines: !_hideMagazines,
+          showNewspapers: !_hideNewspapers,
         ),
         fullscreenDialog: true,
       ),
@@ -567,123 +532,63 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
       if (type == "book") {
         _openProductDetail(_mapBookDetail(item));
       } else if (type == "magazine") {
+        if (_hideMagazines) return;
         _openProductDetail(_mapMagazineDetail(item));
       } else if (type == "ek") {
         _openEkDetail(item);
       } else {
+        if (_hideNewspapers) return;
         _openProductDetail(_mapNewspaperDetail(item));
       }
     });
   }
 
-  Future<void> _selectNewspaperSubscriptionType(
-    BuildContext context,
-    CartProvider cart, {
-    required String imageUrl,
-  }) async {
-    final auth = Provider.of<AuthProvider>(context, listen: false);
-    if (!auth.isLoggedIn) {
-      showLoginRequirementDialog(context);
+  Future<void> _openNewspaperPaywall(BuildContext context) async {
+    final auth = context.read<AuthProvider>();
+    final user = auth.user;
+    if (!auth.isLoggedIn || user == null) {
+      showLoginRequirementDialog(
+        context,
+        message:
+            "E-gazeteye abone olmak için üye girişi yapmanız gerekmektedir.",
+      );
       return;
     }
-    try {
-      final list = await _newsTypeService.getActiveTypes();
+
+    final rc = context.read<RevenueCatService>();
+    final access = context.read<AccessProvider>();
+    final messenger = ScaffoldMessenger.of(context);
+    await rc.syncWithAuthUser(user);
+    final result = await rc.presentYeniasyaProPaywall(userId: user.id);
+    if (!mounted) return;
+
+    if (result.name == "purchased" || result.name == "restored") {
+      await access.load(user.id);
       if (!mounted) return;
-      if (list.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Gazete abonelik tipi bulunamadı.")),
-        );
-        return;
-      }
-      showModalBottomSheet(
-        context: context,
-        isScrollControlled: true,
-        builder: (_) => Padding(
-          padding: const EdgeInsets.all(16),
-          child: SizedBox(
-            height: 420,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  "Gazete Aboneliği Seç",
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 12),
-                Expanded(
-                  child: ListView.separated(
-                    itemCount: list.length,
-                    separatorBuilder: (_, __) => const Divider(height: 1),
-                    itemBuilder: (_, i) {
-                      final item = list[i];
-                      final id = _toInt(item["id"]) ?? 0;
-                      final months = _toInt(item["duration_months"]) ?? 0;
-                      final price = _parsePrice(item["price"]);
-                      final title = (item["title"] ?? "").toString().trim();
-                      final displayTitle = title.isNotEmpty
-                          ? title
-                          : "$months Aylık Gazete Aboneliği";
-                      final cartItem = CartItem(
-                        id: "news-type-$id",
-                        title: displayTitle,
-                        subtitle: "Gazete Aboneliği",
-                        imageUrl: imageUrl,
-                        price: price,
-                        quantity: 1,
-                        type: CartItemType.newspaperSubscription,
-                        metadata: {
-                          "productId": id,
-                          "period": months,
-                          "periodMonths": months,
-                          "typeTitle": displayTitle,
-                        },
-                      );
-                      final alreadyInCart = cart.contains(cartItem);
-                      return ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        title: Text(displayTitle),
-                        subtitle: Text(
-                          months > 0 ? "$months ay" : "Gazete Aboneliği",
-                        ),
-                        trailing: Text(
-                          alreadyInCart
-                              ? "Sepette"
-                              : "₺${price.toStringAsFixed(2)}",
-                          style: TextStyle(
-                            fontWeight: FontWeight.w700,
-                            color: alreadyInCart ? Colors.grey : Colors.red,
-                          ),
-                        ),
-                        onTap: alreadyInCart
-                            ? null
-                            : () {
-                                final added = cart.addIfAbsent(cartItem);
-                                if (added) {
-                                  Navigator.pop(context);
-                                  showAddedToCartDialog(context);
-                                } else {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text("Bu ürün zaten sepette."),
-                                    ),
-                                  );
-                                }
-                              },
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
+      messenger.showSnackBar(
+        const SnackBar(content: Text("Abonelik başarıyla aktif edildi.")),
       );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Gazete abonelik tipleri alınamadı: $e")),
-      );
+      return;
     }
+    if (result.name == "notPresented" && rc.isYeniasyaProActive) {
+      await access.load(user.id);
+      if (!mounted) return;
+      messenger.showSnackBar(
+        const SnackBar(content: Text("Aboneliğiniz zaten aktif.")),
+      );
+      return;
+    }
+    if (result.name == "cancelled") {
+      messenger.showSnackBar(
+        const SnackBar(content: Text("İşlem iptal edildi.")),
+      );
+      return;
+    }
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(rc.errorMessage ?? "Abonelik işlemi tamamlanamadı."),
+      ),
+    );
   }
 
   void _openFromOrderItem(Map<String, dynamic> item) {
@@ -1422,9 +1327,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
 
   ProductDetail _mapNewspaperDetail(Map<String, dynamic> news) {
     final dateStr = news["publish_date"]?.toString() ?? "";
-    final hasSub = context.read<AccessProvider>().hasAccess(
-      "newspaper_subscription",
-    );
+    final hasSub = _hasNewspaperSubscription(context);
     final title = "E-Gazete";
     final fileUrl = news["file_url"]?.toString();
     return ProductDetail(
@@ -1522,7 +1425,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     final isTablet = screenWidth > 600 && screenWidth <= 900;
     final hasSlider = sliders.isNotEmpty;
 
-    if (loading || !_flagsLoaded) {
+    if (loading) {
       return const Scaffold(
         backgroundColor: Colors.white,
         body: Center(child: CircularProgressIndicator()),
@@ -1563,10 +1466,10 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
                         Row(
                           children: [
                             _menuItem("Anasayfa", HomeSection.home),
-                            if (!_effectiveHideMagazines)
+                            if (!_hideMagazines)
                               _menuItem("E-Dergi", HomeSection.magazines),
                             _menuItem("Kitap", HomeSection.books),
-                            if (!_effectiveHideNewspapers)
+                            if (!_hideNewspapers)
                               _menuItem("E-Gazete", HomeSection.newspapers),
                             _menuItem("Ekler", HomeSection.attachments),
                           ],
@@ -1826,7 +1729,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
   Widget _buildBodyContent(bool isWeb, bool isTablet, CartProvider cart) {
     switch (_section) {
       case HomeSection.magazines:
-        if (_effectiveHideMagazines) return const SizedBox.shrink();
+        if (_hideMagazines) return const SizedBox.shrink();
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1846,7 +1749,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
           ],
         );
       case HomeSection.newspapers:
-        if (_effectiveHideNewspapers) return const SizedBox.shrink();
+        if (_hideNewspapers) return const SizedBox.shrink();
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1879,17 +1782,16 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         );
       case HomeSection.home:
       default:
-        final hasNewspaperShowcase =
-            !_effectiveHideNewspapers && newspapers.isNotEmpty;
-        final hasMagazineShowcase =
-            !_effectiveHideMagazines &&
-            _buildHomeShowcaseList(
-              baseItems: magazines,
-              selectedEntries: homeMagazineEntries,
-              maxItems: 10,
-              idKey: "id",
-              selectedIdKey: "product_id",
-            ).isNotEmpty;
+        final hasNewspaperShowcase = !_hideNewspapers && newspapers.isNotEmpty;
+        final hasMagazineShowcase = !_hideMagazines
+            ? _buildHomeShowcaseList(
+                baseItems: magazines,
+                selectedEntries: homeMagazineEntries,
+                maxItems: 10,
+                idKey: "id",
+                selectedIdKey: "product_id",
+              ).isNotEmpty
+            : false;
         final hasBookShowcase = _buildHomeShowcaseList(
           baseItems: books,
           selectedEntries: homeBookEntries,
@@ -1930,7 +1832,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         }
 
         if (hasNewspaperShowcase) {
-          addSection(_newspaperShowcase(context, isWeb, cart));
+          addSection(_newspaperShowcase(context, isWeb));
         }
         if (hasMagazineShowcase) {
           addSection(_magazineShowcase(context, isWeb));
@@ -1966,7 +1868,8 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
               controller: _sliderController,
               itemCount: sliders.length,
               onPageChanged: (index) => setState(() => _sliderIndex = index),
-              itemBuilder: (_, index) => _sliderSlide(sliders[index]),
+              itemBuilder: (_, index) =>
+                  _sliderSlide(sliders[index], isWeb: isWeb),
             ),
           ),
         ),
@@ -1978,7 +1881,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     );
   }
 
-  Widget _sliderSlide(Map<String, dynamic> slide) {
+  Widget _sliderSlide(Map<String, dynamic> slide, {required bool isWeb}) {
     final imageUrl = UploadService.normalizeUrl(
       slide["image_url"]?.toString() ?? "",
     );
@@ -1993,7 +1896,24 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            safeImage(imageUrl, fit: BoxFit.cover, fallbackIcon: Icons.image),
+            if (isWeb) ...[
+              safeImage(imageUrl, fit: BoxFit.cover, fallbackIcon: Icons.image),
+              Positioned.fill(
+                child: ColoredBox(color: Colors.black.withValues(alpha: 0.28)),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+                child: safeImage(
+                  imageUrl,
+                  fit: BoxFit.contain,
+                  fallbackIcon: Icons.image,
+                ),
+              ),
+            ] else
+              safeImage(imageUrl, fit: BoxFit.cover, fallbackIcon: Icons.image),
             if (hasOverlay)
               Positioned(
                 left: 0,
@@ -2078,7 +1998,6 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
   }
 
   Widget _magazineShowcase(BuildContext context, bool isWeb) {
-    if (_effectiveHideMagazines) return const SizedBox.shrink();
     final displayList = _buildHomeShowcaseList(
       baseItems: magazines,
       selectedEntries: homeMagazineEntries,
@@ -2219,14 +2138,8 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     );
   }
 
-  Widget _newspaperShowcase(
-    BuildContext context,
-    bool isWeb,
-    CartProvider cart,
-  ) {
-    if (_effectiveHideNewspapers) return const SizedBox.shrink();
+  Widget _newspaperShowcase(BuildContext context, bool isWeb) {
     if (newspapers.isEmpty) return const SizedBox.shrink();
-    final access = context.watch<AccessProvider>();
     const fallbackImage = "assets/images/gazete.jpg";
     final today = DateTime.now();
     final items = newspapers.take(10).map((n) {
@@ -2242,11 +2155,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
       };
     }).toList();
 
-    final showRead = access.hasAccess("newspaper_subscription");
-    final subscriptionImage = items.isNotEmpty
-        ? (items.first["image"] as String? ?? fallbackImage)
-        : fallbackImage;
-
+    final showRead = _hasNewspaperSubscription(context, listen: true);
     void openList() {
       if (isWeb) {
         setState(() => _section = HomeSection.newspapers);
@@ -2274,13 +2183,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
               children: [
                 if (!showRead)
                   ElevatedButton(
-                    onPressed: () {
-                      _selectNewspaperSubscriptionType(
-                        context,
-                        cart,
-                        imageUrl: subscriptionImage,
-                      );
-                    },
+                    onPressed: () => _openNewspaperPaywall(context),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.red,
                       foregroundColor: Colors.white,
@@ -2335,9 +2238,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
 
   Widget _newspaperFilters(BuildContext context) {
     final auth = context.watch<AuthProvider>();
-    final hasSubscription = context.watch<AccessProvider>().hasAccess(
-      "newspaper_subscription",
-    );
+    final hasSubscription = _hasNewspaperSubscription(context, listen: true);
     if (!auth.isLoggedIn || !hasSubscription) {
       return const SizedBox.shrink();
     }
@@ -2535,7 +2436,6 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
   }
 
   Widget _magazineListGrid(BuildContext context, bool isWeb) {
-    if (_effectiveHideMagazines) return const SizedBox.shrink();
     final cart = Provider.of<CartProvider>(context, listen: false);
     final access = Provider.of<AccessProvider>(context, listen: false);
     final crossAxisCount = isWeb ? 4 : (isTabletLayout(context) ? 2 : 1);
@@ -2676,12 +2576,8 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     bool isWeb,
     List<Map<String, dynamic>> items,
   ) {
-    if (_effectiveHideNewspapers) return const SizedBox.shrink();
     final crossAxisCount = isWeb ? 3 : 2;
-    final hasSub = Provider.of<AccessProvider>(
-      context,
-      listen: false,
-    ).hasAccess("newspaper_subscription");
+    final hasSub = _hasNewspaperSubscription(context, listen: true);
     return LayoutBuilder(
       builder: (context, constraints) {
         return GridView.builder(
@@ -2708,15 +2604,19 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
               },
               compact: true,
               imageHeight: isWeb ? (hasSub ? 150 : 140) : (hasSub ? 130 : 120),
-              showRead: context.read<AccessProvider>().hasAccess(
-                "newspaper_subscription",
-              ),
+              showRead: hasSub,
               onTap: () => _openProductDetail(_mapNewspaperDetail(items[i])),
             );
           },
         );
       },
     );
+  }
+
+  bool _hasNewspaperSubscription(BuildContext context, {bool listen = false}) {
+    final access = Provider.of<AccessProvider>(context, listen: listen);
+    final rc = Provider.of<RevenueCatService>(context, listen: listen);
+    return access.hasAccess("newspaper_subscription") || rc.isYeniasyaProActive;
   }
 
   IconData _iconForType(String type) {
@@ -3336,9 +3236,7 @@ Widget _libraryView(BuildContext context, _HomeResponsiveScreenState state) {
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Text(
-            state._storeFlagEnabled
-                ? "İçerikler"
-                : "Aboneliklerim / İçeriklerim",
+            "Aboneliklerim / İçeriklerim",
             style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
           ),
         ),
@@ -3353,36 +3251,44 @@ Widget _librarySubscriptionCard(
   BuildContext context,
   _HomeResponsiveScreenState state,
 ) {
-  final showMag = !state._effectiveHideMagazines;
-  final showNews = !state._effectiveHideNewspapers;
-  final tiles = <Widget>[
+  final tiles = <Widget>[];
+
+  void addTile(Widget tile) {
+    if (tiles.isNotEmpty) {
+      tiles.add(const Divider(height: 1, thickness: 1));
+    }
+    tiles.add(tile);
+  }
+
+  addTile(
     _libraryMenuTile(
       Icons.menu_book_outlined,
       "Kitaplar",
       onTap: () => state._openAccessSheet(context, "book", "Kitaplar"),
     ),
-  ];
-  if (showMag) {
-    tiles.addAll([
-      const Divider(height: 1, thickness: 1),
+  );
+
+  if (!state._hideMagazines) {
+    addTile(
       _libraryMenuTile(
         Icons.library_books,
         "Dergi Abonelikleri",
         onTap: () =>
             state._openAccessSheet(context, "magazine", "Dergi Abonelikleri"),
       ),
-      const Divider(height: 1, thickness: 1),
+    );
+    addTile(
       _libraryMenuTile(
         Icons.history_edu,
         "Dergi Sayıları",
         onTap: () =>
             state._openAccessSheet(context, "magazine_issue", "Dergi Sayıları"),
       ),
-    ]);
+    );
   }
-  if (showNews) {
-    tiles.addAll([
-      const Divider(height: 1, thickness: 1),
+
+  if (!state._hideNewspapers) {
+    addTile(
       _libraryMenuTile(
         Icons.newspaper,
         "Gazete Aboneliği",
@@ -3392,16 +3298,16 @@ Widget _librarySubscriptionCard(
           "Gazete Aboneliği",
         ),
       ),
-    ]);
+    );
   }
-  tiles.addAll([
-    const Divider(height: 1, thickness: 1),
+
+  addTile(
     _libraryMenuTile(
       Icons.file_present,
       "Ekler",
       onTap: () => state._openAccessSheet(context, "ek", "Ekler"),
     ),
-  ]);
+  );
 
   return Padding(
     padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -3741,9 +3647,9 @@ class _NewspaperListScreen extends StatefulWidget {
 class _NewspaperListScreenState extends State<_NewspaperListScreen> {
   Future<void> _pickSingleDate() async {
     final auth = context.read<AuthProvider>();
-    final access = context.read<AccessProvider>();
     final canPick =
-        auth.isLoggedIn && access.hasAccess("newspaper_subscription");
+        auth.isLoggedIn &&
+        widget.homeState._hasNewspaperSubscription(context, listen: false);
     if (!canPick) {
       if (!auth.isLoggedIn) {
         if (!mounted) return;
@@ -3788,9 +3694,23 @@ class _NewspaperListScreenState extends State<_NewspaperListScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.homeState._hideNewspapers) {
+      return Scaffold(
+        appBar: AppBar(
+          backgroundColor: Colors.white,
+          foregroundColor: Colors.black,
+          title: const Text("E-Gazete"),
+          elevation: 1,
+        ),
+        body: const Center(
+          child: Text("Bu sürümde E-Gazete içeriği gizlidir."),
+        ),
+      );
+    }
     final auth = context.watch<AuthProvider>();
-    final hasSubscription = context.watch<AccessProvider>().hasAccess(
-      "newspaper_subscription",
+    final hasSubscription = widget.homeState._hasNewspaperSubscription(
+      context,
+      listen: true,
     );
     final canPickDate = auth.isLoggedIn && hasSubscription;
     return Scaffold(
@@ -4069,6 +3989,17 @@ class _MagazineBrowseScreenState extends State<_MagazineBrowseScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.homeState._hideMagazines) {
+      return Scaffold(
+        appBar: AppBar(
+          backgroundColor: Colors.white,
+          foregroundColor: Colors.black,
+          title: const Text("E-dergi"),
+          elevation: 1,
+        ),
+        body: const Center(child: Text("Bu sürümde E-dergi içeriği gizlidir.")),
+      );
+    }
     final access = context.watch<AccessProvider>();
     final mags = widget.homeState.magazines;
 

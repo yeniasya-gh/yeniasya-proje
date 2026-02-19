@@ -1,3 +1,5 @@
+import "dart:async";
+
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -7,6 +9,7 @@ import '/screen/home_responsive_screen.dart';
 import '/services/auth/auth_provider.dart';
 import '/services/cart/cart_provider.dart';
 import '/services/access_provider.dart';
+import '/services/revenuecat_service.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 
@@ -22,6 +25,7 @@ void main() async {
   final authProvider = AuthProvider();
   final cartProvider = CartProvider();
   final accessProvider = AccessProvider();
+  final revenueCatService = RevenueCatService();
 
   // Link logout cleanup
   authProvider.onLogout = () {
@@ -36,6 +40,21 @@ void main() async {
   };
 
   await authProvider.loadSession();
+  await revenueCatService.syncWithAuthUser(authProvider.user);
+
+  String? lastRevenueCatIdentity =
+      authProvider.isLoggedIn && authProvider.user != null
+      ? "user:${authProvider.user!.id}"
+      : "guest";
+  authProvider.addListener(() {
+    final user = authProvider.user;
+    final nextIdentity = authProvider.isLoggedIn && user != null
+        ? "user:${user.id}"
+        : "guest";
+    if (nextIdentity == lastRevenueCatIdentity) return;
+    lastRevenueCatIdentity = nextIdentity;
+    unawaited(revenueCatService.syncWithAuthUser(user));
+  });
 
   runApp(
     MultiProvider(
@@ -43,6 +62,7 @@ void main() async {
         ChangeNotifierProvider.value(value: authProvider),
         ChangeNotifierProvider.value(value: cartProvider),
         ChangeNotifierProvider.value(value: accessProvider),
+        ChangeNotifierProvider.value(value: revenueCatService),
       ],
       child: const AppWrapper(),
     ),
