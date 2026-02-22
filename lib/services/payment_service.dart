@@ -7,11 +7,24 @@ import 'auth/auth_token_store.dart';
 
 class PaymentService {
   PaymentService({String? baseUrl, http.Client? client})
-      : _baseUrl = baseUrl ?? PaymentConfig.baseUrl,
-        _client = client ?? http.Client();
+    : _baseUrl = baseUrl ?? PaymentConfig.baseUrl,
+      _client = client ?? http.Client();
 
   final String _baseUrl;
   final http.Client _client;
+
+  Map<String, String> _authorizedHeaders() {
+    final token = AuthTokenStore.token?.trim();
+    if (token == null || token.isEmpty) {
+      throw const PaymentSessionException(
+        "Oturum süresi dolmuş. Lütfen tekrar giriş yapın.",
+      );
+    }
+    return {
+      "content-type": "application/json",
+      "Authorization": "Bearer $token",
+    };
+  }
 
   Future<String> createSession({required Map<String, dynamic> payload}) async {
     final uri = Uri.parse("$_baseUrl/payment/session");
@@ -19,32 +32,29 @@ class PaymentService {
     print("🟦 PaymentService.createSession -> $uri");
     // ignore: avoid_print
     print("🟦 Payment payload: ${jsonEncode(payload)}");
-    final headers = {
-      "content-type": "application/json",
-      "x-api-key": PaymentConfig.apiKey,
-      if (AuthTokenStore.token != null && AuthTokenStore.token!.isNotEmpty)
-        "Authorization": "Bearer ${AuthTokenStore.token}",
-    };
+    final headers = _authorizedHeaders();
     final resp = await _client
-        .post(
-          uri,
-          headers: headers,
-          body: jsonEncode(payload),
-        )
+        .post(uri, headers: headers, body: jsonEncode(payload))
         .timeout(const Duration(seconds: 20));
 
     // ignore: avoid_print
     print("🟩 Payment session response (${resp.statusCode}): ${resp.body}");
 
     if (resp.statusCode < 200 || resp.statusCode >= 300) {
-      throw Exception("Session token alinmadi (${resp.statusCode}): ${resp.body}");
+      throw Exception(
+        "Session token alinmadi (${resp.statusCode}): ${resp.body}",
+      );
     }
 
     try {
       final data = jsonDecode(resp.body) as Map<String, dynamic>;
-      final responseCode = data["paratika"]?["data"]?["responseCode"]?.toString();
-      if (responseCode != null && responseCode.isNotEmpty && responseCode != "00") {
-        final msg = data["paratika"]?["data"]?["errorMsg"]?.toString() ??
+      final responseCode = data["paratika"]?["data"]?["responseCode"]
+          ?.toString();
+      if (responseCode != null &&
+          responseCode.isNotEmpty &&
+          responseCode != "00") {
+        final msg =
+            data["paratika"]?["data"]?["errorMsg"]?.toString() ??
             data["paratika"]?["data"]?["responseMsg"]?.toString() ??
             "Session reddedildi.";
         throw PaymentSessionException(msg);
@@ -64,18 +74,9 @@ class PaymentService {
     // ignore: avoid_print
     print("🟦 PaymentService.queryCards -> $uri (customer=$customer)");
 
-    final headers = {
-      "content-type": "application/json",
-      "x-api-key": PaymentConfig.apiKey,
-      if (AuthTokenStore.token != null && AuthTokenStore.token!.isNotEmpty)
-        "Authorization": "Bearer ${AuthTokenStore.token}",
-    };
+    final headers = _authorizedHeaders();
     final resp = await _client
-        .post(
-          uri,
-          headers: headers,
-          body: jsonEncode({"customer": customer}),
-        )
+        .post(uri, headers: headers, body: jsonEncode({"customer": customer}))
         .timeout(const Duration(seconds: 20));
 
     // ignore: avoid_print
@@ -87,8 +88,11 @@ class PaymentService {
 
     final data = jsonDecode(resp.body) as Map<String, dynamic>;
     final responseCode = data["responseCode"]?.toString();
-    if (responseCode != null && responseCode.isNotEmpty && responseCode != "00") {
-      final msg = data["errorMsg"]?.toString() ??
+    if (responseCode != null &&
+        responseCode.isNotEmpty &&
+        responseCode != "00") {
+      final msg =
+          data["errorMsg"]?.toString() ??
           data["responseMsg"]?.toString() ??
           "Kayıtlı kartlar alınamadı.";
       throw PaymentSessionException(msg);
@@ -106,18 +110,9 @@ class PaymentService {
     // ignore: avoid_print
     print("🟦 PaymentService.deleteCard -> $uri (token=$cardToken)");
 
-    final headers = {
-      "content-type": "application/json",
-      "x-api-key": PaymentConfig.apiKey,
-      if (AuthTokenStore.token != null && AuthTokenStore.token!.isNotEmpty)
-        "Authorization": "Bearer ${AuthTokenStore.token}",
-    };
+    final headers = _authorizedHeaders();
     final resp = await _client
-        .post(
-          uri,
-          headers: headers,
-          body: jsonEncode({"cardToken": cardToken}),
-        )
+        .post(uri, headers: headers, body: jsonEncode({"cardToken": cardToken}))
         .timeout(const Duration(seconds: 20));
 
     // ignore: avoid_print
@@ -207,9 +202,7 @@ class PaymentRedirectPayload {
   });
 
   Map<String, dynamic> toJson() {
-    final json = <String, dynamic>{
-      "SESSIONTOKEN": sessionToken,
-    };
+    final json = <String, dynamic>{"SESSIONTOKEN": sessionToken};
 
     if (cardToken != null && cardToken!.isNotEmpty) {
       json["CARDTOKEN"] = cardToken;

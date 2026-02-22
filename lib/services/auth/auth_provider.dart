@@ -60,21 +60,103 @@ class AuthProvider with ChangeNotifier {
     return trimmed;
   }
 
+  String? _tokenFromPayload(Map<String, dynamic> payload) {
+    final direct =
+        _normalizedValue(payload["token"]?.toString()) ??
+        _normalizedValue(payload["jwt"]?.toString());
+    if (direct != null) return direct;
+
+    final nested = payload["data"];
+    if (nested is! Map) return null;
+    final nestedMap = Map<String, dynamic>.from(nested);
+    return _normalizedValue(nestedMap["token"]?.toString()) ??
+        _normalizedValue(nestedMap["jwt"]?.toString());
+  }
+
+  DateTime _expiresAtFromPayload(Map<String, dynamic> payload) {
+    final direct =
+        _normalizedValue(payload["expiresAt"]?.toString()) ??
+        _normalizedValue(payload["expires_at"]?.toString());
+    if (direct != null) {
+      final parsed = DateTime.tryParse(direct);
+      if (parsed != null) return parsed;
+    }
+
+    final nested = payload["data"];
+    if (nested is Map) {
+      final nestedMap = Map<String, dynamic>.from(nested);
+      final raw =
+          _normalizedValue(nestedMap["expiresAt"]?.toString()) ??
+          _normalizedValue(nestedMap["expires_at"]?.toString());
+      if (raw != null) {
+        final parsed = DateTime.tryParse(raw);
+        if (parsed != null) return parsed;
+      }
+    }
+
+    return DateTime.now().add(const Duration(days: 1));
+  }
+
+  Future<void> _activateGuestSession({
+    bool clearSavedUser = true,
+    bool notify = true,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (clearSavedUser) {
+      await prefs.remove(keyUserJson);
+    }
+
+    final data = await _authApi.guestToken();
+    final token = _tokenFromPayload(data);
+    if (token == null || token.isEmpty) {
+      throw Exception("Guest token alınamadı.");
+    }
+    final expiresAt = _expiresAtFromPayload(data);
+
+    await AuthTokenStore.save(token: token, expiresAt: expiresAt);
+
+    _user = null;
+    _isLoggedIn = false;
+    _errorMessage = null;
+    _scheduleExpiry(expiresAt);
+    if (notify) notifyListeners();
+  }
+
+  Future<void> _handleTokenExpiry() async {
+    if (_isLoggedIn) {
+      await logout();
+      return;
+    }
+    try {
+      await _activateGuestSession(clearSavedUser: false);
+    } catch (e) {
+      debugPrint("🔴 [Auth] guest token refresh failed: $e");
+      await AuthTokenStore.clear();
+      _errorMessage = null;
+      notifyListeners();
+    }
+  }
+
   Future<void> loadSession() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       await AuthTokenStore.load();
+      final token = AuthTokenStore.token?.trim();
+      final expiresAt = AuthTokenStore.expiresAt;
+      final hasValidToken =
+          token != null &&
+          token.isNotEmpty &&
+          expiresAt != null &&
+          !AuthTokenStore.isExpired;
 
-      if (AuthTokenStore.token == null ||
-          AuthTokenStore.expiresAt == null ||
-          AuthTokenStore.isExpired) {
-        await logout();
+      if (!hasValidToken) {
+        await _activateGuestSession();
         return;
       }
 
       final rawUser = prefs.getString(keyUserJson);
       if (rawUser == null || rawUser.isEmpty) {
-        await logout();
+        await _activateGuestSession(clearSavedUser: false);
         return;
       }
 
@@ -86,15 +168,25 @@ class AuthProvider with ChangeNotifier {
       final userMap = Map<String, dynamic>.from(decoded);
       _user = AppUser.fromJson(userMap);
       _isLoggedIn = true;
+      _errorMessage = null;
 
-      final expiresAt = AuthTokenStore.expiresAt;
-      if (expiresAt != null) _scheduleExpiry(expiresAt);
-
+      _scheduleExpiry(expiresAt);
       notifyListeners();
     } catch (e) {
       // If stored auth data is stale/corrupted, clear it instead of crashing on launch.
-      debugPrint("🔴 [Auth] loadSession failed, clearing session: $e");
-      await logout();
+      debugPrint("🔴 [Auth] loadSession failed, switching to guest: $e");
+      try {
+        await _activateGuestSession();
+      } catch (guestError) {
+        debugPrint("🔴 [Auth] guest session bootstrap failed: $guestError");
+        _expiryTimer?.cancel();
+        _expiryTimer = null;
+        await AuthTokenStore.clear();
+        _user = null;
+        _isLoggedIn = false;
+        _errorMessage = null;
+        notifyListeners();
+      }
     }
   }
 
@@ -110,11 +202,11 @@ class AuthProvider with ChangeNotifier {
     _expiryTimer?.cancel();
     final diff = expiresAt.difference(DateTime.now());
     if (diff.isNegative) {
-      unawaited(logout());
+      unawaited(_handleTokenExpiry());
       return;
     }
     _expiryTimer = Timer(diff, () {
-      unawaited(logout());
+      unawaited(_handleTokenExpiry());
     });
   }
 
@@ -491,7 +583,7 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
-  Future<void> logout() async {
+  Future<void> logout({bool bootstrapGuest = true}) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(keyUserJson);
     _expiryTimer?.cancel();
@@ -502,6 +594,13 @@ class AuthProvider with ChangeNotifier {
     _isLoggedIn = false;
     _errorMessage = null;
 
+    if (bootstrapGuest) {
+      try {
+        await _activateGuestSession(clearSavedUser: false, notify: false);
+      } catch (e) {
+        debugPrint("🔴 [Auth] guest session bootstrap failed on logout: $e");
+      }
+    }
     onLogout?.call();
     notifyListeners();
   }

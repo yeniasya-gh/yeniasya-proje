@@ -1,4 +1,5 @@
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:flutter/foundation.dart';
 
 import 'hasura_manager.dart';
 
@@ -26,9 +27,31 @@ class AppFeatureFlagsService {
     final appVersion = packageInfo.version.trim();
     final appBuildNumber = packageInfo.buildNumber.trim();
 
-    const query = r'''
+    // Web platform intentionally ignores app_feature_flags controls.
+    if (kIsWeb) {
+      return AppFeatureVisibility(
+        appVersion: appVersion,
+        appBuildNumber: appBuildNumber,
+      );
+    }
+
+    final int? flagId = switch (defaultTargetPlatform) {
+      TargetPlatform.android => 1,
+      TargetPlatform.iOS => 2,
+      _ => null,
+    };
+
+    if (flagId == null) {
+      return AppFeatureVisibility(
+        appVersion: appVersion,
+        appBuildNumber: appBuildNumber,
+      );
+    }
+
+    final query =
+        '''
       query GetAppFeatureFlags {
-        app_feature_flags(order_by: {id: asc}, limit: 1) {
+        app_feature_flags(where: {id: {_eq: $flagId}}, limit: 1) {
           id
           version
           hide_magazines

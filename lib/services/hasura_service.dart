@@ -19,12 +19,15 @@ class HasuraService {
     Map<String, dynamic>? variables,
     String? operationName,
   }) {
+    final token = AuthTokenStore.token?.trim();
+    if (token == null || token.isEmpty) {
+      throw Exception("Hasura token bulunamadı.");
+    }
+
     final headers = <String, String>{
       "content-type": "application/json",
+      "Authorization": "Bearer $token",
     };
-    if (AuthTokenStore.token != null) {
-      headers["Authorization"] = "Bearer ${AuthTokenStore.token}";
-    }
 
     return _client
         .post(

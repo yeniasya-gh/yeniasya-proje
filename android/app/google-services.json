@@ -22,6 +22,14 @@
           }
         },
         {
+          "client_id": "921079372710-psgg6du1ochgpof7q8f1pgbmhuqs3j0t.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.yeniasya.books",
+            "certificate_hash": "a029261c875a52393d327db9c8625de91cd7e0ad"
+          }
+        },
+        {
           "client_id": "921079372710-ma27ah75aficaj4187kd4bnsls6386rr.apps.googleusercontent.com",
           "client_type": 3
         }
@@ -37,6 +45,13 @@
             {
               "client_id": "921079372710-ma27ah75aficaj4187kd4bnsls6386rr.apps.googleusercontent.com",
               "client_type": 3
+            },
+            {
+              "client_id": "921079372710-8npk6tcfr5b4e4jvsr69ckik4kma309d.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.yeniasya.books"
+              }
             }
           ]
         }

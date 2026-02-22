@@ -52,7 +52,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
   bool _loading = false;
   bool _loadingSavedCards = false;
-  String? _savedCardsError;
   List<SavedCard> _savedCards = const [];
   bool _useSavedCard = false;
   int _selectedSavedCardIndex = 0;
@@ -95,7 +94,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
     setState(() {
       _loadingSavedCards = true;
-      _savedCardsError = null;
     });
 
     try {
@@ -108,9 +106,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
         _loadingSavedCards = false;
       });
     } catch (e) {
+      // ignore: avoid_print
+      print("🟨 PaymentScreen.loadSavedCards error: $e");
       if (!mounted) return;
       setState(() {
-        _savedCardsError = e.toString().replaceFirst("Exception:", "").trim();
         _savedCards = const [];
         _useSavedCard = false;
         _selectedSavedCardIndex = 0;
@@ -122,7 +121,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
   Future<void> _submit() async {
     if (_useSavedCard) {
       if (_savedCards.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Kayıtlı kart bulunamadı.")));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Kayıtlı kart bulunamadı.")),
+        );
         return;
       }
     } else {
@@ -153,9 +154,15 @@ class _PaymentScreenState extends State<PaymentScreen> {
       final itemsPayload = _buildOrderItemsPayload(cart.items);
       final accessItems = _buildAccessItems(cart.items);
       // ignore: avoid_print
-      print("🟦 PaymentScreen.submit -> items: ${itemsPayload.length}, access: ${accessItems.length}");
-      final billing = await _addressService.getAddressById(widget.billingAddressId);
-      final delivery = await _addressService.getAddressById(widget.deliveryAddressId);
+      print(
+        "🟦 PaymentScreen.submit -> items: ${itemsPayload.length}, access: ${accessItems.length}",
+      );
+      final billing = await _addressService.getAddressById(
+        widget.billingAddressId,
+      );
+      final delivery = await _addressService.getAddressById(
+        widget.deliveryAddressId,
+      );
       final merchantPaymentId = _buildMerchantPaymentId(user.id);
       // ignore: avoid_print
       print("🟦 PaymentScreen.submit -> merchantPaymentId: $merchantPaymentId");
@@ -169,7 +176,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
         items: cart.items,
         merchantPaymentId: merchantPaymentId,
       );
-      final sessionToken = await _paymentService.createSession(payload: sessionPayload);
+      final sessionToken = await _paymentService.createSession(
+        payload: sessionPayload,
+      );
       // ignore: avoid_print
       print("🟦 PaymentScreen.submit -> sessionToken ok");
 
@@ -235,8 +244,11 @@ class _PaymentScreenState extends State<PaymentScreen> {
       if (result == null || !result.success) {
         if (mounted) {
           setState(() => _loading = false);
-          final msg = result?.errorMsg ?? result?.message ?? "Odeme tamamlanamadi.";
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+          final msg =
+              result?.errorMsg ?? result?.message ?? "Odeme tamamlanamadi.";
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(msg)));
         }
         // Status enumda desteklenmeyen değer hatasını önlemek için başarısızlığı kayda pending bırakıyoruz.
         await _orderService.updateOrderPaymentStatus(
@@ -278,10 +290,14 @@ class _PaymentScreenState extends State<PaymentScreen> {
       if (mounted) {
         setState(() => _loading = false);
         if (e is PaymentSessionException) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(e.message)));
         } else {
           final parsed = ErrorManager.parseGraphQLError(e.toString());
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(parsed)));
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(parsed)));
         }
       }
     }
@@ -354,7 +370,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
       print("🟥 PaymentScreen.finalize error: $e");
       final parsed = ErrorManager.parseGraphQLError(e.toString());
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(parsed)));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(parsed)));
       }
     } finally {
       if (mounted) setState(() => _loading = false);
@@ -395,7 +413,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
         case CartItemType.magazine:
           itemType = "magazine";
           itemId = parsedProductId;
-          expiresAt = _computeExpiry(item.metadata?["periodMonths"] ?? item.metadata?["period"]);
+          expiresAt = _computeExpiry(
+            item.metadata?["periodMonths"] ?? item.metadata?["period"],
+          );
           break;
         case CartItemType.magazineIssue:
           itemType = "magazine_issue";
@@ -404,7 +424,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
         case CartItemType.newspaperSubscription:
           itemType = "newspaper_subscription";
           itemId = parsedProductId == 0 ? null : parsedProductId;
-          expiresAt = _computeExpiry(item.metadata?["periodMonths"] ?? item.metadata?["period"]);
+          expiresAt = _computeExpiry(
+            item.metadata?["periodMonths"] ?? item.metadata?["period"],
+          );
           break;
         case CartItemType.supplement:
           itemType = "ek";
@@ -438,17 +460,21 @@ class _PaymentScreenState extends State<PaymentScreen> {
     required String merchantPaymentId,
   }) {
     final orderItems = items
-        .map((item) => {
-              "productCode": item.metadata?["productCode"]?.toString() ??
-                  item.metadata?["productId"]?.toString() ??
-                  item.id,
-              "name": item.title,
-              "description": item.subtitle ??
-                  item.metadata?["description"]?.toString() ??
-                  "",
-              "quantity": item.quantity,
-              "amount": double.parse(item.price.toStringAsFixed(2)),
-            })
+        .map(
+          (item) => {
+            "productCode":
+                item.metadata?["productCode"]?.toString() ??
+                item.metadata?["productId"]?.toString() ??
+                item.id,
+            "name": item.title,
+            "description":
+                item.subtitle ??
+                item.metadata?["description"]?.toString() ??
+                "",
+            "quantity": item.quantity,
+            "amount": double.parse(item.price.toStringAsFixed(2)),
+          },
+        )
         .toList();
 
     final payload = {
@@ -532,18 +558,26 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
   /// Web için ödeme akışı: POST ile kart bilgileri gönderilir,
   /// dönen HTML'den 3D URL'i çıkarılır ve popup açılır.
-  Future<PaymentResult?> _handleWebPayment(PaymentRedirectPayload payload, int orderId) async {
+  Future<PaymentResult?> _handleWebPayment(
+    PaymentRedirectPayload payload,
+    int orderId,
+  ) async {
     try {
       // ignore: avoid_print
       print("🟦 PaymentScreen._handleWebPayment -> start");
 
       // POST kart bilgileriyle redirect endpoint'ine
       final redirectUri = _paymentService.redirectUri();
+      final token = AuthTokenStore.token?.trim();
+      if (token == null || token.isEmpty) {
+        return const PaymentResult(
+          false,
+          "Oturum süresi dolmuş. Lütfen tekrar giriş yapın.",
+        );
+      }
       final headers = {
         "content-type": "application/json",
-        "x-api-key": PaymentConfig.apiKey,
-        if (AuthTokenStore.token != null && AuthTokenStore.token!.isNotEmpty)
-          "Authorization": "Bearer ${AuthTokenStore.token}",
+        "Authorization": "Bearer $token",
       };
       final resp = await http
           .post(
@@ -554,17 +588,23 @@ class _PaymentScreenState extends State<PaymentScreen> {
           .timeout(const Duration(seconds: 30));
 
       // ignore: avoid_print
-      print("🟦 PaymentScreen._handleWebPayment -> response: ${resp.statusCode}");
+      print(
+        "🟦 PaymentScreen._handleWebPayment -> response: ${resp.statusCode}",
+      );
 
       if (resp.statusCode < 200 || resp.statusCode >= 300) {
-        return PaymentResult(false, "3D ödeme sayfası yüklenemedi (${resp.statusCode})");
+        return PaymentResult(
+          false,
+          "3D ödeme sayfası yüklenemedi (${resp.statusCode})",
+        );
       }
 
       // Redirect response veya HTML dönebilir
       final location = resp.headers["location"];
       if (location != null && location.isNotEmpty) {
         // Direct redirect durumu - success/error URL'i olabilir
-        if (location.contains("/payment/pay/success") || location.contains("/payment/pay/error")) {
+        if (location.contains("/payment/pay/success") ||
+            location.contains("/payment/pay/error")) {
           return _parseWebPaymentResult(location);
         }
         // 3D sayfa URL'ine redirect
@@ -575,7 +615,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
       final body = resp.body;
 
       // 3D form action URL'sini bul (genellikle iframe veya form içinde)
-      final actionMatch = RegExp('action=["\']([^"\']+)["\']', caseSensitive: false).firstMatch(body);
+      final actionMatch = RegExp(
+        'action=["\']([^"\']+)["\']',
+        caseSensitive: false,
+      ).firstMatch(body);
       if (actionMatch != null) {
         final actionUrl = actionMatch.group(1)!;
         // ignore: avoid_print
@@ -584,19 +627,25 @@ class _PaymentScreenState extends State<PaymentScreen> {
       }
 
       // iFrame src bul
-      final iframeSrcMatch = RegExp('<iframe[^>]*src=["\']([^"\']+)["\']', caseSensitive: false).firstMatch(body);
+      final iframeSrcMatch = RegExp(
+        '<iframe[^>]*src=["\']([^"\']+)["\']',
+        caseSensitive: false,
+      ).firstMatch(body);
       if (iframeSrcMatch != null) {
         final iframeSrc = iframeSrcMatch.group(1)!;
         // ignore: avoid_print
-        print("🟦 PaymentScreen._handleWebPayment -> found iframe src: $iframeSrc");
+        print(
+          "🟦 PaymentScreen._handleWebPayment -> found iframe src: $iframeSrc",
+        );
         return await _openWebPaymentPopup(iframeSrc);
       }
 
       // Direct HTML content - blob URL ile popup aç
       // ignore: avoid_print
-      print("🟦 PaymentScreen._handleWebPayment -> opening popup with HTML content");
+      print(
+        "🟦 PaymentScreen._handleWebPayment -> opening popup with HTML content",
+      );
       return await _openWebPaymentPopupWithHtml(body);
-
     } catch (e) {
       // ignore: avoid_print
       print("🟥 PaymentScreen._handleWebPayment error: $e");
@@ -611,12 +660,17 @@ class _PaymentScreenState extends State<PaymentScreen> {
     return result;
   }
 
-  Future<PaymentResult?> _openWebPaymentPopupWithHtml(String htmlContent) async {
+  Future<PaymentResult?> _openWebPaymentPopupWithHtml(
+    String htmlContent,
+  ) async {
     // Web helper ile HTML blob URL'i oluşturup popup aç
     // Bu durumda polling mekanizması çalışacak
     final handle = openPaymentWindow("about:blank");
     if (handle == null) {
-      return const PaymentResult(false, "Popup penceresi açılamadı. Lütfen popup engelleyiciyi kapatın.");
+      return const PaymentResult(
+        false,
+        "Popup penceresi açılamadı. Lütfen popup engelleyiciyi kapatın.",
+      );
     }
 
     await loadPaymentHtml(handle, htmlContent);
@@ -624,7 +678,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
     try {
       final result = await handle.onResult.first.timeout(
         const Duration(minutes: 5),
-        onTimeout: () => const PaymentResult(false, "Ödeme zaman aşımına uğradı."),
+        onTimeout: () =>
+            const PaymentResult(false, "Ödeme zaman aşımına uğradı."),
       );
       return result;
     } catch (e) {
@@ -679,13 +734,20 @@ class _PaymentScreenState extends State<PaymentScreen> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8, offset: const Offset(0, 4)),
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text("Ödeme Yöntemi", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+          const Text(
+            "Ödeme Yöntemi",
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+          ),
           const SizedBox(height: 10),
           if (_loadingSavedCards)
             Row(
@@ -697,24 +759,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 ),
                 SizedBox(width: 10),
                 Text("Kayıtlı kartlar kontrol ediliyor..."),
-              ],
-            )
-          else if (_savedCardsError != null)
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    _savedCardsError!,
-                    style: TextStyle(color: Colors.red.shade700),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                TextButton(
-                  onPressed: _loadSavedCards,
-                  child: const Text("Tekrar Dene"),
-                ),
               ],
             )
           else
@@ -739,7 +783,11 @@ class _PaymentScreenState extends State<PaymentScreen> {
                     fontWeight: FontWeight.w600,
                     color: _useSavedCard ? Colors.red.shade700 : Colors.black87,
                   ),
-                  side: BorderSide(color: _useSavedCard ? Colors.red.shade400 : const Color(0xFFE5E7EB)),
+                  side: BorderSide(
+                    color: _useSavedCard
+                        ? Colors.red.shade400
+                        : const Color(0xFFE5E7EB),
+                  ),
                 ),
                 ChoiceChip(
                   label: const Text("Yeni Bir Kart"),
@@ -754,9 +802,15 @@ class _PaymentScreenState extends State<PaymentScreen> {
                   selectedColor: Colors.red.shade50,
                   labelStyle: TextStyle(
                     fontWeight: FontWeight.w600,
-                    color: !_useSavedCard ? Colors.red.shade700 : Colors.black87,
+                    color: !_useSavedCard
+                        ? Colors.red.shade700
+                        : Colors.black87,
                   ),
-                  side: BorderSide(color: !_useSavedCard ? Colors.red.shade400 : const Color(0xFFE5E7EB)),
+                  side: BorderSide(
+                    color: !_useSavedCard
+                        ? Colors.red.shade400
+                        : const Color(0xFFE5E7EB),
+                  ),
                 ),
               ],
             ),
@@ -776,10 +830,15 @@ class _PaymentScreenState extends State<PaymentScreen> {
     InputDecoration _inputDecoration(String label, {IconData? icon}) {
       return InputDecoration(
         labelText: label,
-        prefixIcon: icon != null ? Icon(icon, color: Colors.red.shade400) : null,
+        prefixIcon: icon != null
+            ? Icon(icon, color: Colors.red.shade400)
+            : null,
         filled: true,
         fillColor: const Color(0xFFF7F8FA),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 14,
+        ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
@@ -801,7 +860,11 @@ class _PaymentScreenState extends State<PaymentScreen> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8, offset: const Offset(0, 4)),
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
         ],
       ),
       child: Form(
@@ -809,7 +872,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text("Kayıtlı Kartlar", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+            const Text(
+              "Kayıtlı Kartlar",
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+            ),
             const SizedBox(height: 12),
             ListView.separated(
               shrinkWrap: true,
@@ -838,8 +904,14 @@ class _PaymentScreenState extends State<PaymentScreen> {
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: selected ? Colors.red.shade400 : const Color(0xFFE5E7EB)),
-                      color: selected ? Colors.red.shade50 : const Color(0xFFFDFDFD),
+                      border: Border.all(
+                        color: selected
+                            ? Colors.red.shade400
+                            : const Color(0xFFE5E7EB),
+                      ),
+                      color: selected
+                          ? Colors.red.shade50
+                          : const Color(0xFFFDFDFD),
                     ),
                     child: Row(
                       children: [
@@ -847,10 +919,17 @@ class _PaymentScreenState extends State<PaymentScreen> {
                           width: 44,
                           height: 44,
                           decoration: BoxDecoration(
-                            color: selected ? Colors.red.shade100 : const Color(0xFFF3F4F6),
+                            color: selected
+                                ? Colors.red.shade100
+                                : const Color(0xFFF3F4F6),
                             borderRadius: BorderRadius.circular(12),
                           ),
-                          child: Icon(Icons.credit_card, color: selected ? Colors.red.shade700 : Colors.grey.shade700),
+                          child: Icon(
+                            Icons.credit_card,
+                            color: selected
+                                ? Colors.red.shade700
+                                : Colors.grey.shade700,
+                          ),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
@@ -858,8 +937,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                title.isNotEmpty && title != "-" ? title : (card.cardOwner ?? "Kayıtlı Kart"),
-                                style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w700),
+                                title.isNotEmpty && title != "-"
+                                    ? title
+                                    : (card.cardOwner ?? "Kayıtlı Kart"),
+                                style: const TextStyle(
+                                  fontSize: 14.5,
+                                  fontWeight: FontWeight.w700,
+                                ),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -875,8 +959,12 @@ class _PaymentScreenState extends State<PaymentScreen> {
                         ),
                         const SizedBox(width: 10),
                         Icon(
-                          selected ? Icons.radio_button_checked : Icons.radio_button_off,
-                          color: selected ? Colors.red.shade600 : Colors.grey.shade500,
+                          selected
+                              ? Icons.radio_button_checked
+                              : Icons.radio_button_off,
+                          color: selected
+                              ? Colors.red.shade600
+                              : Colors.grey.shade500,
                         ),
                       ],
                     ),
@@ -896,7 +984,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text("Kart ile Öde", style: TextStyle(color: Colors.black87)),
+        title: const Text(
+          "Kart ile Öde",
+          style: TextStyle(color: Colors.black87),
+        ),
         backgroundColor: Colors.white,
         foregroundColor: Colors.black,
         centerTitle: true,
@@ -927,7 +1018,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,
               foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
             ),
             child: _loading
                 ? const CircularProgressIndicator(color: Colors.white)
@@ -950,13 +1043,20 @@ class _PaymentScreenState extends State<PaymentScreen> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8, offset: const Offset(0, 4)),
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text("Sipariş Özeti", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+          const Text(
+            "Sipariş Özeti",
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+          ),
           const SizedBox(height: 8),
           ...items.map(
             (i) => Padding(
@@ -974,8 +1074,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text("Promosyon (${cart.appliedPromo!.code})", style: const TextStyle(color: Colors.black87)),
-                Text("%${cart.appliedPromo!.discountPercent.toStringAsFixed(0)}"),
+                Text(
+                  "Promosyon (${cart.appliedPromo!.code})",
+                  style: const TextStyle(color: Colors.black87),
+                ),
+                Text(
+                  "%${cart.appliedPromo!.discountPercent.toStringAsFixed(0)}",
+                ),
               ],
             ),
           ],
@@ -983,8 +1088,14 @@ class _PaymentScreenState extends State<PaymentScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text("Ara Toplam", style: TextStyle(fontWeight: FontWeight.w600)),
-              Text("₺${total.toStringAsFixed(2)}", style: const TextStyle(fontWeight: FontWeight.w700)),
+              const Text(
+                "Ara Toplam",
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
+              Text(
+                "₺${total.toStringAsFixed(2)}",
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
             ],
           ),
           const SizedBox(height: 6),
@@ -994,7 +1105,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
               const Text("İndirim"),
               Text(
                 discount > 0 ? "-₺${discount.toStringAsFixed(2)}" : "₺0.00",
-                style: const TextStyle(color: Colors.green, fontWeight: FontWeight.w600),
+                style: const TextStyle(
+                  color: Colors.green,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ],
           ),
@@ -1002,9 +1116,18 @@ class _PaymentScreenState extends State<PaymentScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text("Ödenecek", style: TextStyle(fontWeight: FontWeight.bold)),
-              Text("₺${payable.toStringAsFixed(2)}",
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.red)),
+              const Text(
+                "Ödenecek",
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              Text(
+                "₺${payable.toStringAsFixed(2)}",
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.red,
+                ),
+              ),
             ],
           ),
         ],
@@ -1016,10 +1139,15 @@ class _PaymentScreenState extends State<PaymentScreen> {
     InputDecoration _inputDecoration(String label, {IconData? icon}) {
       return InputDecoration(
         labelText: label,
-        prefixIcon: icon != null ? Icon(icon, color: Colors.red.shade400) : null,
+        prefixIcon: icon != null
+            ? Icon(icon, color: Colors.red.shade400)
+            : null,
         filled: true,
         fillColor: const Color(0xFFF7F8FA),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 14,
+        ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
@@ -1041,7 +1169,11 @@ class _PaymentScreenState extends State<PaymentScreen> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8, offset: const Offset(0, 4)),
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
         ],
       ),
       child: Form(
@@ -1049,12 +1181,19 @@ class _PaymentScreenState extends State<PaymentScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text("Kart Bilgileri", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+            const Text(
+              "Kart Bilgileri",
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+            ),
             const SizedBox(height: 12),
             TextFormField(
               controller: _cardHolderCtrl,
-              decoration: _inputDecoration("Kart Üzerindeki İsim", icon: Icons.person_outline),
-              validator: (v) => (v == null || v.trim().isEmpty) ? "Zorunlu" : null,
+              decoration: _inputDecoration(
+                "Kart Üzerindeki İsim",
+                icon: Icons.person_outline,
+              ),
+              validator: (v) =>
+                  (v == null || v.trim().isEmpty) ? "Zorunlu" : null,
             ),
             const SizedBox(height: 10),
             TextFormField(
@@ -1064,10 +1203,15 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 _CardNumberFormatter(),
                 LengthLimitingTextInputFormatter(19),
               ],
-              decoration: _inputDecoration("Kart Numarası", icon: Icons.credit_card),
+              decoration: _inputDecoration(
+                "Kart Numarası",
+                icon: Icons.credit_card,
+              ),
               validator: (v) {
                 final digits = _sanitizeCardNumber(v ?? "");
-                return digits.length < 12 ? "Geçerli kart numarası girin" : null;
+                return digits.length < 12
+                    ? "Geçerli kart numarası girin"
+                    : null;
               },
             ),
             const SizedBox(height: 12),
@@ -1092,13 +1236,17 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 Expanded(
                   child: TextFormField(
                     controller: _cvvCtrl,
-                    decoration: _inputDecoration("CVV", icon: Icons.lock_outline),
+                    decoration: _inputDecoration(
+                      "CVV",
+                      icon: Icons.lock_outline,
+                    ),
                     keyboardType: TextInputType.number,
                     inputFormatters: [
                       FilteringTextInputFormatter.digitsOnly,
                       LengthLimitingTextInputFormatter(3),
                     ],
-                    validator: (v) => (v == null || v.length != 3) ? "CVV girin" : null,
+                    validator: (v) =>
+                        (v == null || v.length != 3) ? "CVV girin" : null,
                   ),
                 ),
               ],
@@ -1121,8 +1269,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
               const SizedBox(height: 6),
               TextFormField(
                 controller: _cardNameCtrl,
-                decoration: _inputDecoration("Kart Adı", icon: Icons.bookmark_outline),
-                validator: (v) => (_saveCard && (v == null || v.trim().isEmpty)) ? "Kart adı girin" : null,
+                decoration: _inputDecoration(
+                  "Kart Adı",
+                  icon: Icons.bookmark_outline,
+                ),
+                validator: (v) => (_saveCard && (v == null || v.trim().isEmpty))
+                    ? "Kart adı girin"
+                    : null,
               ),
             ],
           ],
@@ -1159,16 +1312,29 @@ class _PaymentScreenState extends State<PaymentScreen> {
     if (parsed != null && parsed > 0) {
       return DateTime(now.year, now.month + parsed, now.day);
     }
-    if (period == "1m" || period == "1ay" || period == "1" || period == "1month") {
+    if (period == "1m" ||
+        period == "1ay" ||
+        period == "1" ||
+        period == "1month") {
       return DateTime(now.year, now.month + 1, now.day);
     }
-    if (period == "3m" || period == "3ay" || period == "3" || period == "3month") {
+    if (period == "3m" ||
+        period == "3ay" ||
+        period == "3" ||
+        period == "3month") {
       return DateTime(now.year, now.month + 3, now.day);
     }
-    if (period == "6m" || period == "6ay" || period == "6" || period == "6month") {
+    if (period == "6m" ||
+        period == "6ay" ||
+        period == "6" ||
+        period == "6month") {
       return DateTime(now.year, now.month + 6, now.day);
     }
-    if (period == "12m" || period == "12ay" || period == "12" || period == "12month" || period == "1y") {
+    if (period == "12m" ||
+        period == "12ay" ||
+        period == "12" ||
+        period == "12month" ||
+        period == "1y") {
       return DateTime(now.year, now.month + 12, now.day);
     }
     return null;
@@ -1177,7 +1343,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
 class _CardNumberFormatter extends TextInputFormatter {
   @override
-  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
     final digits = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
     final limited = digits.length > 16 ? digits.substring(0, 16) : digits;
     final buffer = StringBuffer();
@@ -1196,7 +1365,10 @@ class _CardNumberFormatter extends TextInputFormatter {
 
 class _ExpiryFormatter extends TextInputFormatter {
   @override
-  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
     final digits = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
     final limited = digits.length > 4 ? digits.substring(0, 4) : digits;
     String text;

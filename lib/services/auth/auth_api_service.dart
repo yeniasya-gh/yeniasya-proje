@@ -4,8 +4,8 @@ import 'auth_token_store.dart';
 
 class AuthApiService {
   AuthApiService({String? baseUrl, http.Client? client})
-      : _baseUrl = baseUrl ?? "https://cdn.yeniasyadigital.com",
-        _client = client ?? http.Client();
+    : _baseUrl = baseUrl ?? "https://cdn.yeniasyadigital.com",
+      _client = client ?? http.Client();
 
   final String _baseUrl;
   final http.Client _client;
@@ -77,21 +77,19 @@ class AuthApiService {
     String? password,
   }) async {
     final uri = Uri.parse("$_baseUrl/auth/guest-token");
-    final headers = {
-      "content-type": "application/json",
-      if (AuthTokenStore.token != null && AuthTokenStore.token!.isNotEmpty)
-        "Authorization": "Bearer ${AuthTokenStore.token}",
-    };
+    final headers = {"content-type": "application/json"};
     final resp = await _client.post(
       uri,
       headers: headers,
       body: jsonEncode({
-        "username": username ??
+        "username":
+            username ??
             const String.fromEnvironment(
               "GUEST_USERNAME",
               defaultValue: "yeniasyaguest",
             ),
-        "password": password ??
+        "password":
+            password ??
             const String.fromEnvironment(
               "GUEST_PASSWORD",
               defaultValue: "yeniasya.guest.pass.2026",
