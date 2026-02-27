@@ -103,7 +103,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
             const SizedBox(height: 30),
             const Text(
-              "Üyelik Durumu",
+              "Abonelik Durumu",
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 12),
@@ -325,7 +325,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           const SizedBox(height: 12),
           if (!rc.supportsNativePurchaseUi)
             const Text(
-              "Abonelik satın alma işlemleri mobil uygulamada desteklenir.",
+              "Web'de e-gazete aboneliği için ürünü sepete ekleyip ödeme adımından satın alabilirsiniz.",
               style: TextStyle(fontSize: 12, color: Colors.black54),
             ),
           if (rc.supportsNativePurchaseUi) ...[

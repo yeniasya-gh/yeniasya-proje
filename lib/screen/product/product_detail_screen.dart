@@ -11,6 +11,7 @@ import '../../utils/safe_image.dart';
 import 'magazine_issues_screen.dart';
 import '../../services/upload_service.dart';
 import '../../services/magazine_type_price_service.dart';
+import '../../services/newspaper_subscription_type_service.dart';
 import '../../services/access_provider.dart';
 import '../../services/review_service.dart';
 import '../../services/auth/auth_provider.dart';
@@ -77,6 +78,7 @@ class ProductDetailScreen extends StatefulWidget {
 class _ProductDetailScreenState extends State<ProductDetailScreen> {
   final _reviewService = ReviewService();
   final _magazineTypePriceService = MagazineTypePriceService();
+  final _newspaperTypePriceService = NewspaperSubscriptionTypeService();
   final TextEditingController _commentCtrl = TextEditingController();
   int _rating = 5;
   bool _reviewSubmitting = false;
@@ -143,6 +145,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     }
 
     final rc = context.read<RevenueCatService>();
+    if (!rc.supportsNativePurchaseUi) {
+      await _selectNewspaperSubscriptionType(context);
+      return;
+    }
     final access = context.read<AccessProvider>();
     final messenger = ScaffoldMessenger.of(context);
     await rc.syncWithAuthUser(user);
@@ -176,6 +182,126 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         content: Text(rc.errorMessage ?? "Abonelik işlemi tamamlanamadı."),
       ),
     );
+  }
+
+  Future<void> _selectNewspaperSubscriptionType(BuildContext context) async {
+    if (widget.detail.forceAccess) return;
+    final auth = context.read<AuthProvider>();
+    if (!auth.isLoggedIn) {
+      showLoginRequirementDialog(context);
+      return;
+    }
+    try {
+      final list = await _newspaperTypePriceService.getActiveTypes();
+      if (!mounted) return;
+      if (list.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Gazete abonelik seçenekleri bulunamadı."),
+          ),
+        );
+        return;
+      }
+      final cart = context.read<CartProvider>();
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        builder: (_) => Padding(
+          padding: const EdgeInsets.all(16),
+          child: SizedBox(
+            height: 420,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  "E-Gazete Aboneliği Seç",
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 12),
+                Expanded(
+                  child: ListView.separated(
+                    itemCount: list.length,
+                    separatorBuilder: (_, __) => const Divider(height: 1),
+                    itemBuilder: (_, i) {
+                      final type = list[i];
+                      final typeId =
+                          int.tryParse(type["id"]?.toString() ?? "") ?? 0;
+                      final months =
+                          int.tryParse(
+                            type["duration_months"]?.toString() ?? "",
+                          ) ??
+                          0;
+                      final price =
+                          double.tryParse(type["price"]?.toString() ?? "") ?? 0;
+                      final title = (type["title"] ?? "").toString().trim();
+                      final displayTitle = title.isNotEmpty
+                          ? title
+                          : (months > 0
+                                ? "$months Aylık Abonelik"
+                                : "Abonelik");
+                      final cartItem = CartItem(
+                        id: "news-sub-type-$typeId",
+                        title: widget.detail.title,
+                        subtitle: displayTitle,
+                        imageUrl: widget.detail.imageUrl,
+                        price: price,
+                        quantity: 1,
+                        type: CartItemType.newspaperSubscription,
+                        metadata: {
+                          ...?widget.detail.metadata,
+                          "productId": "gazete-abonelik",
+                          "newspaperSubscriptionTypeId": typeId,
+                          "periodMonths": months,
+                          "period": months > 0 ? months.toString() : null,
+                          "typeTitle": displayTitle,
+                        },
+                      );
+                      final alreadyInCart = cart.contains(cartItem);
+                      return ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(displayTitle),
+                        subtitle: Text(
+                          months > 0 ? "$months ay" : "E-Gazete Aboneliği",
+                        ),
+                        trailing: Text(
+                          alreadyInCart
+                              ? "Sepette"
+                              : "₺${price.toStringAsFixed(2)}",
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: alreadyInCart ? Colors.grey : Colors.red,
+                          ),
+                        ),
+                        onTap: alreadyInCart
+                            ? null
+                            : () {
+                                final added = cart.addIfAbsent(cartItem);
+                                if (added) {
+                                  Navigator.pop(context);
+                                  showAddedToCartDialog(context);
+                                } else {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text("Bu ürün zaten sepette."),
+                                    ),
+                                  );
+                                }
+                              },
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Abonelik seçenekleri alınamadı: $e")),
+      );
+    }
   }
 
   Future<void> _selectMagazineSubscriptionType(
@@ -878,6 +1004,15 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     DateTime? dt = DateTime.tryParse(raw);
     if (dt == null) return raw;
 
+    final turkishWeekdays = [
+      "Pazartesi",
+      "Salı",
+      "Çarşamba",
+      "Perşembe",
+      "Cuma",
+      "Cumartesi",
+      "Pazar",
+    ];
     final turkishMonths = [
       "Ocak",
       "Şubat",
@@ -893,7 +1028,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       "Aralık",
     ];
 
-    return "${dt.day} ${turkishMonths[dt.month - 1]} ${dt.year}";
+    final weekday = turkishWeekdays[dt.weekday - 1];
+    return "$weekday, ${dt.day} ${turkishMonths[dt.month - 1]} ${dt.year}";
   }
 
   @override
@@ -905,7 +1041,13 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         : null;
     final cart = context.watch<CartProvider>();
     final directItem = _directCartItem();
-    final alreadyInCart = directItem != null && cart.contains(directItem);
+    final hasNewspaperInCart = cart.items.any(
+      (item) => item.type == CartItemType.newspaperSubscription,
+    );
+    final alreadyInCart = directItem != null
+        ? cart.contains(directItem)
+        : (widget.detail.type == CartItemType.newspaperSubscription &&
+              hasNewspaperInCart);
 
     if (widget.detail.type == CartItemType.newspaperSubscription) {
       final newsTitle = "Yeni Asya Gazetesi";
@@ -1388,9 +1530,16 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   }
 
   Widget _image(String? url) {
+    final isNewspaper =
+        widget.detail.type == CartItemType.newspaperSubscription;
+    final imageFit = isNewspaper ? BoxFit.contain : BoxFit.cover;
+    final imageBackground = isNewspaper
+        ? const Color(0xFFF8F8F8)
+        : const Color(0xFFE0E0E0);
+
     if (url == null || url.isEmpty) {
       return Container(
-        color: const Color(0xFFE0E0E0),
+        color: imageBackground,
         child: const Icon(
           Icons.image_not_supported,
           size: 40,
@@ -1400,7 +1549,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     }
 
     final fallback = Container(
-      color: const Color(0xFFE0E0E0),
+      color: imageBackground,
       child: const Icon(Icons.broken_image, size: 40, color: Colors.black54),
     );
 
@@ -1408,17 +1557,29 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     final isData = normalized.startsWith("data:image");
 
     if (isData) {
-      return Image.memory(
-        base64Decode(normalized.split(",").last),
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => fallback,
+      return ColoredBox(
+        color: imageBackground,
+        child: Padding(
+          padding: EdgeInsets.all(isNewspaper ? 8 : 0),
+          child: Image.memory(
+            base64Decode(normalized.split(",").last),
+            fit: imageFit,
+            errorBuilder: (_, __, ___) => fallback,
+          ),
+        ),
       );
     }
 
-    return safeImage(
-      normalized,
-      fit: BoxFit.cover,
-      fallbackIcon: Icons.broken_image,
+    return ColoredBox(
+      color: imageBackground,
+      child: Padding(
+        padding: EdgeInsets.all(isNewspaper ? 8 : 0),
+        child: safeImage(
+          normalized,
+          fit: imageFit,
+          fallbackIcon: Icons.broken_image,
+        ),
+      ),
     );
   }
 
@@ -1428,19 +1589,26 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           (detail.type == CartItemType.magazine ||
               detail.type == CartItemType.magazineIssue ||
               detail.type == CartItemType.newspaperSubscription)) {
+        if (detail.type == CartItemType.magazine) return "Oku";
         return "Görüntüle";
       }
       switch (detail.type) {
         case CartItemType.book:
           return "Kitap erişimi aktif";
         case CartItemType.magazine:
-          return _accessText(detail, fallback: "Abonelik aktif");
+          return "Oku";
         case CartItemType.magazineIssue:
           return "Dergiyi Görüntüle";
         case CartItemType.newspaperSubscription:
           return _accessText(detail, fallback: "Görüntüle");
         case CartItemType.supplement:
           return "Ek erişimi aktif";
+      }
+    }
+    if (!hasAccess && detail.type == CartItemType.newspaperSubscription) {
+      final rc = context.read<RevenueCatService>();
+      if (!rc.supportsNativePurchaseUi) {
+        return "Sepete Ekle";
       }
     }
     if (detail.type == CartItemType.magazine) {

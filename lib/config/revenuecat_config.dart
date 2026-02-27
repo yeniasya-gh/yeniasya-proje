@@ -56,4 +56,16 @@ class RevenueCatConfig {
     "REVENUECAT_BACKEND_EVENT_PATH",
     defaultValue: "/revenuecat/subscription/event",
   );
+  static const String backendRefreshPath = String.fromEnvironment(
+    "REVENUECAT_BACKEND_REFRESH_PATH",
+    defaultValue: "/revenuecat/subscription/refresh",
+  );
+  static const String backendGrantPath = String.fromEnvironment(
+    "REVENUECAT_BACKEND_GRANT_PATH",
+    defaultValue: "/revenuecat/subscription/grant",
+  );
+  static const String backendRevokePath = String.fromEnvironment(
+    "REVENUECAT_BACKEND_REVOKE_PATH",
+    defaultValue: "/revenuecat/subscription/revoke",
+  );
 }

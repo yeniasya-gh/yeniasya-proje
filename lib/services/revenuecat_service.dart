@@ -180,8 +180,20 @@ class RevenueCatService with ChangeNotifier {
   }
 
   Future<void> syncWithAuthUser(AppUser? user) async {
-    if (!supportsNativePurchaseUi) return;
     _expectedAppUserId = user?.revenueCatUserId;
+    _currentDbUserId = user?.id;
+
+    if (!supportsNativePurchaseUi) {
+      _currentAppUserId = user?.revenueCatUserId;
+      if (user != null) {
+        await _refreshBackendSubscription(
+          user: user,
+          source: "auth_sync_non_native",
+        );
+      }
+      notifyListeners();
+      return;
+    }
 
     await initialize(appUser: user);
     if (!_isInitialized) return;
@@ -535,6 +547,45 @@ class RevenueCatService with ChangeNotifier {
   bool _hasBackendAuthToken() {
     final token = AuthTokenStore.token;
     return token != null && token.trim().isNotEmpty;
+  }
+
+  Future<void> _refreshBackendSubscription({
+    required AppUser user,
+    required String source,
+  }) async {
+    if (!_hasBackendAuthToken()) {
+      if (kDebugMode) {
+        debugPrint(
+          "RevenueCat backend refresh skipped: missing auth token (source=$source)",
+        );
+      }
+      return;
+    }
+    try {
+      await _backendService.refreshSubscription(
+        source: source,
+        entitlementId: RevenueCatConfig.entitlementYeniasyaPro,
+        appUserId: user.revenueCatUserId,
+        expectedAppUserId: user.revenueCatUserId,
+        identityMatched: true,
+        userId: user.id,
+      );
+      _lastBackendSyncAt = DateTime.now();
+      _lastBackendSyncSource = source;
+      _lastBackendSyncSuccess = true;
+      _lastBackendSyncError = null;
+      _lastBackendWarning = null;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint("RevenueCat backend refresh warning: $e");
+      }
+      _lastBackendSyncAt = DateTime.now();
+      _lastBackendSyncSource = source;
+      _lastBackendSyncSuccess = false;
+      _lastBackendSyncError = e.toString();
+      _lastBackendWarning =
+          "Abonelik durumu sunucudan güncellenirken sorun oluştu.";
+    }
   }
 
   Future<void> _safeSyncSubscriptionToBackend({

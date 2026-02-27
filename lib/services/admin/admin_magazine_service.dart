@@ -178,6 +178,7 @@ class AdminMagazineService {
     String? photoUrl,
     required double price,
     String? description,
+    String? addedAt,
   }) async {
     const mutation = r'''
       mutation AddIssue(
@@ -186,7 +187,8 @@ class AdminMagazineService {
         $file_url: String!,
         $photo_url: String,
         $price: numeric!,
-        $description: String
+        $description: String,
+        $added_at: timestamptz
       ) {
         insert_magazine_issue_one(object: {
           magazine_id: $magazine_id,
@@ -194,7 +196,8 @@ class AdminMagazineService {
           file_url: $file_url,
           photo_url: $photo_url,
           price: $price,
-          description: $description
+          description: $description,
+          added_at: $added_at
         }) { id }
       }
     ''';
@@ -208,6 +211,7 @@ class AdminMagazineService {
         "photo_url": photoUrl,
         "price": price,
         "description": description,
+        "added_at": addedAt,
       },
     );
 
@@ -221,6 +225,7 @@ class AdminMagazineService {
     String? photoUrl,
     required double price,
     String? description,
+    String? addedAt,
   }) async {
     const mutation = r'''
       mutation UpdateIssue(
@@ -229,7 +234,8 @@ class AdminMagazineService {
         $file_url: String!,
         $photo_url: String,
         $price: numeric!,
-        $description: String
+        $description: String,
+        $added_at: timestamptz
       ) {
         update_magazine_issue_by_pk(
           pk_columns: {id: $id},
@@ -238,7 +244,8 @@ class AdminMagazineService {
             file_url: $file_url,
             photo_url: $photo_url,
             price: $price,
-            description: $description
+            description: $description,
+            added_at: $added_at
           }
         ) { id }
       }
@@ -253,6 +260,7 @@ class AdminMagazineService {
         "photo_url": photoUrl,
         "price": price,
         "description": description,
+        "added_at": addedAt,
       },
     );
 

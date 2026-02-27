@@ -27,6 +27,7 @@ import '../services/revenuecat_service.dart';
 import '../services/app_feature_flags_service.dart';
 import '../services/upload_service.dart';
 import '../services/home_showcase_service.dart';
+import '../services/newspaper_subscription_type_service.dart';
 import '../screen/profile/pdf_viewer_screen.dart';
 import '../utils/cart_feedback.dart';
 import '../utils/price_utils.dart';
@@ -62,6 +63,8 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
   final OrderService _orderService = OrderService();
   final UserContentAccessService _accessService = UserContentAccessService();
   final HomeShowcaseService _homeShowcaseService = HomeShowcaseService();
+  final NewspaperSubscriptionTypeService _newspaperTypePriceService =
+      NewspaperSubscriptionTypeService();
   final AppFeatureFlagsService _appFeatureFlagsService =
       AppFeatureFlagsService();
 
@@ -556,6 +559,10 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     }
 
     final rc = context.read<RevenueCatService>();
+    if (!rc.supportsNativePurchaseUi) {
+      await _selectNewspaperSubscriptionType(context);
+      return;
+    }
     final access = context.read<AccessProvider>();
     final messenger = ScaffoldMessenger.of(context);
     await rc.syncWithAuthUser(user);
@@ -589,6 +596,130 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         content: Text(rc.errorMessage ?? "Abonelik işlemi tamamlanamadı."),
       ),
     );
+  }
+
+  Future<void> _selectNewspaperSubscriptionType(BuildContext context) async {
+    final auth = context.read<AuthProvider>();
+    if (!auth.isLoggedIn) {
+      showLoginRequirementDialog(context);
+      return;
+    }
+
+    try {
+      final list = await _newspaperTypePriceService.getActiveTypes();
+      if (!mounted) return;
+      if (list.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Gazete abonelik seçenekleri bulunamadı."),
+          ),
+        );
+        return;
+      }
+
+      final cart = context.read<CartProvider>();
+      final imageUrl = newspapers.isNotEmpty
+          ? (newspapers.first["image_url"] ?? "").toString()
+          : "";
+
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        builder: (_) => Padding(
+          padding: const EdgeInsets.all(16),
+          child: SizedBox(
+            height: 420,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  "E-Gazete Aboneliği Seç",
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 12),
+                Expanded(
+                  child: ListView.separated(
+                    itemCount: list.length,
+                    separatorBuilder: (_, __) => const Divider(height: 1),
+                    itemBuilder: (_, i) {
+                      final type = list[i];
+                      final typeId =
+                          int.tryParse(type["id"]?.toString() ?? "") ?? 0;
+                      final months =
+                          int.tryParse(
+                            type["duration_months"]?.toString() ?? "",
+                          ) ??
+                          0;
+                      final price =
+                          double.tryParse(type["price"]?.toString() ?? "") ?? 0;
+                      final title = (type["title"] ?? "").toString().trim();
+                      final displayTitle = title.isNotEmpty
+                          ? title
+                          : (months > 0
+                                ? "$months Aylık Abonelik"
+                                : "Abonelik");
+                      final cartItem = CartItem(
+                        id: "news-sub-type-$typeId",
+                        title: "E-Gazete",
+                        subtitle: displayTitle,
+                        imageUrl: imageUrl,
+                        price: price,
+                        quantity: 1,
+                        type: CartItemType.newspaperSubscription,
+                        metadata: {
+                          "productId": "gazete-abonelik",
+                          "newspaperSubscriptionTypeId": typeId,
+                          "periodMonths": months,
+                          "period": months > 0 ? months.toString() : null,
+                          "typeTitle": displayTitle,
+                        },
+                      );
+                      final alreadyInCart = cart.contains(cartItem);
+                      return ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(displayTitle),
+                        subtitle: Text(
+                          months > 0 ? "$months ay" : "E-Gazete Aboneliği",
+                        ),
+                        trailing: Text(
+                          alreadyInCart
+                              ? "Sepette"
+                              : "₺${price.toStringAsFixed(2)}",
+                          style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: alreadyInCart ? Colors.grey : Colors.red,
+                          ),
+                        ),
+                        onTap: alreadyInCart
+                            ? null
+                            : () {
+                                final added = cart.addIfAbsent(cartItem);
+                                if (added) {
+                                  Navigator.pop(context);
+                                  showAddedToCartDialog(context);
+                                } else {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text("Bu ürün zaten sepette."),
+                                    ),
+                                  );
+                                }
+                              },
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Abonelik seçenekleri alınamadı: $e")),
+      );
+    }
   }
 
   void _openFromOrderItem(Map<String, dynamic> item) {
@@ -1328,6 +1459,9 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
   ProductDetail _mapNewspaperDetail(Map<String, dynamic> news) {
     final dateStr = news["publish_date"]?.toString() ?? "";
     final hasSub = _hasNewspaperSubscription(context);
+    final supportsNativePurchaseUi = context
+        .read<RevenueCatService>()
+        .supportsNativePurchaseUi;
     final title = "E-Gazete";
     final fileUrl = news["file_url"]?.toString();
     return ProductDetail(
@@ -1346,7 +1480,9 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         "fileUrl": fileUrl,
         "period": news["period"],
       },
-      actionLabel: hasSub ? "Görüntüle" : "Abone Ol",
+      actionLabel: hasSub
+          ? "Görüntüle"
+          : (supportsNativePurchaseUi ? "Abone Ol" : "Sepete Ekle"),
     );
   }
 
@@ -1661,9 +1797,11 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
           ? null
           : Container(
               color: Colors.white,
-              child: MediaQuery.removePadding(
-                context: context,
-                removeBottom: true,
+              child: SafeArea(
+                top: false,
+                left: false,
+                right: false,
+                maintainBottomViewPadding: true,
                 child: BottomNavigationBar(
                   elevation: 12,
                   backgroundColor: Colors.white,
@@ -2011,7 +2149,8 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _sectionHeader(
-          "Öne Çıkan E-dergi",
+          context,
+          "Öne Çıkan E-Dergiler",
           onViewAll: () {
             if (isWeb) {
               setState(() => _section = HomeSection.magazines);
@@ -2076,15 +2215,16 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _sectionHeader(
-          "Popüler Kitap",
+          context,
+          "Popüler E-Kitaplar",
           onViewAll: () {
             if (isWeb) {
               setState(() => _section = HomeSection.books);
             } else {
               _openFullList(
                 context,
-                "Kitap",
-                (ctx) => _bookListGrid(ctx, false, false),
+                "Kitaplar",
+                (_) => _BookBrowseBody(homeState: this),
               );
             }
           },
@@ -2172,44 +2312,18 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Text(
-              "E-Gazete",
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
-            ),
-            Row(
-              children: [
-                if (!showRead)
-                  ElevatedButton(
-                    onPressed: () => _openNewspaperPaywall(context),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 10,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                    child: const Text("Abone Ol"),
-                  ),
-                if (!showRead) const SizedBox(width: 8),
-                TextButton(
-                  onPressed: openList,
-                  child: const Text(
-                    "Tümünü Gör",
-                    style: TextStyle(
-                      color: Colors.red,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
-            ),
+        _sectionHeader(
+          context,
+          "E-Gazete",
+          onViewAll: openList,
+          forceSingleLineActions: true,
+          trailingActions: [
+            if (!showRead)
+              _viewAllChipButton(
+                context,
+                label: "Abone Ol",
+                onPressed: () => _openNewspaperPaywall(context),
+              ),
           ],
         ),
         const SizedBox(height: 12),
@@ -2298,36 +2412,22 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Text(
-              "Ekler",
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
-            ),
-            TextButton(
-              onPressed: () {
-                if (isWeb) {
-                  setState(() => _section = HomeSection.attachments);
-                } else {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) =>
-                          _AttachmentListScreen(state: this, cart: cart),
-                    ),
-                  );
-                }
-              },
-              child: const Text(
-                "Tümünü Gör",
-                style: TextStyle(
-                  color: Colors.red,
-                  fontWeight: FontWeight.w600,
+        _sectionHeader(
+          context,
+          "Ekler",
+          onViewAll: () {
+            if (isWeb) {
+              setState(() => _section = HomeSection.attachments);
+            } else {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) =>
+                      _AttachmentListScreen(state: this, cart: cart),
                 ),
-              ),
-            ),
-          ],
+              );
+            }
+          },
         ),
         const SizedBox(height: 12),
         SizedBox(
@@ -2413,13 +2513,11 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
                                 fontWeight: FontWeight.w700,
                               ),
                             ),
-                            OutlinedButton(
+                            _cardActionButton(
+                              label: "Detay",
                               onPressed: () => _openEkDetail(ek),
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: Colors.grey.shade700,
-                                side: BorderSide(color: Colors.grey.shade300),
-                              ),
-                              child: const Text("Detay"),
+                              icon: Icons.visibility_outlined,
+                              variant: _CardActionVariant.neutral,
                             ),
                           ],
                         ),
@@ -2508,19 +2606,21 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
       builder: (context, constraints) {
         const spacing = 14.0;
         final textScaler = MediaQuery.textScalerOf(context);
-        final titleHeight = textScaler.scale(15) * 1.25 * 2; // 2 lines
+        final titleHeight = textScaler.scale(15) * 1.3 * (isWeb ? 2 : 3);
         final authorHeight = textScaler.scale(12) * 1.25; // 1 line
-        final rowHeight = 28.0; // add button + price row
+        final rowHeight = 36.0; // action button + price row
         const verticalGaps = 4.0; // SizedBox height between title/author
         const contentPadding = 10.0 * 2; // Padding.all(10)
         const imageHeight = 150.0;
+        const safetyMargin = 10.0;
         final cardHeight =
             imageHeight +
             contentPadding +
             verticalGaps +
             titleHeight +
             authorHeight +
-            rowHeight;
+            rowHeight +
+            safetyMargin;
 
         return GridView.builder(
           shrinkWrap: true,
@@ -2576,19 +2676,38 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     bool isWeb,
     List<Map<String, dynamic>> items,
   ) {
-    final crossAxisCount = isWeb ? 3 : 2;
     final hasSub = _hasNewspaperSubscription(context, listen: true);
     return LayoutBuilder(
       builder: (context, constraints) {
+        const spacing = 14.0;
+        final maxWidth = constraints.maxWidth;
+        final targetCardWidth = isWeb ? 220.0 : 165.0;
+        final minColumns = isWeb ? 3 : 2;
+        final maxColumns = isWeb ? 6 : 3;
+        final computedColumns =
+            ((maxWidth + spacing) / (targetCardWidth + spacing))
+                .floor()
+                .clamp(minColumns, maxColumns)
+                .toInt();
+        final crossAxisCount = computedColumns;
+        final cardWidth =
+            (maxWidth - (spacing * (crossAxisCount - 1))) / crossAxisCount;
+        // Keep newspaper cards portrait-oriented so full first page fits better.
+        final imageHeight = (cardWidth * 1.45).clamp(
+          190.0,
+          isWeb ? 340.0 : 300.0,
+        );
+        final cardHeight = imageHeight + (hasSub ? 88.0 : 72.0);
+
         return GridView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           padding: EdgeInsets.zero,
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: crossAxisCount,
-            crossAxisSpacing: 14,
-            mainAxisSpacing: 14,
-            mainAxisExtent: isWeb ? (hasSub ? 280 : 260) : (hasSub ? 210 : 195),
+            crossAxisSpacing: spacing,
+            mainAxisSpacing: spacing,
+            mainAxisExtent: cardHeight,
           ),
           itemCount: items.length,
           itemBuilder: (_, i) {
@@ -2603,7 +2722,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
                 "date": "E-Gazete",
               },
               compact: true,
-              imageHeight: isWeb ? (hasSub ? 150 : 140) : (hasSub ? 130 : 120),
+              imageHeight: imageHeight,
               showRead: hasSub,
               onTap: () => _openProductDetail(_mapNewspaperDetail(items[i])),
             );
@@ -2614,6 +2733,8 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
   }
 
   bool _hasNewspaperSubscription(BuildContext context, {bool listen = false}) {
+    final auth = Provider.of<AuthProvider>(context, listen: listen);
+    if (!auth.isLoggedIn) return false;
     final access = Provider.of<AccessProvider>(context, listen: listen);
     final rc = Provider.of<RevenueCatService>(context, listen: listen);
     return access.hasAccess("newspaper_subscription") || rc.isYeniasyaProActive;
@@ -2663,22 +2784,104 @@ bool isTabletLayout(BuildContext context) {
   return width > 600 && width <= 1024;
 }
 
-Widget _sectionHeader(String title, {VoidCallback? onViewAll}) {
-  return Row(
-    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-    children: [
-      Text(
-        title,
-        style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
-      ),
-      TextButton(
-        onPressed: onViewAll,
-        child: const Text(
-          "Tümünü Gör",
-          style: TextStyle(color: Colors.red, fontWeight: FontWeight.w600),
-        ),
-      ),
+Widget _sectionHeader(
+  BuildContext context,
+  String title, {
+  VoidCallback? onViewAll,
+  List<Widget> trailingActions = const [],
+  bool forceSingleLineActions = false,
+}) {
+  final mobile = MediaQuery.of(context).size.width <= 800;
+  final actions = <Widget>[
+    ...trailingActions,
+    _viewAllChipButton(context, onPressed: onViewAll),
+  ];
+  final actionRowItems = <Widget>[
+    for (var i = 0; i < actions.length; i++) ...[
+      if (i > 0) const SizedBox(width: 8),
+      actions[i],
     ],
+  ];
+
+  return Container(
+    width: double.infinity,
+    padding: EdgeInsets.symmetric(
+      horizontal: mobile ? 12 : 14,
+      vertical: mobile ? 8 : 10,
+    ),
+    decoration: BoxDecoration(
+      color: Colors.red,
+      borderRadius: BorderRadius.circular(12),
+    ),
+    child: Row(
+      children: [
+        Expanded(
+          child: Text(
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: mobile ? 16 : 18,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+        if (actions.isNotEmpty) const SizedBox(width: 8),
+        if (actions.isNotEmpty)
+          Flexible(
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: forceSingleLineActions
+                  ? FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerRight,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: actionRowItems,
+                      ),
+                    )
+                  : Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      alignment: WrapAlignment.end,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: actions,
+                    ),
+            ),
+          ),
+      ],
+    ),
+  );
+}
+
+Widget _viewAllChipButton(
+  BuildContext context, {
+  VoidCallback? onPressed,
+  String label = "Tümünü Gör",
+}) {
+  final mobile = MediaQuery.of(context).size.width <= 800;
+  return TextButton(
+    onPressed: onPressed,
+    style: TextButton.styleFrom(
+      backgroundColor: Colors.white,
+      foregroundColor: Colors.red,
+      padding: EdgeInsets.symmetric(
+        horizontal: mobile ? 12 : 14,
+        vertical: mobile ? 8 : 9,
+      ),
+      minimumSize: const Size(0, 36),
+      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+    ),
+    child: Text(
+      label,
+      style: TextStyle(
+        color: Colors.red,
+        fontWeight: FontWeight.w700,
+        fontSize: mobile ? 13 : 14,
+      ),
+    ),
   );
 }
 
@@ -2686,6 +2889,78 @@ Widget _sectionHeadingText(String title) {
   return Text(
     title,
     style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+  );
+}
+
+enum _CardActionVariant { primary, read, neutral }
+
+Widget _cardActionButton({
+  required String label,
+  required VoidCallback? onPressed,
+  IconData icon = Icons.menu_book_rounded,
+  _CardActionVariant variant = _CardActionVariant.primary,
+  bool compact = false,
+  double height = 32,
+}) {
+  final disabled = onPressed == null;
+  late final Color bg;
+  late final Color fg;
+  late final BorderSide side;
+
+  switch (variant) {
+    case _CardActionVariant.read:
+      bg = disabled ? Colors.grey.shade400 : const Color(0xFF1976D2);
+      fg = Colors.white;
+      side = BorderSide.none;
+      break;
+    case _CardActionVariant.neutral:
+      bg = disabled ? Colors.grey.shade100 : Colors.white;
+      fg = disabled ? Colors.grey : Colors.black87;
+      side = BorderSide(color: Colors.grey.shade300);
+      break;
+    case _CardActionVariant.primary:
+      bg = disabled ? Colors.grey : Colors.red;
+      fg = Colors.white;
+      side = BorderSide.none;
+      break;
+  }
+
+  final radius = BorderRadius.circular(8);
+  if (compact) {
+    return SizedBox(
+      width: height,
+      height: height,
+      child: Material(
+        color: bg,
+        borderRadius: radius,
+        child: InkWell(
+          borderRadius: radius,
+          onTap: onPressed,
+          child: Icon(icon, color: fg, size: 18),
+        ),
+      ),
+    );
+  }
+
+  return SizedBox(
+    height: height,
+    child: TextButton.icon(
+      onPressed: onPressed,
+      style: TextButton.styleFrom(
+        backgroundColor: bg,
+        foregroundColor: fg,
+        side: side,
+        shape: RoundedRectangleBorder(borderRadius: radius),
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        minimumSize: const Size(0, 32),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+      icon: Icon(icon, size: 16),
+      label: Text(
+        label,
+        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
+      ),
+    ),
   );
 }
 
@@ -2777,30 +3052,18 @@ Widget _magazineCard(
                     ),
                     const SizedBox(width: 8),
                     if (hideAction)
-                      const Text(
-                        "Abonelik aktif",
-                        textAlign: TextAlign.right,
-                        style: TextStyle(
-                          color: Colors.red,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 12,
-                        ),
+                      _cardActionButton(
+                        label: "Oku",
+                        onPressed: onTap,
+                        icon: Icons.auto_stories_rounded,
+                        variant: _CardActionVariant.read,
                       )
                     else if (onAdd != null)
-                      ElevatedButton(
+                      _cardActionButton(
+                        label: "Abone Ol",
                         onPressed: onAdd,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.red,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 8,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                        ),
-                        child: const Text("Abone Ol"),
+                        icon: Icons.menu_book_rounded,
+                        variant: _CardActionVariant.primary,
                       ),
                   ],
                 ),
@@ -2852,11 +3115,12 @@ Widget _bookCard(
                 children: [
                   Text(
                     item["title"] ?? "",
-                    maxLines: 2,
+                    maxLines: isWeb ? 2 : 3,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                      fontSize: 15,
+                      fontSize: 14,
                       fontWeight: FontWeight.bold,
+                      height: 1.2,
                     ),
                   ),
                   const SizedBox(height: 4),
@@ -2867,51 +3131,41 @@ Widget _bookCard(
                     style: const TextStyle(color: Colors.black54, fontSize: 12),
                   ),
                   const Spacer(),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      _priceWidgetForItem(
-                        item,
-                        saleStyle: const TextStyle(
-                          color: Colors.black54,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 11,
+                  if (hideAction)
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _cardActionButton(
+                            label: "Oku",
+                            onPressed: onTap,
+                            icon: Icons.auto_stories_rounded,
+                            variant: _CardActionVariant.read,
+                            height: 30,
+                          ),
                         ),
-                        campaignStyle: const TextStyle(
-                          color: Colors.red,
-                          fontWeight: FontWeight.w700,
+                        const SizedBox(width: 6),
+                        _cardActionButton(
+                          label: "",
+                          onPressed: onTap,
+                          icon: Icons.menu_book_rounded,
+                          variant: _CardActionVariant.read,
+                          compact: true,
+                          height: 30,
                         ),
+                      ],
+                    )
+                  else
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: _cardActionButton(
+                        label: "",
+                        onPressed: onAdd,
+                        icon: Icons.menu_book_rounded,
+                        variant: _CardActionVariant.primary,
+                        compact: true,
+                        height: 30,
                       ),
-                      if (hideAction && item["statusLabel"] != null)
-                        Text(
-                          item["statusLabel"].toString(),
-                          textAlign: TextAlign.right,
-                          style: const TextStyle(
-                            color: Colors.red,
-                            fontWeight: FontWeight.w700,
-                            fontSize: 12,
-                          ),
-                        )
-                      else if (!hideAction)
-                        SizedBox(
-                          width: 32,
-                          height: 32,
-                          child: Material(
-                            color: onAdd == null ? Colors.grey : Colors.red,
-                            borderRadius: BorderRadius.circular(6),
-                            child: InkWell(
-                              borderRadius: BorderRadius.circular(6),
-                              onTap: onAdd,
-                              child: const Icon(
-                                Icons.add,
-                                color: Colors.white,
-                                size: 18,
-                              ),
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
+                    ),
                 ],
               ),
             ),
@@ -2951,11 +3205,19 @@ Widget _newspaperCard(Map<String, dynamic> item, {VoidCallback? onTap}) {
           Expanded(
             child: ClipRRect(
               borderRadius: BorderRadius.circular(12),
-              child: SizedBox.expand(
-                child: safeImage(
-                  UploadService.normalizeUrl(item["icon"]?.toString() ?? ""),
-                  fit: BoxFit.cover,
-                  fallbackIcon: Icons.broken_image,
+              child: ColoredBox(
+                color: const Color(0xFFF8F8F8),
+                child: SizedBox.expand(
+                  child: Padding(
+                    padding: const EdgeInsets.all(6),
+                    child: safeImage(
+                      UploadService.normalizeUrl(
+                        item["icon"]?.toString() ?? "",
+                      ),
+                      fit: BoxFit.contain,
+                      fallbackIcon: Icons.broken_image,
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -3002,13 +3264,19 @@ Widget _newspaperPreviewCard(
         children: [
           ClipRRect(
             borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
-            child: SizedBox(
-              height: resolvedImageHeight,
-              width: double.infinity,
-              child: safeImage(
-                imageUrl,
-                fit: BoxFit.cover,
-                fallbackIcon: Icons.broken_image,
+            child: ColoredBox(
+              color: const Color(0xFFF8F8F8),
+              child: SizedBox(
+                height: resolvedImageHeight,
+                width: double.infinity,
+                child: Padding(
+                  padding: const EdgeInsets.all(6),
+                  child: safeImage(
+                    imageUrl,
+                    fit: BoxFit.contain,
+                    fallbackIcon: Icons.broken_image,
+                  ),
+                ),
               ),
             ),
           ),
@@ -3046,21 +3314,12 @@ Widget _newspaperPreviewCard(
                       const SizedBox(height: 4),
                       SizedBox(
                         height: 24,
-                        child: ElevatedButton(
+                        child: _cardActionButton(
+                          label: "Oku",
                           onPressed: onTap,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.blue,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(horizontal: 10),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            elevation: 0,
-                          ),
-                          child: const Text(
-                            "Oku",
-                            style: TextStyle(fontSize: 12),
-                          ),
+                          icon: Icons.auto_stories_rounded,
+                          variant: _CardActionVariant.read,
+                          height: 24,
                         ),
                       ),
                     ],
@@ -3099,21 +3358,12 @@ Widget _newspaperPreviewCard(
                     ],
                     const Spacer(),
                     if (showRead)
-                      SizedBox(
+                      _cardActionButton(
+                        label: "Oku",
+                        onPressed: onTap,
+                        icon: Icons.auto_stories_rounded,
+                        variant: _CardActionVariant.read,
                         height: 30,
-                        child: ElevatedButton(
-                          onPressed: onTap,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.blue,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(horizontal: 12),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            elevation: 0,
-                          ),
-                          child: const Text("Oku"),
-                        ),
                       ),
                   ],
                 ),
@@ -3603,9 +3853,11 @@ Widget _attachmentsList(
                     ],
                   ),
                   const SizedBox(height: 8),
-                  OutlinedButton(
+                  _cardActionButton(
+                    label: "Detay",
                     onPressed: () => state._openEkDetail(ek),
-                    child: const Text("Detay"),
+                    icon: Icons.visibility_outlined,
+                    variant: _CardActionVariant.neutral,
                   ),
                 ],
               ),
@@ -3809,6 +4061,237 @@ Widget _statusChip(String label, Color color) {
   );
 }
 
+class _BookBrowseBody extends StatefulWidget {
+  final _HomeResponsiveScreenState homeState;
+
+  const _BookBrowseBody({required this.homeState});
+
+  @override
+  State<_BookBrowseBody> createState() => _BookBrowseBodyState();
+}
+
+class _BookBrowseBodyState extends State<_BookBrowseBody> {
+  static const String _allAuthors = "__all_authors__";
+  static const String _allCategories = "__all_categories__";
+
+  String _selectedAuthor = _allAuthors;
+  String _selectedCategory = _allCategories;
+
+  String _authorName(Map<String, dynamic> book) {
+    final rel = book["author_rel"];
+    if (rel is Map && rel["name"] != null) {
+      final name = rel["name"].toString().trim();
+      if (name.isNotEmpty) return name;
+    }
+    final raw = book["author"]?.toString().trim();
+    if (raw != null && raw.isNotEmpty) return raw;
+    return "Bilinmeyen Yazar";
+  }
+
+  String _categoryName(Map<String, dynamic> book) {
+    final rel = book["category_rel"];
+    if (rel is Map && rel["name"] != null) {
+      final name = rel["name"].toString().trim();
+      if (name.isNotEmpty) return name;
+    }
+    final raw = book["category"]?.toString().trim();
+    if (raw != null && raw.isNotEmpty) return raw;
+    return "Diğer";
+  }
+
+  List<String> _authorOptions(List<Map<String, dynamic>> books) {
+    final options = books.map(_authorName).toSet().toList()
+      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    return options;
+  }
+
+  List<String> _categoryOptions(List<Map<String, dynamic>> books) {
+    final options = books.map(_categoryName).toSet().toList()
+      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    return options;
+  }
+
+  List<Map<String, dynamic>> _filteredBooks(List<Map<String, dynamic>> books) {
+    return books.where((book) {
+      final byAuthor =
+          _selectedAuthor == _allAuthors ||
+          _authorName(book) == _selectedAuthor;
+      final byCategory =
+          _selectedCategory == _allCategories ||
+          _categoryName(book) == _selectedCategory;
+      return byAuthor && byCategory;
+    }).toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final books = widget.homeState.books;
+    final cart = context.watch<CartProvider>();
+    final isTablet = isTabletLayout(context);
+    final authorOptions = _authorOptions(books);
+    final categoryOptions = _categoryOptions(books);
+    final filtered = _filteredBooks(books);
+
+    const spacing = 14.0;
+    final textScaler = MediaQuery.textScalerOf(context);
+    final titleHeight = textScaler.scale(15) * 1.3 * 3;
+    final authorHeight = textScaler.scale(12) * 1.25;
+    final rowHeight = 36.0;
+    const verticalGaps = 4.0;
+    const contentPadding = 10.0 * 2;
+    const imageHeight = 150.0;
+    const safetyMargin = 10.0;
+    final cardHeight =
+        imageHeight +
+        contentPadding +
+        verticalGaps +
+        titleHeight +
+        authorHeight +
+        rowHeight +
+        safetyMargin;
+    final crossAxisCount = isTablet ? 3 : 2;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF8F8F8),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFFE8E8E8)),
+          ),
+          child: Column(
+            children: [
+              DropdownButtonFormField<String>(
+                initialValue: _selectedAuthor,
+                decoration: const InputDecoration(
+                  labelText: "Yazar",
+                  border: OutlineInputBorder(),
+                ),
+                items: [
+                  const DropdownMenuItem<String>(
+                    value: _allAuthors,
+                    child: Text("Tüm Yazarlar"),
+                  ),
+                  ...authorOptions.map(
+                    (author) => DropdownMenuItem<String>(
+                      value: author,
+                      child: Text(author),
+                    ),
+                  ),
+                ],
+                onChanged: (value) {
+                  setState(() => _selectedAuthor = value ?? _allAuthors);
+                },
+              ),
+              const SizedBox(height: 10),
+              DropdownButtonFormField<String>(
+                initialValue: _selectedCategory,
+                decoration: const InputDecoration(
+                  labelText: "Kategori",
+                  border: OutlineInputBorder(),
+                ),
+                items: [
+                  const DropdownMenuItem<String>(
+                    value: _allCategories,
+                    child: Text("Tüm Kategoriler"),
+                  ),
+                  ...categoryOptions.map(
+                    (category) => DropdownMenuItem<String>(
+                      value: category,
+                      child: Text(category),
+                    ),
+                  ),
+                ],
+                onChanged: (value) {
+                  setState(() => _selectedCategory = value ?? _allCategories);
+                },
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          "${filtered.length} kitap listeleniyor",
+          style: const TextStyle(
+            color: Colors.black54,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 12),
+        if (filtered.isEmpty)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 16),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8F8F8),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFE8E8E8)),
+            ),
+            child: const Text(
+              "Seçilen filtrelerde kitap bulunamadı.",
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.black54),
+            ),
+          )
+        else
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            padding: EdgeInsets.zero,
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: crossAxisCount,
+              crossAxisSpacing: spacing,
+              mainAxisSpacing: spacing,
+              mainAxisExtent: cardHeight,
+            ),
+            itemCount: filtered.length,
+            itemBuilder: (_, i) {
+              final book = filtered[i];
+              final effectivePrice = widget.homeState._effectiveBookPrice(book);
+              final item = CartItem(
+                id: "book-${book["id"]}",
+                title: book["title"] ?? "",
+                subtitle: _authorName(book),
+                imageUrl: book["cover_url"] ?? "",
+                price: effectivePrice,
+                quantity: 1,
+                type: CartItemType.book,
+                metadata: {"productId": book["id"]},
+              );
+              final alreadyInCart = cart.contains(item);
+              final purchased = widget.homeState._hasPurchased(
+                "book",
+                widget.homeState._toInt(book["id"]),
+              );
+              final isFree = effectivePrice <= 0;
+              return _bookCard(
+                {
+                  "image": book["cover_url"],
+                  "title": book["title"],
+                  "author": _authorName(book),
+                  "salePrice": book["price"],
+                  "campaignPrice": book["discount_price"],
+                },
+                false,
+                hideAction: purchased || isFree,
+                onAdd: alreadyInCart || isFree
+                    ? null
+                    : () => _addToCart(context, cart, item),
+                onTap: () {
+                  widget.homeState._openProductDetail(
+                    widget.homeState._mapBookDetail(book),
+                  );
+                },
+              );
+            },
+          ),
+      ],
+    );
+  }
+}
+
 class _MagazineBrowseScreen extends StatefulWidget {
   final _HomeResponsiveScreenState homeState;
 
@@ -3960,7 +4443,8 @@ class _MagazineBrowseScreenState extends State<_MagazineBrowseScreen> {
                 SizedBox(
                   height: 34,
                   width: double.infinity,
-                  child: OutlinedButton(
+                  child: _cardActionButton(
+                    label: "Detay",
                     onPressed: () {
                       final detail = widget.homeState._buildMagazineIssueDetail(
                         issue: issue,
@@ -3976,7 +4460,9 @@ class _MagazineBrowseScreenState extends State<_MagazineBrowseScreen> {
                         ),
                       );
                     },
-                    child: const Text("Detay"),
+                    icon: Icons.visibility_outlined,
+                    variant: _CardActionVariant.neutral,
+                    height: 34,
                   ),
                 ),
               ],

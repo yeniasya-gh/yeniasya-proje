@@ -108,6 +108,26 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
     return double.tryParse(value.replaceAll(",", "."));
   }
 
+  List<int> _yearOptions({int? selectedYear}) {
+    final now = DateTime.now().year;
+    final years = <int>[for (int y = now + 1; y >= 2000; y--) y];
+    if (selectedYear != null && !years.contains(selectedYear)) {
+      years.add(selectedYear);
+      years.sort((a, b) => b.compareTo(a));
+    }
+    return years;
+  }
+
+  int _issueYear(Map<String, dynamic> issue) {
+    final raw = issue["added_at"]?.toString();
+    final dt = raw == null || raw.isEmpty ? null : DateTime.tryParse(raw);
+    return dt?.year ?? DateTime.now().year;
+  }
+
+  String _yearToAddedAt(int year) {
+    return DateTime.utc(year, 1, 1).toIso8601String();
+  }
+
   Future<void> _showAddIssueDialog() async {
     final formKey = GlobalKey<FormState>();
     final issueCtrl = TextEditingController();
@@ -115,6 +135,8 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
     final photoCtrl = TextEditingController();
     final priceCtrl = TextEditingController();
     final descCtrl = TextEditingController();
+    final nowYear = DateTime.now().year;
+    int selectedYear = nowYear;
 
     Uint8List? pickedPdfBytes;
     String? pickedPdfName;
@@ -147,6 +169,21 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
                         return "Geçerli bir sayı girin";
                       }
                       return null;
+                    },
+                  ),
+                  DropdownButtonFormField<int>(
+                    initialValue: selectedYear,
+                    decoration: const InputDecoration(labelText: "Yıl"),
+                    items: _yearOptions(selectedYear: selectedYear)
+                        .map(
+                          (y) => DropdownMenuItem<int>(
+                            value: y,
+                            child: Text(y.toString()),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) {
+                      setStateDialog(() => selectedYear = value ?? nowYear);
                     },
                   ),
                   TextFormField(
@@ -297,6 +334,7 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
                           description: descCtrl.text.trim().isEmpty
                               ? null
                               : descCtrl.text.trim(),
+                          addedAt: _yearToAddedAt(selectedYear),
                         );
                         if (!mounted) return;
                         Navigator.pop(context);
@@ -332,6 +370,7 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
     final descCtrl = TextEditingController(
       text: (issue["description"] ?? "").toString(),
     );
+    int selectedYear = _issueYear(issue);
     Uint8List? pickedPdfBytes;
     String? pickedPdfName;
     Uint8List? pickedPhotoBytes;
@@ -361,6 +400,23 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
                       if (int.tryParse(v.trim()) == null)
                         return "Geçerli bir sayı girin";
                       return null;
+                    },
+                  ),
+                  DropdownButtonFormField<int>(
+                    initialValue: selectedYear,
+                    decoration: const InputDecoration(labelText: "Yıl"),
+                    items: _yearOptions(selectedYear: selectedYear)
+                        .map(
+                          (y) => DropdownMenuItem<int>(
+                            value: y,
+                            child: Text(y.toString()),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) {
+                      setStateDialog(
+                        () => selectedYear = value ?? DateTime.now().year,
+                      );
                     },
                   ),
                   TextFormField(
@@ -509,6 +565,7 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
                           description: descCtrl.text.trim().isEmpty
                               ? null
                               : descCtrl.text.trim(),
+                          addedAt: _yearToAddedAt(selectedYear),
                         );
                         if (!mounted) return;
                         Navigator.pop(context);
@@ -530,7 +587,7 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
     );
   }
 
-String _formatDateTime(dynamic raw) {
+  String _formatDateTime(dynamic raw) {
     if (raw == null) return "-";
     DateTime? dt;
     try {
@@ -716,13 +773,14 @@ String _formatDateTime(dynamic raw) {
                         separatorBuilder: (_, __) => const Divider(),
                         itemBuilder: (_, i) {
                           final issue = _issues[i];
+                          final issueYear = _issueYear(issue);
                           return ListTile(
                             leading: _issueCover(issue["photo_url"]),
                             title: Text(
                               "${(magazine["name"] ?? "").toString()} - ${issue["issue_number"]}",
                             ),
                             subtitle: Text(
-                              "Eklendi: ${_formatDate(issue["added_at"])}",
+                              "Yıl: $issueYear • Eklendi: ${_formatDate(issue["added_at"])}",
                             ),
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,

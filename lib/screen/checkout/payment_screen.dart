@@ -19,6 +19,8 @@ import '../../services/auth/auth_provider.dart';
 import '../../services/promo_code_service.dart';
 import '../../services/address_service.dart';
 import '../../services/payment_service.dart';
+import '../../services/revenuecat_backend_service.dart';
+import '../../config/revenuecat_config.dart';
 import 'payment_webview_screen.dart';
 import '../../config/payment_config.dart';
 import '../../helpers/payment_web_helper.dart';
@@ -60,6 +62,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
   final _promoService = PromoCodeService();
   final _paymentService = PaymentService();
   final _addressService = AddressService();
+  final _revenueCatBackendService = RevenueCatBackendService();
 
   @override
   void initState() {
@@ -315,11 +318,29 @@ class _PaymentScreenState extends State<PaymentScreen> {
     try {
       // ignore: avoid_print
       print("🟦 PaymentScreen.finalize -> start");
-      if (accessItems.isNotEmpty) {
+      final directAccessItems = accessItems
+          .where((item) => item["item_type"] != "newspaper_subscription")
+          .toList();
+      final newspaperAccessItems = accessItems
+          .where((item) => item["item_type"] == "newspaper_subscription")
+          .toList();
+
+      if (directAccessItems.isNotEmpty) {
         await _accessService.grantAccess(
           userId: widget.userId,
-          items: accessItems,
+          items: directAccessItems,
         );
+      }
+      if (newspaperAccessItems.isNotEmpty) {
+        final synced = await _syncNewspaperSubscriptionWithRevenueCat(
+          newspaperAccessItems: newspaperAccessItems,
+        );
+        if (!synced) {
+          await _accessService.grantAccess(
+            userId: widget.userId,
+            items: newspaperAccessItems,
+          );
+        }
       }
       // ignore: avoid_print
       print("🟦 PaymentScreen.finalize -> access ok");
@@ -379,6 +400,40 @@ class _PaymentScreenState extends State<PaymentScreen> {
     }
   }
 
+  Future<bool> _syncNewspaperSubscriptionWithRevenueCat({
+    required List<Map<String, dynamic>> newspaperAccessItems,
+  }) async {
+    if (newspaperAccessItems.isEmpty) return true;
+
+    String? expiresAt;
+    for (final item in newspaperAccessItems) {
+      final raw = item["expires_at"]?.toString().trim();
+      if (raw != null && raw.isNotEmpty) {
+        expiresAt = raw;
+        break;
+      }
+    }
+
+    try {
+      final user = context.read<AuthProvider>().user;
+      await _revenueCatBackendService.grantSubscription(
+        source: "web_checkout",
+        entitlementId: RevenueCatConfig.entitlementYeniasyaPro,
+        userId: int.tryParse(widget.userId),
+        appUserId: user?.revenueCatUserId,
+        expirationDate: expiresAt,
+        lifetime: expiresAt == null,
+      );
+      // ignore: avoid_print
+      print("🟩 PaymentScreen.finalize -> revenuecat grant ok");
+      return true;
+    } catch (e) {
+      // ignore: avoid_print
+      print("🟨 PaymentScreen.finalize -> revenuecat grant failed: $e");
+      return false;
+    }
+  }
+
   List<Map<String, dynamic>> _buildOrderItemsPayload(List<CartItem> items) {
     return items.map((item) {
       final rawProductId = item.metadata?["productId"];
@@ -401,7 +456,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
     for (final item in items) {
       final rawProductId = item.metadata?["productId"];
       final parsedProductId = int.tryParse(rawProductId?.toString() ?? "");
-      String? itemType;
+      late final String itemType;
       int? itemId;
       DateTime? expiresAt;
 
@@ -433,8 +488,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
           itemId = parsedProductId;
           break;
       }
-
-      if (itemType == null) continue;
 
       final qty = item.quantity <= 0 ? 1 : item.quantity;
       for (var i = 0; i < qty; i++) {

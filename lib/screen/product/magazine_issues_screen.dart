@@ -30,8 +30,16 @@ class MagazineIssuesScreen extends StatefulWidget {
 class _MagazineIssuesScreenState extends State<MagazineIssuesScreen> {
   final _service = AdminMagazineService();
   String? _openingIssueKey;
+  late final Future<List<Map<String, dynamic>>> _issuesFuture;
+  int? _selectedYear;
 
   bool get _busy => _openingIssueKey != null;
+
+  @override
+  void initState() {
+    super.initState();
+    _issuesFuture = _service.getIssues(widget.magazineId);
+  }
 
   DateTime? _issueDate(Map<String, dynamic> issue) {
     final raw =
@@ -40,6 +48,13 @@ class _MagazineIssuesScreenState extends State<MagazineIssuesScreen> {
         issue["created_at"]?.toString();
     if (raw == null || raw.isEmpty) return null;
     return DateTime.tryParse(raw);
+  }
+
+  int? _issueYear(Map<String, dynamic> issue) {
+    final explicit = issue["publish_year"];
+    if (explicit is int) return explicit;
+    if (explicit != null) return int.tryParse(explicit.toString());
+    return _issueDate(issue)?.year;
   }
 
   bool _isWithinAccessWindow({
@@ -159,7 +174,7 @@ class _MagazineIssuesScreenState extends State<MagazineIssuesScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text("Dergi Sayıları")),
       body: FutureBuilder<List<Map<String, dynamic>>>(
-        future: _service.getIssues(widget.magazineId),
+        future: _issuesFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
@@ -173,121 +188,212 @@ class _MagazineIssuesScreenState extends State<MagazineIssuesScreen> {
           if (issues.isEmpty) {
             return const Center(child: Text("Henüz sayı eklenmedi."));
           }
-          return ListView.separated(
-            padding: const EdgeInsets.all(16),
-            itemCount: issues.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 12),
-            itemBuilder: (_, i) {
-              final issue = issues[i];
-              final issueId = issue["id"] as int?;
-              final issueNumber = issue["issue_number"]?.toString() ?? "";
-              final issueKey = "i-$i-${issueId ?? "null"}";
-              final imageUrl =
-                  issue["photo_url"]?.toString() ??
-                  widget.magazineCoverUrl ??
-                  "";
-              final fileUrl = issue["file_url"]?.toString() ?? "";
-              final directIssueAccess = access.hasAccess(
-                "magazine_issue",
-                itemId: issueId,
-              );
-              final issueDate = _issueDate(issue);
-              final windowAccess =
-                  hasMagazineAccess &&
-                  start != null &&
-                  end != null &&
-                  issueDate != null &&
-                  _isWithinAccessWindow(
-                    issueDate: issueDate,
-                    start: start,
-                    end: end,
-                  );
-              final canView = directIssueAccess || windowAccess;
 
-              return Card(
-                elevation: 1,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
+          final years = issues.map(_issueYear).whereType<int>().toSet().toList()
+            ..sort((a, b) => b.compareTo(a));
+          final selectedYear = years.contains(_selectedYear)
+              ? _selectedYear
+              : null;
+          final filteredIssues = selectedYear == null
+              ? issues
+              : issues
+                    .where((issue) => _issueYear(issue) == selectedYear)
+                    .toList();
+
+          return Column(
+            children: [
+              if (years.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                   child: Row(
                     children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: safeImage(
-                          UploadService.normalizeUrl(imageUrl),
-                          width: 70,
-                          height: 100,
-                          fit: BoxFit.cover,
-                          fallbackIcon: Icons.menu_book,
-                        ),
+                      const Icon(
+                        Icons.calendar_month_outlined,
+                        size: 20,
+                        color: Colors.red,
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: 10),
                       Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              "Sayı $issueNumber",
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w700,
-                              ),
+                        child: DropdownButtonFormField<int?>(
+                          initialValue: selectedYear,
+                          isExpanded: true,
+                          decoration: InputDecoration(
+                            labelText: "Yıl",
+                            filled: true,
+                            fillColor: const Color(0xFFF8F8F8),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
                             ),
-                            const SizedBox(height: 6),
-                            const Text(
-                              "Abonelik ile erişilir",
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.black54,
-                              ),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
                             ),
-                            if (canView)
-                              const Padding(
-                                padding: EdgeInsets.only(top: 6.0),
-                                child: Text(
-                                  "Sahip",
-                                  style: TextStyle(
-                                    color: Colors.green,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      SizedBox(
-                        width: 110,
-                        height: 40,
-                        child: OutlinedButton(
-                          onPressed: _busy
-                              ? null
-                              : () => _openIssueDetail(
-                                    context: context,
-                                    issue: issue,
-                                    issueNumber: issueNumber,
-                                    imageUrl: imageUrl,
-                                    fileUrl: UploadService.normalizeUrl(
-                                      fileUrl,
-                                    ),
-                                  ),
-                          style: OutlinedButton.styleFrom(
-                            padding: EdgeInsets.zero,
-                            visualDensity: VisualDensity.compact,
-                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                            alignment: Alignment.center,
                           ),
-                          child: const Center(child: Text("Detay")),
+                          items: [
+                            const DropdownMenuItem<int?>(
+                              value: null,
+                              child: Text("Tüm Yıllar"),
+                            ),
+                            ...years.map(
+                              (year) => DropdownMenuItem<int?>(
+                                value: year,
+                                child: Text(year.toString()),
+                              ),
+                            ),
+                          ],
+                          onChanged: (value) {
+                            setState(() => _selectedYear = value);
+                          },
                         ),
                       ),
                     ],
                   ),
                 ),
-              );
-            },
+              Expanded(
+                child: filteredIssues.isEmpty
+                    ? const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(24.0),
+                          child: Text(
+                            "Seçilen yıla ait dergi sayısı bulunamadı.",
+                          ),
+                        ),
+                      )
+                    : ListView.separated(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: filteredIssues.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 12),
+                        itemBuilder: (_, i) {
+                          final issue = filteredIssues[i];
+                          final issueYear = _issueYear(issue);
+                          final issueId = issue["id"] as int?;
+                          final issueNumber =
+                              issue["issue_number"]?.toString() ?? "";
+                          final imageUrl =
+                              issue["photo_url"]?.toString() ??
+                              widget.magazineCoverUrl ??
+                              "";
+                          final fileUrl = issue["file_url"]?.toString() ?? "";
+                          final directIssueAccess = access.hasAccess(
+                            "magazine_issue",
+                            itemId: issueId,
+                          );
+                          final issueDate = _issueDate(issue);
+                          final windowAccess =
+                              hasMagazineAccess &&
+                              start != null &&
+                              end != null &&
+                              issueDate != null &&
+                              _isWithinAccessWindow(
+                                issueDate: issueDate,
+                                start: start,
+                                end: end,
+                              );
+                          final canView = directIssueAccess || windowAccess;
+
+                          return Card(
+                            elevation: 1,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Row(
+                                children: [
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: safeImage(
+                                      UploadService.normalizeUrl(imageUrl),
+                                      width: 70,
+                                      height: 100,
+                                      fit: BoxFit.cover,
+                                      fallbackIcon: Icons.menu_book,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          "Sayı $issueNumber",
+                                          style: const TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 6),
+                                        const Text(
+                                          "Abonelik ile erişilir",
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: Colors.black54,
+                                          ),
+                                        ),
+                                        if (issueYear != null)
+                                          Padding(
+                                            padding: const EdgeInsets.only(
+                                              top: 4.0,
+                                            ),
+                                            child: Text(
+                                              "$issueYear yılı",
+                                              style: const TextStyle(
+                                                fontSize: 12,
+                                                color: Colors.black54,
+                                              ),
+                                            ),
+                                          ),
+                                        if (canView)
+                                          const Padding(
+                                            padding: EdgeInsets.only(top: 6.0),
+                                            child: Text(
+                                              "Sahip",
+                                              style: TextStyle(
+                                                color: Colors.green,
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  SizedBox(
+                                    width: 110,
+                                    height: 40,
+                                    child: OutlinedButton(
+                                      onPressed: _busy
+                                          ? null
+                                          : () => _openIssueDetail(
+                                              context: context,
+                                              issue: issue,
+                                              issueNumber: issueNumber,
+                                              imageUrl: imageUrl,
+                                              fileUrl:
+                                                  UploadService.normalizeUrl(
+                                                    fileUrl,
+                                                  ),
+                                            ),
+                                      style: OutlinedButton.styleFrom(
+                                        padding: EdgeInsets.zero,
+                                        visualDensity: VisualDensity.compact,
+                                        tapTargetSize:
+                                            MaterialTapTargetSize.shrinkWrap,
+                                        alignment: Alignment.center,
+                                      ),
+                                      child: const Center(child: Text("Detay")),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+              ),
+            ],
           );
         },
       ),

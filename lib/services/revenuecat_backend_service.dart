@@ -76,7 +76,88 @@ class RevenueCatBackendService {
     await _post(RevenueCatConfig.backendEventPath, payload);
   }
 
-  Future<void> _post(String path, Map<String, dynamic> payload) async {
+  Future<Map<String, dynamic>> refreshSubscription({
+    String source = "manual_refresh",
+    String? entitlementId,
+    String? appUserId,
+    String? expectedAppUserId,
+    bool? identityMatched,
+    int? userId,
+    bool? isActive,
+    String? expirationDate,
+  }) {
+    final payload = <String, dynamic>{
+      "source": source,
+      if (entitlementId != null && entitlementId.isNotEmpty)
+        "entitlementId": entitlementId,
+      if (appUserId != null && appUserId.isNotEmpty) "appUserId": appUserId,
+      if (expectedAppUserId != null && expectedAppUserId.isNotEmpty)
+        "expectedAppUserId": expectedAppUserId,
+      if (identityMatched != null) "identityMatched": identityMatched,
+      if (userId != null) "userId": userId,
+      if (isActive != null) "isActive": isActive,
+      if (expirationDate != null && expirationDate.isNotEmpty)
+        "expirationDate": expirationDate,
+    };
+    return _post(RevenueCatConfig.backendRefreshPath, payload);
+  }
+
+  Future<Map<String, dynamic>> grantSubscription({
+    String source = "web_checkout",
+    String? entitlementId,
+    String? appUserId,
+    String? expectedAppUserId,
+    bool? identityMatched,
+    int? userId,
+    String? expirationDate,
+    int? durationMonths,
+    bool lifetime = false,
+    String? platform,
+  }) {
+    final payload = <String, dynamic>{
+      "source": source,
+      if (entitlementId != null && entitlementId.isNotEmpty)
+        "entitlementId": entitlementId,
+      if (appUserId != null && appUserId.isNotEmpty) "appUserId": appUserId,
+      if (expectedAppUserId != null && expectedAppUserId.isNotEmpty)
+        "expectedAppUserId": expectedAppUserId,
+      if (identityMatched != null) "identityMatched": identityMatched,
+      if (userId != null) "userId": userId,
+      if (expirationDate != null && expirationDate.isNotEmpty)
+        "expirationDate": expirationDate,
+      if (durationMonths != null && durationMonths > 0)
+        "durationMonths": durationMonths,
+      if (lifetime) "lifetime": true,
+      if (platform != null && platform.isNotEmpty) "platform": platform,
+    };
+    return _post(RevenueCatConfig.backendGrantPath, payload);
+  }
+
+  Future<Map<String, dynamic>> revokeSubscription({
+    String source = "manual_revoke",
+    String? entitlementId,
+    String? appUserId,
+    String? expectedAppUserId,
+    bool? identityMatched,
+    int? userId,
+  }) {
+    final payload = <String, dynamic>{
+      "source": source,
+      if (entitlementId != null && entitlementId.isNotEmpty)
+        "entitlementId": entitlementId,
+      if (appUserId != null && appUserId.isNotEmpty) "appUserId": appUserId,
+      if (expectedAppUserId != null && expectedAppUserId.isNotEmpty)
+        "expectedAppUserId": expectedAppUserId,
+      if (identityMatched != null) "identityMatched": identityMatched,
+      if (userId != null) "userId": userId,
+    };
+    return _post(RevenueCatConfig.backendRevokePath, payload);
+  }
+
+  Future<Map<String, dynamic>> _post(
+    String path,
+    Map<String, dynamic> payload,
+  ) async {
     final uri = Uri.parse("$_baseUrl$path");
     final headers = <String, String>{
       "content-type": "application/json",
@@ -93,5 +174,12 @@ class RevenueCatBackendService {
         "RevenueCat backend request failed (${response.statusCode}): ${response.body}",
       );
     }
+
+    final trimmed = response.body.trim();
+    if (trimmed.isEmpty) return const {};
+    final decoded = jsonDecode(trimmed);
+    if (decoded is Map<String, dynamic>) return decoded;
+    if (decoded is Map) return Map<String, dynamic>.from(decoded);
+    return const {};
   }
 }
