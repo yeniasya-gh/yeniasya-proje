@@ -15,6 +15,7 @@ import 'admin_slider_page.dart';
 import 'admin_newspaper_subscription_types_page.dart';
 import 'admin_home_showcase_page.dart';
 import 'admin_magazine_types_page.dart';
+import 'admin_manual_newspaper_users_page.dart';
 import '../../services/loading_manager.dart';
 
 enum AdminPage {
@@ -25,6 +26,7 @@ enum AdminPage {
   magazineTypes,
   newspapers,
   newspaperTypes,
+  manualNewspaperUsers,
   notifications,
   promotions,
   orders,
@@ -84,18 +86,51 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
                     _menuItem("Kullanıcılar", Icons.people, AdminPage.users),
                     _menuItem("Kitaplar", Icons.menu_book, AdminPage.books),
                     _menuItem("Dergiler", Icons.menu_book, AdminPage.magazines),
-                    _menuItem("Dergi Tipleri", Icons.bookmarks, AdminPage.magazineTypes),
+                    _menuItem(
+                      "Dergi Tipleri",
+                      Icons.bookmarks,
+                      AdminPage.magazineTypes,
+                    ),
                     _menuItem("Gazeteler", Icons.article, AdminPage.newspapers),
-                    _menuItem("Gazete Tipleri", Icons.newspaper, AdminPage.newspaperTypes),
-                    _menuItem("Bildirimler", Icons.notifications, AdminPage.notifications),
-                    _menuItem("Promosyon Kodları", Icons.local_offer, AdminPage.promotions),
-                    _menuItem("Siparişler", Icons.receipt_long, AdminPage.orders),
+                    _menuItem(
+                      "Gazete Tipleri",
+                      Icons.newspaper,
+                      AdminPage.newspaperTypes,
+                    ),
+                    _menuItem(
+                      "Manuel E-Gazete Kullanıcılar",
+                      Icons.manage_accounts,
+                      AdminPage.manualNewspaperUsers,
+                    ),
+                    _menuItem(
+                      "Bildirimler",
+                      Icons.notifications,
+                      AdminPage.notifications,
+                    ),
+                    _menuItem(
+                      "Promosyon Kodları",
+                      Icons.local_offer,
+                      AdminPage.promotions,
+                    ),
+                    _menuItem(
+                      "Siparişler",
+                      Icons.receipt_long,
+                      AdminPage.orders,
+                    ),
                     _menuItem("Yorumlar", Icons.reviews, AdminPage.reviews),
                     _menuItem("Raporlar", Icons.bar_chart, AdminPage.reports),
-                    _menuItem("Yazar & Kategori", Icons.list, AdminPage.authorCategory),
+                    _menuItem(
+                      "Yazar & Kategori",
+                      Icons.list,
+                      AdminPage.authorCategory,
+                    ),
                     _menuItem("Ekler", Icons.file_present, AdminPage.ekler),
                     _menuItem("Sliderlar", Icons.slideshow, AdminPage.sliders),
-                    _menuItem("Anasayfa Gösterimi", Icons.home, AdminPage.homeShowcase),
+                    _menuItem(
+                      "Anasayfa Gösterimi",
+                      Icons.home,
+                      AdminPage.homeShowcase,
+                    ),
                     _menuItem("Ayarlar", Icons.settings, AdminPage.settings),
                     const SizedBox(height: 16),
                   ],
@@ -117,7 +152,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
             builder: (_, __) {
               return LoadingManager.instance.loading
                   ? Container(
-                      color: Colors.black.withOpacity(0.4),
+                      color: Colors.black.withValues(alpha: 0.4),
                       child: const Center(
                         child: CircularProgressIndicator(color: Colors.white),
                       ),
@@ -155,41 +190,43 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
   }
 
   Widget _buildPage() {
-  switch (selectedPage) {
-    case AdminPage.users:
-      return const AdminUsersPage();
-    case AdminPage.books:
-      return const AdminBooksPage();
-    case AdminPage.magazines:
-      return const AdminMagazinesPage();
-    case AdminPage.magazineTypes:
-      return const AdminMagazineTypesPage();
-    case AdminPage.newspapers:
-      return const AdminNewspapersPage();
-    case AdminPage.newspaperTypes:
-      return const AdminNewspaperSubscriptionTypesPage();
-    case AdminPage.notifications:
-      return const AdminNotificationsPage();
-    case AdminPage.promotions:
-      return const AdminPromoCodesPage();
-    case AdminPage.orders:
-      return const AdminOrdersPage();
-    case AdminPage.reviews:
-      return const AdminReviewsPage();
-    case AdminPage.reports:
-      return const AdminReportsPage();
-    case AdminPage.authorCategory:
-      return const AdminAuthorCategoryPage();
-    case AdminPage.ekler:
-      return const AdminEklerPage();
-    case AdminPage.sliders:
-      return const AdminSliderPage();
-    case AdminPage.homeShowcase:
-      return const AdminHomeShowcasePage();
-    case AdminPage.settings:
-      return const Center(child: Text("Ayarlar Sayfası"));
-    default:
-      return const AdminStatsDashboard();
+    switch (selectedPage) {
+      case AdminPage.users:
+        return const AdminUsersPage();
+      case AdminPage.books:
+        return const AdminBooksPage();
+      case AdminPage.magazines:
+        return const AdminMagazinesPage();
+      case AdminPage.magazineTypes:
+        return const AdminMagazineTypesPage();
+      case AdminPage.newspapers:
+        return const AdminNewspapersPage();
+      case AdminPage.newspaperTypes:
+        return const AdminNewspaperSubscriptionTypesPage();
+      case AdminPage.manualNewspaperUsers:
+        return const AdminManualNewspaperUsersPage();
+      case AdminPage.notifications:
+        return const AdminNotificationsPage();
+      case AdminPage.promotions:
+        return const AdminPromoCodesPage();
+      case AdminPage.orders:
+        return const AdminOrdersPage();
+      case AdminPage.reviews:
+        return const AdminReviewsPage();
+      case AdminPage.reports:
+        return const AdminReportsPage();
+      case AdminPage.authorCategory:
+        return const AdminAuthorCategoryPage();
+      case AdminPage.ekler:
+        return const AdminEklerPage();
+      case AdminPage.sliders:
+        return const AdminSliderPage();
+      case AdminPage.homeShowcase:
+        return const AdminHomeShowcasePage();
+      case AdminPage.settings:
+        return const Center(child: Text("Ayarlar Sayfası"));
+      default:
+        return const AdminStatsDashboard();
+    }
   }
-}
 }

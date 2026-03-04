@@ -323,18 +323,10 @@ class _MagazineIssuesScreenState extends State<MagazineIssuesScreen> {
                                             fontWeight: FontWeight.w700,
                                           ),
                                         ),
-                                        const SizedBox(height: 6),
-                                        const Text(
-                                          "Abonelik ile erişilir",
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: Colors.black54,
-                                          ),
-                                        ),
                                         if (issueYear != null)
                                           Padding(
                                             padding: const EdgeInsets.only(
-                                              top: 4.0,
+                                              top: 6.0,
                                             ),
                                             child: Text(
                                               "$issueYear yılı",

@@ -53,10 +53,10 @@ class _SearchScreenState extends State<SearchScreen> {
     final results = _filterResults(_query);
     final access = context.watch<AccessProvider>();
     final rc = context.watch<RevenueCatService>();
-    final hintSegments = <String>["Kitap"];
-    if (widget.showMagazines) hintSegments.add("dergi");
-    if (widget.showNewspapers) hintSegments.add("gazete");
-    hintSegments.add("ek");
+    final hintSegments = <String>["E-Kitaplar"];
+    if (widget.showMagazines) hintSegments.add("E-Dergiler");
+    if (widget.showNewspapers) hintSegments.add("E-Gazete");
+    hintSegments.add("E-Ekler");
     final hintText = "${hintSegments.join(", ")} ara";
 
     return Scaffold(
@@ -95,7 +95,7 @@ class _SearchScreenState extends State<SearchScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _section(
-                "Kitaplar",
+                "E-Kitaplar",
                 results.books,
                 "book",
                 access: access,
@@ -104,7 +104,7 @@ class _SearchScreenState extends State<SearchScreen> {
               if (widget.showMagazines) ...[
                 const SizedBox(height: 18),
                 _section(
-                  "Dergiler",
+                  "E-Dergiler",
                   results.magazines,
                   "magazine",
                   access: access,
@@ -114,7 +114,7 @@ class _SearchScreenState extends State<SearchScreen> {
               if (widget.showNewspapers) ...[
                 const SizedBox(height: 18),
                 _section(
-                  "Gazeteler",
+                  "E-Gazete",
                   results.newspapers,
                   "newspaper",
                   access: access,
@@ -122,7 +122,7 @@ class _SearchScreenState extends State<SearchScreen> {
                 ),
               ],
               const SizedBox(height: 18),
-              _section("Ekler", results.ekler, "ek", access: access, rc: rc),
+              _section("E-Ekler", results.ekler, "ek", access: access, rc: rc),
             ],
           ),
         ),

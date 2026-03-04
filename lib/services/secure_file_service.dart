@@ -34,7 +34,7 @@ class SecureFileService {
   }) async {
     final normalized = UploadService.normalizeUrl(url);
     final cacheKey = isPrivate ? _extractPath(normalized) : normalized;
-    final filename = _safeFileName(cacheKey) + ".enc";
+    final filename = "${_safeFileName(cacheKey)}.enc";
 
     if (kIsWeb) {
       // Web için disk cache yerine direkt network'ten al.
@@ -179,8 +179,7 @@ class SecureFileService {
         ..headers.addAll({
           "content-type": "application/json",
           "accept": "application/pdf",
-          if (AuthTokenStore.token != null &&
-              AuthTokenStore.token!.isNotEmpty)
+          if (AuthTokenStore.token != null && AuthTokenStore.token!.isNotEmpty)
             "Authorization": "Bearer ${AuthTokenStore.token}",
         })
         ..body = jsonEncode(payload);
@@ -434,8 +433,7 @@ class SecureFileService {
         ..headers.addAll({
           "content-type": "application/json",
           "accept": "application/pdf",
-          if (AuthTokenStore.token != null &&
-              AuthTokenStore.token!.isNotEmpty)
+          if (AuthTokenStore.token != null && AuthTokenStore.token!.isNotEmpty)
             "Authorization": "Bearer ${AuthTokenStore.token}",
         })
         ..body = jsonEncode({"path": path});
@@ -775,12 +773,50 @@ class SecureFileService {
     return List<int>.generate(length, (_) => rand.nextInt(256));
   }
 
+  Future<void> clearAllCachedPdfs() async {
+    if (kIsWeb) return;
+
+    try {
+      final dir = await getApplicationSupportDirectory();
+      if (await dir.exists()) {
+        await for (final entity in dir.list(followLinks: false)) {
+          if (entity is! File) continue;
+          if (!entity.path.endsWith(".enc")) continue;
+          try {
+            await entity.delete();
+          } catch (e, s) {
+            await _logger.logError(
+              service: "SecureFileService",
+              operation: "clearAllCachedPdfs",
+              message: e.toString(),
+              stackTrace: s.toString(),
+              payload: {
+                "path": entity.path,
+                "platform": defaultTargetPlatform.toString(),
+              },
+            );
+          }
+        }
+      }
+    } catch (e, s) {
+      await _logger.logError(
+        service: "SecureFileService",
+        operation: "clearAllCachedPdfs",
+        message: e.toString(),
+        stackTrace: s.toString(),
+        payload: {"platform": defaultTargetPlatform.toString()},
+      );
+    } finally {
+      await _resetStoredKey();
+    }
+  }
+
   Future<bool> hasCached(String url) async {
     if (kIsWeb) return false;
     final dir = await getApplicationSupportDirectory();
     final normalized = UploadService.normalizeUrl(url);
     final cacheKey = _extractPath(normalized);
-    final filename = _safeFileName(cacheKey) + ".enc";
+    final filename = "${_safeFileName(cacheKey)}.enc";
     return File(p.join(dir.path, filename)).exists();
   }
 

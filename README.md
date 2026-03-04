@@ -14,3 +14,31 @@ A few resources to get you started if this is your first Flutter project:
 For help getting started with Flutter development, view the
 [online documentation](https://docs.flutter.dev/), which offers tutorials,
 samples, guidance on mobile development, and a full API reference.
+
+## Runtime Mail Config (dart-define)
+
+Mail endpoint bilgileri artık sabit kod yerine `dart-define` ile override edilebilir.
+
+```bash
+flutter run \
+  --dart-define=MAIL_API_URL=https://cdn.yeniasyadigital.com/mail/send \
+  --dart-define=MAIL_ORDER_SUMMARY_API_URL=https://cdn.yeniasyadigital.com/mail/order-summary \
+  --dart-define=MAIL_WELCOME_API_URL=https://cdn.yeniasyadigital.com/mail/welcome \
+  --dart-define=MAIL_API_TOKEN=your-mail-token \
+  --dart-define=MAIL_FROM_NAME="Yeni Asya Dijital"
+```
+
+Unutma riskini kaldırmak için önerilen kullanım:
+
+1. `tool/dart_defines.example.json` dosyasındaki değerleri doldur.
+2. Uygulamayı script ile çalıştır:
+
+```bash
+./tool/run_android.sh
+```
+
+Release APK:
+
+```bash
+./tool/build_apk_release.sh
+```

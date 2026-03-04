@@ -1,9 +1,16 @@
+import 'dart:convert';
+
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
+import 'auth/auth_token_store.dart';
 import 'hasura_manager.dart';
 
 class NotificationService {
   final _hasura = HasuraManager.instance;
+  final http.Client _http = http.Client();
+  static const String _pushApiUrl =
+      "https://cdn.yeniasyadigital.com/admin/notifications/send";
 
   Future<void> registerDeviceToken({
     required int userId,
@@ -129,25 +136,60 @@ class NotificationService {
     return data["notifications_by_pk"] as Map<String, dynamic>?;
   }
 
-  Future<bool> sendNotification({
+  Future<Map<String, dynamic>> sendNotification({
     required String title,
     required String body,
     int? userId,
   }) async {
-    // Backend tarafında FCM gönderimini tetiklemek için kayıt
-    const mutation = r'''
-      mutation InsertNotification($title: String!, $body: String!, $user_id: bigint) {
-        insert_notifications_one(object: {
-          title: $title,
-          body: $body,
-          user_id: $user_id
-        }) { id }
+    final jwt = AuthTokenStore.token?.trim();
+    if (jwt == null || jwt.isEmpty) {
+      throw Exception("Bildirim göndermek için geçerli bir oturum gerekli.");
+    }
+
+    final payload = <String, dynamic>{
+      "title": title,
+      "body": body,
+      if (userId != null) "userId": userId,
+      "persist": true,
+      "dryRun": false,
+    };
+    final response = await _http
+        .post(
+          Uri.parse(_pushApiUrl),
+          headers: {
+            "content-type": "application/json",
+            "authorization": "Bearer $jwt",
+          },
+          body: jsonEncode(payload),
+        )
+        .timeout(const Duration(seconds: 20));
+
+    Map<String, dynamic> decoded = const {};
+    final raw = response.body.trim();
+    if (raw.isNotEmpty) {
+      final parsed = jsonDecode(raw);
+      if (parsed is Map<String, dynamic>) {
+        decoded = parsed;
+      } else if (parsed is Map) {
+        decoded = Map<String, dynamic>.from(parsed);
       }
-    ''';
-    await _hasura.graphQLRequest(
-      query: mutation,
-      variables: {"title": title, "body": body, "user_id": userId},
-    );
-    return true;
+    }
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      final error = decoded["error"]?.toString();
+      throw Exception(
+        error?.isNotEmpty == true
+            ? error
+            : "Bildirim gönderilemedi (${response.statusCode}).",
+      );
+    }
+
+    if (decoded["ok"] != true) {
+      throw Exception(
+        decoded["error"]?.toString() ?? "Bildirim servisi hata döndürdü.",
+      );
+    }
+
+    return decoded;
   }
 }

@@ -86,6 +86,8 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
   bool libraryAccessLoading = false;
   List<Map<String, dynamic>> libraryAccess = [];
   bool _loadingAccessSheet = false;
+  bool _loadingLibraryMagazineIssues = false;
+  bool _libraryMagazineIssuesSheetOpen = false;
   bool _deepLinkHandled = false;
   bool _standaloneRouteHandled = false;
   bool _hideMagazines = false;
@@ -937,6 +939,18 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     return result;
   }
 
+  List<Map<String, dynamic>> _orderedMagazinesForListing() {
+    if (magazines.isEmpty) return const <Map<String, dynamic>>[];
+    if (homeMagazineEntries.isEmpty) return magazines;
+    return _buildHomeShowcaseList(
+      baseItems: magazines,
+      selectedEntries: homeMagazineEntries,
+      maxItems: magazines.length,
+      idKey: "id",
+      selectedIdKey: "product_id",
+    );
+  }
+
   bool _hasPurchased(String type, int? itemId) {
     if (itemId == null) return false;
     final access = context.read<AccessProvider>();
@@ -1078,109 +1092,111 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     int magazineId,
     String name,
   ) async {
-    final issues = await _magService.getIssues(magazineId);
+    if (_loadingLibraryMagazineIssues || _libraryMagazineIssuesSheetOpen) {
+      return;
+    }
+
+    setState(() => _loadingLibraryMagazineIssues = true);
+    List<Map<String, dynamic>> issues = [];
+    try {
+      issues = await _magService.getIssues(magazineId);
+    } finally {
+      if (mounted) {
+        setState(() => _loadingLibraryMagazineIssues = false);
+      }
+    }
     if (!mounted) return;
-    final access = context.read<AccessProvider>();
-    final start = access.startDate("magazine", itemId: magazineId);
-    final end = access.expiry("magazine", itemId: magazineId);
-    final visibleIssues = _filterIssuesByPeriod(issues, start, end);
+    if (_libraryMagazineIssuesSheetOpen) return;
+    final visibleIssues = issues;
 
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (sheetContext) {
-        final mq = MediaQueryData.fromView(View.of(sheetContext));
-        final viewInsets = MediaQuery.viewInsetsOf(sheetContext);
-        return SizedBox(
-          height: mq.size.height,
-          child: Padding(
-            padding: EdgeInsets.only(
-              top: mq.padding.top,
-              bottom: viewInsets.bottom + mq.padding.bottom,
-              left: 12,
-              right: 12,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        "$name Sayıları",
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
+    setState(() => _libraryMagazineIssuesSheetOpen = true);
+    try {
+      await showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        builder: (sheetContext) {
+          final mq = MediaQueryData.fromView(View.of(sheetContext));
+          final viewInsets = MediaQuery.viewInsetsOf(sheetContext);
+          return SizedBox(
+            height: mq.size.height,
+            child: Padding(
+              padding: EdgeInsets.only(
+                top: mq.padding.top,
+                bottom: viewInsets.bottom + mq.padding.bottom,
+                left: 12,
+                right: 12,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          "$name Sayıları",
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.close),
-                        onPressed: () => Navigator.pop(sheetContext),
-                      ),
-                    ],
+                        IconButton(
+                          icon: const Icon(Icons.close),
+                          onPressed: () => Navigator.pop(sheetContext),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                const Divider(height: 1),
-                Expanded(
-                  child: visibleIssues.isEmpty
-                      ? const Center(child: Text("Sayı bulunamadı"))
-                      : ListView.separated(
-                          itemCount: visibleIssues.length,
-                          separatorBuilder: (_, __) => const Divider(height: 1),
-                          itemBuilder: (_, i) {
-                            final issue = visibleIssues[i];
-                            final title = "Sayı ${issue["issue_number"]}";
-                            final imageUrl =
-                                issue["photo_url"]?.toString() ?? "";
-                            return ListTile(
-                              title: Text(title),
-                              trailing: const Icon(Icons.chevron_right),
-                              onTap: () {
-                                final detail = _buildMagazineIssueDetail(
-                                  issue: issue,
-                                  issueNumber: title,
-                                  magazineId: magazineId,
-                                  magazineName: name,
-                                  imageUrl: imageUrl,
-                                );
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) =>
-                                        ProductDetailScreen(detail: detail),
-                                  ),
-                                );
-                              },
-                            );
-                          },
-                        ),
-                ),
-              ],
+                  const Divider(height: 1),
+                  Expanded(
+                    child: visibleIssues.isEmpty
+                        ? const Center(child: Text("Sayı bulunamadı"))
+                        : ListView.separated(
+                            itemCount: visibleIssues.length,
+                            separatorBuilder: (_, __) =>
+                                const Divider(height: 1),
+                            itemBuilder: (_, i) {
+                              final issue = visibleIssues[i];
+                              final title = "Sayı ${issue["issue_number"]}";
+                              final imageUrl =
+                                  issue["photo_url"]?.toString() ?? "";
+                              return ListTile(
+                                title: Text(title),
+                                trailing: const Icon(Icons.chevron_right),
+                                onTap: () {
+                                  final detail = _buildMagazineIssueDetail(
+                                    issue: issue,
+                                    issueNumber: title,
+                                    magazineId: magazineId,
+                                    magazineName: name,
+                                    imageUrl: imageUrl,
+                                  );
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) =>
+                                          ProductDetailScreen(detail: detail),
+                                    ),
+                                  );
+                                },
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
             ),
-          ),
-        );
-      },
-    );
-  }
-
-  List<Map<String, dynamic>> _filterIssuesByPeriod(
-    List<Map<String, dynamic>> issues,
-    DateTime? start,
-    DateTime? end,
-  ) {
-    if (start == null || end == null) return issues;
-    final startDay = DateTime(start.year, start.month, start.day);
-    final endDay = DateTime(end.year, end.month, end.day);
-    return issues.where((issue) {
-      final raw = issue["added_at"]?.toString();
-      if (raw == null || raw.isEmpty) return false;
-      final added = DateTime.tryParse(raw);
-      if (added == null) return false;
-      final addedDay = DateTime(added.year, added.month, added.day);
-      return !addedDay.isBefore(startDay) && !addedDay.isAfter(endDay);
-    }).toList();
+          );
+        },
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _libraryMagazineIssuesSheetOpen = false);
+      } else {
+        _libraryMagazineIssuesSheetOpen = false;
+      }
+    }
   }
 
   Future<void> _openAccessSheet(
@@ -1603,11 +1619,11 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
                           children: [
                             _menuItem("Anasayfa", HomeSection.home),
                             if (!_hideMagazines)
-                              _menuItem("E-Dergi", HomeSection.magazines),
-                            _menuItem("Kitap", HomeSection.books),
+                              _menuItem("E-Dergiler", HomeSection.magazines),
+                            _menuItem("E-Kitaplar", HomeSection.books),
                             if (!_hideNewspapers)
                               _menuItem("E-Gazete", HomeSection.newspapers),
-                            _menuItem("Ekler", HomeSection.attachments),
+                            _menuItem("E-Ekler", HomeSection.attachments),
                           ],
                         ),
                     ],
@@ -1871,7 +1887,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _sectionHeadingText("E-dergi"),
+            _sectionHeadingText("E-Dergiler"),
             const SizedBox(height: 16),
             _magazineListGrid(context, isWeb),
           ],
@@ -1880,7 +1896,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _sectionHeadingText("Kitap"),
+            _sectionHeadingText("E-Kitaplar"),
             const SizedBox(height: 16),
             _bookListGrid(context, isWeb, isTablet),
             const SizedBox(height: 24),
@@ -1911,7 +1927,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
                     icon: const Icon(Icons.arrow_back),
                     tooltip: "Geri",
                   ),
-                _sectionHeadingText("Ekler"),
+                _sectionHeadingText("E-Ekler"),
               ],
             ),
             const SizedBox(height: 16),
@@ -2166,32 +2182,34 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         ),
         const SizedBox(height: 12),
         SizedBox(
-          height: isWeb ? 265 : 285,
+          height: isWeb ? 265 : 264,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             itemCount: displayList.length,
             separatorBuilder: (_, __) => const SizedBox(width: 14),
             itemBuilder: (_, i) {
+              final magazine = displayList[i];
+              final category = magazine["category"]?.toString().trim() ?? "";
+              final description =
+                  magazine["description"]?.toString().trim() ?? "";
               final isSubscribed = _hasPurchased(
                 "magazine",
-                _toInt(displayList[i]["id"]),
+                _toInt(magazine["id"]),
               );
-              return _bookCard(
-                {
-                  "image": displayList[i]["cover_image_url"],
-                  "title": displayList[i]["name"],
-                  "author": displayList[i]["category"] ?? "",
-                  "price": isWeb && !isSubscribed ? "Fiyat için tıkla" : "",
-                  "statusLabel": isSubscribed ? "Abonelik aktif" : null,
-                },
-                isWeb,
-                hideAction: isSubscribed,
-                onAdd: () {
-                  _openProductDetail(_mapMagazineDetail(displayList[i]));
-                },
-                onTap: () {
-                  _openProductDetail(_mapMagazineDetail(displayList[i]));
-                },
+              return SizedBox(
+                width: isWeb ? 160 : 146,
+                child: _magazineCard(
+                  {
+                    "image": magazine["cover_image_url"],
+                    "title": magazine["name"],
+                    "desc": category.isNotEmpty ? category : description,
+                    "price": isWeb && !isSubscribed ? "Fiyat için tıkla" : "",
+                  },
+                  imageHeight: isWeb ? 170 : 148,
+                  hideAction: isSubscribed,
+                  onAdd: () => _openProductDetail(_mapMagazineDetail(magazine)),
+                  onTap: () => _openProductDetail(_mapMagazineDetail(magazine)),
+                ),
               );
             },
           ),
@@ -2223,7 +2241,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
             } else {
               _openFullList(
                 context,
-                "Kitaplar",
+                "E-Kitaplar",
                 (_) => _BookBrowseBody(homeState: this),
               );
             }
@@ -2231,7 +2249,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         ),
         const SizedBox(height: 12),
         SizedBox(
-          height: isWeb ? 285 : 300,
+          height: isWeb ? 285 : 272,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             itemCount: displayList.length,
@@ -2263,6 +2281,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
                   "campaignPrice": displayList[i]["discount_price"],
                 },
                 isWeb,
+                bookStyle: true,
                 hideAction: purchased || isFree,
                 onAdd: alreadyInCart || isFree
                     ? null
@@ -2414,7 +2433,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
       children: [
         _sectionHeader(
           context,
-          "Ekler",
+          "E-Ekler",
           onViewAll: () {
             if (isWeb) {
               setState(() => _section = HomeSection.attachments);
@@ -2536,6 +2555,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
   Widget _magazineListGrid(BuildContext context, bool isWeb) {
     final cart = Provider.of<CartProvider>(context, listen: false);
     final access = Provider.of<AccessProvider>(context, listen: false);
+    final orderedMagazines = _orderedMagazinesForListing();
     final crossAxisCount = isWeb ? 4 : (isTabletLayout(context) ? 2 : 1);
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -2549,8 +2569,8 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         ); // price/button row
         const verticalGaps = 4 + 8; // SizedBox heights in card
         const contentPadding = 12 * 2; // Padding.all(12)
-        const imageHeight = 170.0;
-        const safetyMargin = 12.0;
+        final imageHeight = isWeb ? 170.0 : 148.0;
+        const safetyMargin = 10.0;
         final cardHeight =
             imageHeight +
             contentPadding +
@@ -2569,27 +2589,26 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
             mainAxisSpacing: 16,
             mainAxisExtent: cardHeight,
           ),
-          itemCount: magazines.length,
+          itemCount: orderedMagazines.length,
           itemBuilder: (_, i) {
-            final hasAccess = _hasPurchased(
-              "magazine",
-              _toInt(magazines[i]["id"]),
-            );
+            final magazine = orderedMagazines[i];
+            final hasAccess = _hasPurchased("magazine", _toInt(magazine["id"]));
             return _magazineCard(
               {
-                "image": magazines[i]["cover_image_url"],
-                "title": magazines[i]["name"],
-                "desc": magazines[i]["description"] ?? magazines[i]["category"],
+                "image": magazine["cover_image_url"],
+                "title": magazine["name"],
+                "desc": magazine["description"] ?? magazine["category"],
                 "price": hasAccess ? "" : "Fiyat için tıkla",
               },
+              imageHeight: isWeb ? 170 : 148,
               hideAction: hasAccess,
               onAdd: hasAccess
                   ? null
                   : () {
-                      _openProductDetail(_mapMagazineDetail(magazines[i]));
+                      _openProductDetail(_mapMagazineDetail(magazine));
                     },
               onTap: () {
-                _openProductDetail(_mapMagazineDetail(magazines[i]));
+                _openProductDetail(_mapMagazineDetail(magazine));
               },
             );
           },
@@ -2606,13 +2625,13 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
       builder: (context, constraints) {
         const spacing = 14.0;
         final textScaler = MediaQuery.textScalerOf(context);
-        final titleHeight = textScaler.scale(15) * 1.3 * (isWeb ? 2 : 3);
+        final titleHeight = textScaler.scale(15) * 1.3 * 2;
         final authorHeight = textScaler.scale(12) * 1.25; // 1 line
         final rowHeight = 36.0; // action button + price row
         const verticalGaps = 4.0; // SizedBox height between title/author
         const contentPadding = 10.0 * 2; // Padding.all(10)
-        const imageHeight = 150.0;
-        const safetyMargin = 10.0;
+        final imageHeight = isWeb ? 150.0 : 138.0;
+        const safetyMargin = 8.0;
         final cardHeight =
             imageHeight +
             contentPadding +
@@ -2655,6 +2674,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
                 "campaignPrice": books[i]["discount_price"],
               },
               isWeb,
+              bookStyle: true,
               hideAction:
                   _hasPurchased("book", _toInt(books[i]["id"])) ||
                   effectivePrice <= 0,
@@ -2792,26 +2812,30 @@ Widget _sectionHeader(
   bool forceSingleLineActions = false,
 }) {
   final mobile = MediaQuery.of(context).size.width <= 800;
+  final actionHeight = mobile ? 32.0 : 34.0;
+  final actionButtonHeight = mobile ? 28.0 : 30.0;
   final actions = <Widget>[
     ...trailingActions,
-    _viewAllChipButton(context, onPressed: onViewAll),
+    _viewAllChipButton(
+      context,
+      onPressed: onViewAll,
+      height: actionButtonHeight,
+    ),
   ];
   final actionRowItems = <Widget>[
     for (var i = 0; i < actions.length; i++) ...[
-      if (i > 0) const SizedBox(width: 8),
+      if (i > 0) const SizedBox(width: 6),
       actions[i],
     ],
   ];
 
   return Container(
     width: double.infinity,
-    padding: EdgeInsets.symmetric(
-      horizontal: mobile ? 12 : 14,
-      vertical: mobile ? 8 : 10,
-    ),
+    height: actionHeight,
+    padding: EdgeInsets.symmetric(horizontal: mobile ? 10 : 12),
     decoration: BoxDecoration(
       color: Colors.red,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(10),
     ),
     child: Row(
       children: [
@@ -2822,12 +2846,12 @@ Widget _sectionHeader(
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
               color: Colors.white,
-              fontSize: mobile ? 16 : 18,
+              fontSize: mobile ? 14 : 15,
               fontWeight: FontWeight.w700,
             ),
           ),
         ),
-        if (actions.isNotEmpty) const SizedBox(width: 8),
+        if (actions.isNotEmpty) const SizedBox(width: 6),
         if (actions.isNotEmpty)
           Flexible(
             child: Align(
@@ -2859,27 +2883,29 @@ Widget _viewAllChipButton(
   BuildContext context, {
   VoidCallback? onPressed,
   String label = "Tümünü Gör",
+  double? height,
 }) {
   final mobile = MediaQuery.of(context).size.width <= 800;
-  return TextButton(
-    onPressed: onPressed,
-    style: TextButton.styleFrom(
-      backgroundColor: Colors.white,
-      foregroundColor: Colors.red,
-      padding: EdgeInsets.symmetric(
-        horizontal: mobile ? 12 : 14,
-        vertical: mobile ? 8 : 9,
+  final buttonHeight = height ?? (mobile ? 28.0 : 30.0);
+  return SizedBox(
+    height: buttonHeight,
+    child: TextButton(
+      onPressed: onPressed,
+      style: TextButton.styleFrom(
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.red,
+        padding: EdgeInsets.symmetric(horizontal: mobile ? 10 : 12),
+        minimumSize: Size(0, buttonHeight),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
-      minimumSize: const Size(0, 36),
-      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-    ),
-    child: Text(
-      label,
-      style: TextStyle(
-        color: Colors.red,
-        fontWeight: FontWeight.w700,
-        fontSize: mobile ? 13 : 14,
+      child: Text(
+        label,
+        style: TextStyle(
+          color: Colors.red,
+          fontWeight: FontWeight.w700,
+          fontSize: mobile ? 11.5 : 12.5,
+        ),
       ),
     ),
   );
@@ -2969,6 +2995,7 @@ Widget _priceWidgetForItem(
   required TextStyle saleStyle,
   required TextStyle campaignStyle,
   String emptyText = "-",
+  bool vertical = true,
 }) {
   if (item.containsKey("salePrice") || item.containsKey("campaignPrice")) {
     final info = PriceInfo.fromRaw(item["salePrice"], item["campaignPrice"]);
@@ -2977,6 +3004,7 @@ Widget _priceWidgetForItem(
       saleStyle: saleStyle,
       campaignStyle: campaignStyle,
       emptyText: emptyText,
+      vertical: vertical,
     );
   }
   final fallback = item["price"]?.toString() ?? emptyText;
@@ -2988,6 +3016,7 @@ Widget _magazineCard(
   VoidCallback? onAdd,
   VoidCallback? onTap,
   bool hideAction = false,
+  double imageHeight = 170,
 }) {
   return InkWell(
     onTap: onTap,
@@ -3010,64 +3039,53 @@ Widget _magazineCard(
         children: [
           ClipRRect(
             borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
-            child: _imageWidget(item["image"], height: 170),
+            child: _imageWidget(item["image"], height: imageHeight),
           ),
-          Padding(
-            padding: const EdgeInsets.all(12.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  item["title"] ?? "",
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  item["desc"] ?? "",
-                  style: const TextStyle(color: Colors.black54, fontSize: 13),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(
-                      child: _priceWidgetForItem(
-                        item,
-                        saleStyle: const TextStyle(
-                          color: Colors.black54,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 12,
-                        ),
-                        campaignStyle: const TextStyle(
-                          color: Colors.red,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 15,
-                        ),
-                      ),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(12.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    item["title"] ?? "",
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
                     ),
-                    const SizedBox(width: 8),
-                    if (hideAction)
-                      _cardActionButton(
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    item["desc"] ?? "",
+                    style: const TextStyle(color: Colors.black54, fontSize: 13),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const Spacer(),
+                  if (hideAction)
+                    Align(
+                      alignment: Alignment.center,
+                      child: _cardActionButton(
                         label: "Oku",
                         onPressed: onTap,
                         icon: Icons.auto_stories_rounded,
                         variant: _CardActionVariant.read,
-                      )
-                    else if (onAdd != null)
-                      _cardActionButton(
+                      ),
+                    )
+                  else if (onAdd != null)
+                    Align(
+                      alignment: Alignment.center,
+                      child: _cardActionButton(
                         label: "Abone Ol",
                         onPressed: onAdd,
-                        icon: Icons.menu_book_rounded,
+                        icon: Icons.workspace_premium_rounded,
                         variant: _CardActionVariant.primary,
                       ),
-                  ],
-                ),
-              ],
+                    ),
+                ],
+              ),
             ),
           ),
         ],
@@ -3082,12 +3100,13 @@ Widget _bookCard(
   VoidCallback? onAdd,
   VoidCallback? onTap,
   bool hideAction = false,
+  bool bookStyle = false,
 }) {
   return InkWell(
     onTap: onTap,
     borderRadius: BorderRadius.circular(14),
     child: Container(
-      width: isWeb ? 160 : 150,
+      width: isWeb ? 160 : 146,
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
@@ -3105,17 +3124,17 @@ Widget _bookCard(
         children: [
           ClipRRect(
             borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
-            child: _imageWidget(item["image"], height: isWeb ? 140 : 150),
+            child: _imageWidget(item["image"], height: isWeb ? 140 : 138),
           ),
           Expanded(
             child: Padding(
-              padding: EdgeInsets.all(isWeb ? 8 : 10),
+              padding: EdgeInsets.all(isWeb ? 8 : 9),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     item["title"] ?? "",
-                    maxLines: isWeb ? 2 : 3,
+                    maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       fontSize: 14,
@@ -3132,39 +3151,68 @@ Widget _bookCard(
                   ),
                   const Spacer(),
                   if (hideAction)
+                    bookStyle
+                        ? SizedBox(
+                            width: double.infinity,
+                            child: _cardActionButton(
+                              label: "Oku",
+                              onPressed: onTap,
+                              icon: Icons.auto_stories_rounded,
+                              variant: _CardActionVariant.read,
+                              height: 30,
+                            ),
+                          )
+                        : Row(
+                            children: [
+                              Expanded(
+                                child: _cardActionButton(
+                                  label: "Oku",
+                                  onPressed: onTap,
+                                  icon: Icons.auto_stories_rounded,
+                                  variant: _CardActionVariant.read,
+                                  height: 30,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              _cardActionButton(
+                                label: "",
+                                onPressed: onTap,
+                                icon: Icons.menu_book_rounded,
+                                variant: _CardActionVariant.read,
+                                compact: true,
+                                height: 30,
+                              ),
+                            ],
+                          )
+                  else
                     Row(
                       children: [
-                        Expanded(
-                          child: _cardActionButton(
-                            label: "Oku",
-                            onPressed: onTap,
-                            icon: Icons.auto_stories_rounded,
-                            variant: _CardActionVariant.read,
-                            height: 30,
+                        if (bookStyle)
+                          Expanded(
+                            child: _priceWidgetForItem(
+                              item,
+                              saleStyle: const TextStyle(
+                                color: Colors.black54,
+                                fontWeight: FontWeight.w600,
+                                fontSize: 11,
+                              ),
+                              campaignStyle: const TextStyle(
+                                color: Colors.red,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 13,
+                              ),
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 6),
+                        if (bookStyle) const SizedBox(width: 6),
                         _cardActionButton(
                           label: "",
-                          onPressed: onTap,
-                          icon: Icons.menu_book_rounded,
-                          variant: _CardActionVariant.read,
+                          onPressed: onAdd,
+                          icon: bookStyle ? Icons.add : Icons.menu_book_rounded,
+                          variant: _CardActionVariant.primary,
                           compact: true,
                           height: 30,
                         ),
                       ],
-                    )
-                  else
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: _cardActionButton(
-                        label: "",
-                        onPressed: onAdd,
-                        icon: Icons.menu_book_rounded,
-                        variant: _CardActionVariant.primary,
-                        compact: true,
-                        height: 30,
-                      ),
                     ),
                 ],
               ),
@@ -3513,8 +3561,8 @@ Widget _librarySubscriptionCard(
   addTile(
     _libraryMenuTile(
       Icons.menu_book_outlined,
-      "Kitaplar",
-      onTap: () => state._openAccessSheet(context, "book", "Kitaplar"),
+      "E-Kitaplar",
+      onTap: () => state._openAccessSheet(context, "book", "E-Kitaplar"),
     ),
   );
 
@@ -3522,9 +3570,8 @@ Widget _librarySubscriptionCard(
     addTile(
       _libraryMenuTile(
         Icons.library_books,
-        "Dergi Abonelikleri",
-        onTap: () =>
-            state._openAccessSheet(context, "magazine", "Dergi Abonelikleri"),
+        "E-Dergiler",
+        onTap: () => state._openAccessSheet(context, "magazine", "E-Dergiler"),
       ),
     );
     addTile(
@@ -3541,11 +3588,11 @@ Widget _librarySubscriptionCard(
     addTile(
       _libraryMenuTile(
         Icons.newspaper,
-        "Gazete Aboneliği",
+        "E-Gazete",
         onTap: () => state._openAccessSheet(
           context,
           "newspaper_subscription",
-          "Gazete Aboneliği",
+          "E-Gazete",
         ),
       ),
     );
@@ -3554,8 +3601,8 @@ Widget _librarySubscriptionCard(
   addTile(
     _libraryMenuTile(
       Icons.file_present,
-      "Ekler",
-      onTap: () => state._openAccessSheet(context, "ek", "Ekler"),
+      "E-Ekler",
+      onTap: () => state._openAccessSheet(context, "ek", "E-Ekler"),
     ),
   );
 
@@ -3878,7 +3925,7 @@ class _AttachmentListScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Ekler")),
+      appBar: AppBar(title: const Text("E-Ekler")),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: _attachmentsList(context, state, false, cart),
@@ -4275,6 +4322,7 @@ class _BookBrowseBodyState extends State<_BookBrowseBody> {
                   "campaignPrice": book["discount_price"],
                 },
                 false,
+                bookStyle: true,
                 hideAction: purchased || isFree,
                 onAdd: alreadyInCart || isFree
                     ? null
@@ -4331,6 +4379,8 @@ class _MagazineBrowseScreenState extends State<_MagazineBrowseScreen> {
 
   Widget _magazineCard(BuildContext context, Map<String, dynamic> mag) {
     final title = (mag["name"] ?? "-").toString();
+    final subtitle = ((mag["category"] ?? mag["description"] ?? "").toString())
+        .trim();
     final imageUrl = UploadService.normalizeUrl(
       (mag["cover_image_url"] ?? "").toString(),
     );
@@ -4340,7 +4390,7 @@ class _MagazineBrowseScreenState extends State<_MagazineBrowseScreen> {
       ),
       borderRadius: BorderRadius.circular(14),
       child: Container(
-        width: 150,
+        width: 142,
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(14),
@@ -4362,21 +4412,47 @@ class _MagazineBrowseScreenState extends State<_MagazineBrowseScreen> {
               ),
               child: safeImage(
                 imageUrl,
-                height: 150,
+                height: 126,
                 width: double.infinity,
                 fit: BoxFit.cover,
                 fallbackIcon: Icons.auto_stories,
               ),
             ),
             Padding(
-              padding: const EdgeInsets.all(10),
+              padding: const EdgeInsets.fromLTRB(10, 6, 10, 3),
               child: Text(
                 title,
-                maxLines: 2,
+                maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            if (subtitle.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(10, 0, 10, 4),
+                child: Text(
+                  subtitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 11, color: Colors.black54),
+                ),
+              ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 0, 10, 6),
+              child: SizedBox(
+                height: 30,
+                width: double.infinity,
+                child: _cardActionButton(
+                  label: "Detay",
+                  onPressed: () => widget.homeState._openProductDetail(
+                    widget.homeState._mapMagazineDetail(mag),
+                  ),
+                  icon: Icons.visibility_outlined,
+                  variant: _CardActionVariant.neutral,
+                  height: 30,
                 ),
               ),
             ),
@@ -4399,7 +4475,7 @@ class _MagazineBrowseScreenState extends State<_MagazineBrowseScreen> {
     final fileUrl = (issue["file_url"] ?? "").toString();
 
     return Container(
-      width: 150,
+      width: 142,
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
@@ -4419,7 +4495,7 @@ class _MagazineBrowseScreenState extends State<_MagazineBrowseScreen> {
             borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
             child: safeImage(
               imageUrl,
-              height: 150,
+              height: 132,
               width: double.infinity,
               fit: BoxFit.cover,
               fallbackIcon: Icons.auto_stories,
@@ -4480,20 +4556,22 @@ class _MagazineBrowseScreenState extends State<_MagazineBrowseScreen> {
         appBar: AppBar(
           backgroundColor: Colors.white,
           foregroundColor: Colors.black,
-          title: const Text("E-dergi"),
+          title: const Text("E-Dergiler"),
           elevation: 1,
         ),
-        body: const Center(child: Text("Bu sürümde E-dergi içeriği gizlidir.")),
+        body: const Center(
+          child: Text("Bu sürümde E-Dergiler içeriği gizlidir."),
+        ),
       );
     }
     final access = context.watch<AccessProvider>();
-    final mags = widget.homeState.magazines;
+    final mags = widget.homeState._orderedMagazinesForListing();
 
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.white,
         foregroundColor: Colors.black,
-        title: const Text("E-dergi"),
+        title: const Text("E-Dergiler"),
         elevation: 1,
       ),
       body: SafeArea(
@@ -4519,7 +4597,7 @@ class _MagazineBrowseScreenState extends State<_MagazineBrowseScreen> {
                 final issues = snap.data ?? const <Map<String, dynamic>>[];
 
                 return SizedBox(
-                  height: 238,
+                  height: 224,
                   child: ListView.separated(
                     scrollDirection: Axis.horizontal,
                     itemCount: 1 + issues.length,

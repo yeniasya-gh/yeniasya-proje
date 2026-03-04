@@ -13,6 +13,7 @@ import 'auth_token_store.dart';
 import 'user_service.dart';
 import '../notification_service.dart';
 import '../mail_manager.dart';
+import '../secure_file_service.dart';
 
 class AuthProvider with ChangeNotifier {
   final UserService _userService = UserService();
@@ -23,7 +24,7 @@ class AuthProvider with ChangeNotifier {
   String? _errorMessage;
   Timer? _expiryTimer;
 
-  VoidCallback? onLogout;
+  Future<void> Function()? onLogout;
 
   AppUser? get user => _user;
   bool get isLoggedIn => _isLoggedIn;
@@ -198,6 +199,19 @@ class AuthProvider with ChangeNotifier {
     await prefs.setString(keyUserJson, jsonEncode(user.toJson()));
   }
 
+  Future<void> _clearUserLocalState(SharedPreferences prefs) async {
+    final pdfStateKeys = prefs
+        .getKeys()
+        .where((key) => key.startsWith("pdf_state::"))
+        .toList(growable: false);
+    for (final key in pdfStateKeys) {
+      await prefs.remove(key);
+    }
+    if (!kIsWeb) {
+      await SecureFileService.instance.clearAllCachedPdfs();
+    }
+  }
+
   void _scheduleExpiry(DateTime expiresAt) {
     _expiryTimer?.cancel();
     final diff = expiresAt.difference(DateTime.now());
@@ -208,6 +222,54 @@ class AuthProvider with ChangeNotifier {
     _expiryTimer = Timer(diff, () {
       unawaited(_handleTokenExpiry());
     });
+  }
+
+  Future<SocialLoginResult> _completeSocialLogin({
+    required String provider,
+    required String email,
+    required String name,
+    String? phone,
+  }) async {
+    try {
+      final data = await _authApi.socialLogin(
+        email: email,
+        provider: provider,
+        name: name,
+        phone: phone,
+      );
+      final user = AppUser.fromAuthJson(data["user"] as Map<String, dynamic>);
+      final token = _tokenFromPayload(data);
+      if (token == null || token.isEmpty) {
+        return SocialLoginResult(
+          error:
+              "${provider.toUpperCase()} girişi için token alınamadı. Lütfen tekrar deneyin.",
+        );
+      }
+      final expiresAt = _expiresAtFromPayload(data);
+
+      await AuthTokenStore.save(token: token, expiresAt: expiresAt);
+      _isLoggedIn = true;
+      _user = user;
+      await _saveSession(user: user, expiresAt: expiresAt);
+      _scheduleExpiry(expiresAt);
+      await NotificationService().registerDeviceToken(
+        userId: user.id,
+        forceRefresh: true,
+      );
+      notifyListeners();
+      return SocialLoginResult(user: user);
+    } catch (e) {
+      final msg = e.toString();
+      if (msg.contains("SOCIAL_USER_NOT_FOUND")) {
+        return SocialLoginResult(
+          draft: SocialDraft(email: email, name: name, phone: phone),
+        );
+      }
+      return SocialLoginResult(
+        error:
+            "${provider.toUpperCase()} hesabı ile giriş tamamlanamadı. Lütfen tekrar deneyin.",
+      );
+    }
   }
 
   Future<SocialLoginResult> signInWithGoogle() async {
@@ -259,30 +321,7 @@ class AuthProvider with ChangeNotifier {
 
       final email = googleUser.email;
       final name = googleUser.displayName ?? email.split("@").first;
-
-      AppUser? existing;
-      try {
-        existing = await _userService.getUserByEmail(email);
-      } catch (_) {
-        return SocialLoginResult(
-          error: "Google giriş için JWT endpointi gerekli.",
-        );
-      }
-      if (existing != null) {
-        _isLoggedIn = true;
-        _user = existing;
-        // Google giriş için JWT endpointi eklenmeli.
-        await NotificationService().registerDeviceToken(
-          userId: existing.id,
-          forceRefresh: true,
-        );
-        notifyListeners();
-        return SocialLoginResult(user: existing);
-      }
-
-      return SocialLoginResult(
-        draft: SocialDraft(email: email, name: name),
-      );
+      return _completeSocialLogin(provider: "google", email: email, name: name);
     } catch (e) {
       final msg = e.toString();
       if (msg.contains("popup_closed")) {
@@ -353,29 +392,7 @@ class AuthProvider with ChangeNotifier {
           ? "${credential.givenName ?? ""} ${credential.familyName ?? ""}"
                 .trim()
           : (result.user?.displayName ?? email.split("@").first);
-
-      AppUser? existing;
-      try {
-        existing = await _userService.getUserByEmail(email);
-      } catch (_) {
-        return SocialLoginResult(
-          error: "Apple giriş için JWT endpointi gerekli.",
-        );
-      }
-      if (existing != null) {
-        _isLoggedIn = true;
-        _user = existing;
-        await NotificationService().registerDeviceToken(
-          userId: existing.id,
-          forceRefresh: true,
-        );
-        notifyListeners();
-        return SocialLoginResult(user: existing);
-      }
-
-      return SocialLoginResult(
-        draft: SocialDraft(email: email, name: name),
-      );
+      return _completeSocialLogin(provider: "apple", email: email, name: name);
     } on SignInWithAppleAuthorizationException catch (e) {
       if (e.code == AuthorizationErrorCode.canceled) {
         return SocialLoginResult(error: "Apple giriş işlemi iptal edildi.");
@@ -586,6 +603,7 @@ class AuthProvider with ChangeNotifier {
   Future<void> logout({bool bootstrapGuest = true}) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(keyUserJson);
+    await _clearUserLocalState(prefs);
     _expiryTimer?.cancel();
     _expiryTimer = null;
     await AuthTokenStore.clear();
@@ -601,7 +619,9 @@ class AuthProvider with ChangeNotifier {
         debugPrint("🔴 [Auth] guest session bootstrap failed on logout: $e");
       }
     }
-    onLogout?.call();
+    if (onLogout != null) {
+      await onLogout!.call();
+    }
     notifyListeners();
   }
 

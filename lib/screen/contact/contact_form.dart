@@ -19,10 +19,17 @@ class ContactForm extends StatefulWidget {
 }
 
 class _ContactFormState extends State<ContactForm> {
+  static const List<String> _topicOptions = [
+    "İstek, Tavsiye veya Şikayet",
+    "Hata Bildirimi",
+    "Üyelik, Abonelik ve Satın Alma İşlemleri",
+  ];
+
   final _formKey = GlobalKey<FormState>();
   final _subjectCtrl = TextEditingController();
   final _messageCtrl = TextEditingController();
   bool _loading = false;
+  String? _selectedTopic;
 
   @override
   void dispose() {
@@ -37,12 +44,21 @@ class _ContactFormState extends State<ContactForm> {
     final auth = context.read<AuthProvider>();
     final userId = auth.user?.id;
     final email = auth.user?.email;
+    final selectedTopic = _selectedTopic?.trim() ?? "";
+    final subject = _subjectCtrl.text.trim();
+    final message = _messageCtrl.text.trim();
+    final taggedSubject = selectedTopic.isEmpty
+        ? subject
+        : "[$selectedTopic] $subject";
+    final taggedMessage = selectedTopic.isEmpty
+        ? message
+        : "Konu Türü: $selectedTopic\n\n$message";
 
     setState(() => _loading = true);
     try {
       await ContactService().sendContact(
-        subject: _subjectCtrl.text.trim(),
-        message: _messageCtrl.text.trim(),
+        subject: taggedSubject,
+        message: taggedMessage,
         userId: userId,
         email: email,
       );
@@ -53,9 +69,9 @@ class _ContactFormState extends State<ContactForm> {
         return;
       }
 
-      ScaffoldMessenger.maybeOf(
-        context,
-      )?.showSnackBar(const SnackBar(content: Text("Mesajınız iletildi")));
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        const SnackBar(content: Text("Mesajınız iletildi, teşekkür ederiz.")),
+      );
     } catch (e) {
       final parsed = ErrorManager.parseGraphQLError(e.toString());
       if (!mounted) return;
@@ -89,9 +105,11 @@ class _ContactFormState extends State<ContactForm> {
               border: Border.all(color: Colors.grey.shade300),
             ),
             child: const Text(
-              "İletişim\n"
-              "E-posta: app@yeniasya.com.tr\n"
-              "Telefon: +905314216754",
+              "İletişim:\n\n"
+              "Yeni Asya Gazetecilik Matbaacılık ve Yayıncılık Sanayi ve Ticaret A.Ş.\n"
+              "Adres: 15 Temmuz Mah.1508 Sk. No: 3 Posta Kodu: 34212 Güneşli / İSTANBUL\n"
+              "Telefon: 0 (212) 655 88 59\n"
+              "E-posta: app@yeniasya.com.tr",
               style: TextStyle(fontSize: 14, height: 1.4),
             ),
           ),
@@ -106,15 +124,33 @@ class _ContactFormState extends State<ContactForm> {
                 border: Border.all(color: Colors.grey.shade300),
               ),
               child: const Text(
-                "Yeni Asya AŞ.\n"
-                "Adres: 15 Temmuz Mah., 1508 Sk., No: 3, 34212, Güneşli, İstanbul\n"
-                "E-posta: app@yeniasya.com.tr\n"
-                "Telefon: +905314216754\n"
-                "KEP: yeniasya@kep.gov.tr",
-                style: TextStyle(fontSize: 14, height: 1.4),
+                "Konu türünü seçerek ilettiğiniz mesajlar ilgili birime daha hızlı yönlendirilir.",
+                style: TextStyle(fontSize: 13, height: 1.4),
               ),
             ),
           ],
+          const SizedBox(height: 12),
+          DropdownButtonFormField<String>(
+            initialValue: _selectedTopic,
+            isExpanded: true,
+            decoration: const InputDecoration(
+              labelText: "Konu Türü",
+              border: OutlineInputBorder(),
+            ),
+            items: _topicOptions
+                .map(
+                  (topic) => DropdownMenuItem<String>(
+                    value: topic,
+                    child: Text(topic),
+                  ),
+                )
+                .toList(),
+            onChanged: _loading
+                ? null
+                : (value) => setState(() => _selectedTopic = value),
+            validator: (v) =>
+                (v == null || v.trim().isEmpty) ? "Konu türü seçin" : null,
+          ),
           const SizedBox(height: 12),
           TextFormField(
             controller: _subjectCtrl,

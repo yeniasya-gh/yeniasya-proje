@@ -1,0 +1,7 @@
+{
+  "MAIL_API_URL": "https://cdn.yeniasyadigital.com/mail/send",
+  "MAIL_ORDER_SUMMARY_API_URL": "https://cdn.yeniasyadigital.com/mail/order-summary",
+  "MAIL_WELCOME_API_URL": "https://cdn.yeniasyadigital.com/mail/welcome",
+  "MAIL_API_TOKEN": "64FLL3cUeBd0SN4Vnk9sdFkPaTX5kQROFnDEKGrOjv0w0HhPFmRmKuhh_NXLeaBD",
+  "MAIL_FROM_NAME": "Yeni Asya Dijital"
+}

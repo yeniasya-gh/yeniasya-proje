@@ -15,7 +15,9 @@ import '../../services/error/error_manager.dart';
 import '../../services/logging_service.dart';
 import '../../services/secure_file_service.dart';
 import '../../widgets/pdf_web_frame_stub.dart'
-    if (dart.library.html) '../../widgets/pdf_web_frame_web.dart' as pdf_web_frame;
+    if (dart.library.html) '../../widgets/pdf_web_frame_web.dart'
+    as pdf_web_frame;
+
 class PdfViewerScreen extends StatefulWidget {
   final String url;
   final String title;
@@ -54,9 +56,12 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
 
   // Geçici test: web'de PDF fetch sorununu debug etmek için
   Future<void> testPdfFetch() async {
-    const pdfPath = "/private/dergi/1764576570252-07_Temmuz_2025_Bizim_Aile_compressed.pdf";
+    const pdfPath =
+        "/private/dergi/1764576570252-07_Temmuz_2025_Bizim_Aile_compressed.pdf";
     final targetPath = Uri.parse(UploadService.normalizeUrl(pdfPath)).path;
-    final tokenUri = Uri.parse(UploadService.normalizeUrl("/private/view-token"));
+    final tokenUri = Uri.parse(
+      UploadService.normalizeUrl("/private/view-token"),
+    );
     setState(() => _testBusy = true);
     try {
       final tokenHeaders = {
@@ -76,25 +81,25 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       debugPrint("🧪 Token body: ${tokenResp.body}");
       if (tokenResp.statusCode == 200) {
         final tokenData = jsonDecode(tokenResp.body);
-        final pdfUrl = tokenData["url"] ?? tokenData["viewUrl"] ?? tokenData["path"];
+        final pdfUrl =
+            tokenData["url"] ?? tokenData["viewUrl"] ?? tokenData["path"];
         final token = tokenData["token"]?.toString();
         debugPrint("🧪 Token PDF URL: $pdfUrl");
         debugPrint("🧪 Token value: $token");
         final viewSecure = (pdfUrl != null && pdfUrl.toString().isNotEmpty)
             ? UploadService.normalizeUrl(pdfUrl.toString())
-            : Uri.parse(UploadService.normalizeUrl("/private/view-secure"))
-                .replace(queryParameters: {"token": token ?? ""}).toString();
+            : Uri.parse(
+                UploadService.normalizeUrl("/private/view-secure"),
+              ).replace(queryParameters: {"token": token ?? ""}).toString();
         if (viewSecure.isNotEmpty) {
           final pdfHeaders = {
             "accept": "application/pdf",
-            if (AuthTokenStore.token != null && AuthTokenStore.token!.isNotEmpty)
+            if (AuthTokenStore.token != null &&
+                AuthTokenStore.token!.isNotEmpty)
               "Authorization": "Bearer ${AuthTokenStore.token}",
           };
           final pdfResp = await http
-              .get(
-                Uri.parse(viewSecure.toString()),
-                headers: pdfHeaders,
-              )
+              .get(Uri.parse(viewSecure.toString()), headers: pdfHeaders)
               .timeout(const Duration(seconds: 10));
           debugPrint("🧪 PDF fetch status: ${pdfResp.statusCode}");
           debugPrint("🧪 Content-Type: ${pdfResp.headers["content-type"]}");
@@ -118,7 +123,9 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       await _loadPersistedState();
       if (kIsWeb) {
         final target = widget.isPrivate
-            ? await SecureFileService.instance.getWebViewSecureUrl(url: widget.url)
+            ? await SecureFileService.instance.getWebViewSecureUrl(
+                url: widget.url,
+              )
             : UploadService.normalizeUrl(widget.url);
         _webPdfUrl = target;
         _bytes = null;
@@ -144,7 +151,9 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     } finally {
       if (mounted) {
         setState(() => _loading = false);
-        if (_bytes == null && _error == null && !(kIsWeb && _webPdfUrl != null)) {
+        if (_bytes == null &&
+            _error == null &&
+            !(kIsWeb && _webPdfUrl != null)) {
           _error = "PDF yüklenemedi, lütfen tekrar deneyin.";
         }
       }
@@ -187,14 +196,14 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
         child: _loading
             ? const Center(child: CircularProgressIndicator())
             : _error != null
-                ? _errorView()
-                : Column(
-                    children: [
-                      if (!isWeb) _toolbar(),
-                      Expanded(child: _buildViewer()),
-                      if (!isWeb) _bookmarksBar(),
-                    ],
-                  ),
+            ? _errorView()
+            : Column(
+                children: [
+                  if (!isWeb) _toolbar(),
+                  Expanded(child: _buildViewer()),
+                  if (!isWeb) _bookmarksBar(),
+                ],
+              ),
       ),
     );
   }
@@ -208,10 +217,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
           const SizedBox(height: 8),
           Text(_error ?? "PDF yüklenemedi"),
           const SizedBox(height: 12),
-          ElevatedButton(
-            onPressed: _load,
-            child: const Text("Tekrar dene"),
-          ),
+          ElevatedButton(onPressed: _load, child: const Text("Tekrar dene")),
         ],
       ),
     );
@@ -221,7 +227,10 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     final normalized = UploadService.normalizeUrl(widget.url);
     // Web'de özel dosyalar için yeni /private/view-file endpoint'ini kullan
     if (kIsWeb && widget.isPrivate) {
-      return SecureFileService.instance.getPdfBytes(url: normalized, isPrivate: widget.isPrivate);
+      return SecureFileService.instance.getPdfBytes(
+        url: normalized,
+        isPrivate: widget.isPrivate,
+      );
     }
 
     if (kIsWeb) {
@@ -235,7 +244,10 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       if (resp.statusCode == 200 && resp.bodyBytes.isNotEmpty) {
         return resp.bodyBytes;
       }
-      return SecureFileService.instance.getPdfBytes(url: normalized, isPrivate: widget.isPrivate);
+      return SecureFileService.instance.getPdfBytes(
+        url: normalized,
+        isPrivate: widget.isPrivate,
+      );
     }
 
     return SecureFileService.instance.getPdfBytes(
@@ -258,10 +270,13 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       _bytes!,
       key: _pdfKey,
       controller: _controller,
+      maxZoomLevel: 5.0,
       onDocumentLoadFailed: (details) async {
         final errorText = details.error;
         if (mounted) {
-          setState(() => _error = errorText.isNotEmpty ? errorText : "PDF yüklenemedi");
+          setState(
+            () => _error = errorText.isNotEmpty ? errorText : "PDF yüklenemedi",
+          );
         }
         await _logger.logError(
           service: "PdfViewerScreen",
@@ -341,13 +356,14 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
           Expanded(
             child: Slider(
               min: 1.0,
-              max: 3.0,
-              divisions: 10,
+              max: 5.0,
+              divisions: 20,
               value: _zoom,
               label: "${_zoom.toStringAsFixed(1)}x",
               onChanged: (v) {
-                setState(() => _zoom = v);
-                _controller.zoomLevel = v;
+                final nextZoom = v.clamp(1.0, 5.0);
+                setState(() => _zoom = nextZoom);
+                _controller.zoomLevel = nextZoom;
               },
             ),
           ),
@@ -364,7 +380,9 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   void _addBookmark() {
     final page = _controller.pageNumber;
     setState(() => _bookmarks.add(page));
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Sayfa $page ayraca eklendi")));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text("Sayfa $page ayraca eklendi")));
     _persistState();
   }
 
@@ -444,8 +462,14 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("İptal")),
-          TextButton(onPressed: () => Navigator.pop(context, ctrl.text.trim()), child: const Text("Kaydet")),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("İptal"),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, ctrl.text.trim()),
+            child: const Text("Kaydet"),
+          ),
         ],
       ),
     );
@@ -464,7 +488,9 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
 
   String get _storageKey {
     final parsed = Uri.tryParse(widget.url);
-    final name = parsed?.pathSegments.isNotEmpty == true ? parsed!.pathSegments.last : widget.url;
+    final name = parsed?.pathSegments.isNotEmpty == true
+        ? parsed!.pathSegments.last
+        : widget.url;
     return "pdf_state::$name";
   }
 

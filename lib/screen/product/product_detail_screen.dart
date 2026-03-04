@@ -110,6 +110,15 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       showLoginRequirementDialog(context);
       return;
     }
+    if (widget.detail.type == CartItemType.magazineIssue &&
+        _hasDirectMagazineIssueAccess(context)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Bu sayıya zaten sınırsız erişiminiz bulunuyor."),
+        ),
+      );
+      return;
+    }
     final cart = context.read<CartProvider>();
     final item = CartItem(
       id: widget.detail.id,
@@ -436,7 +445,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       }
       return false;
     }
-    if (widget.detail.price <= 0) return true;
+    if (widget.detail.price <= 0 && !isSubscription) return true;
     if (_hasLocalCopy) return true;
     if (widget.detail.type == CartItemType.newspaperSubscription) {
       final access = context.read<AccessProvider>();
@@ -445,39 +454,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           rc.isYeniasyaProActive;
     }
     if (widget.detail.type == CartItemType.magazineIssue) {
-      final access = context.read<AccessProvider>();
-      final issueIdRaw = widget.detail.metadata?["productId"];
-      final issueId = int.tryParse(issueIdRaw?.toString() ?? "");
-      if (issueId == null) return false;
-
-      final directIssueAccess = access.hasAccessExact(
-        "magazine_issue",
-        itemId: issueId,
-      );
-
-      final magazineIdRaw = widget.detail.metadata?["magazineId"];
-      final magazineId = int.tryParse(magazineIdRaw?.toString() ?? "");
-      final hasSubscription = magazineId != null
-          ? access.hasAccess("magazine", itemId: magazineId)
-          : false;
-      final start = magazineId != null
-          ? access.startDate("magazine", itemId: magazineId)
-          : null;
-      final end = magazineId != null
-          ? access.expiry("magazine", itemId: magazineId)
-          : null;
-      final issueDateRaw = widget.detail.metadata?["issueDate"]?.toString();
-      final issueDate = issueDateRaw == null
-          ? null
-          : DateTime.tryParse(issueDateRaw);
-      final windowAccess =
-          hasSubscription &&
-          start != null &&
-          end != null &&
-          issueDate != null &&
-          !_normalizeDay(issueDate).isBefore(_normalizeDay(start)) &&
-          !_normalizeDay(issueDate).isAfter(_normalizeDay(end));
-
+      final directIssueAccess = _hasDirectMagazineIssueAccess(context);
+      final windowAccess = _hasMagazineIssueSubscriptionWindowAccess(context);
       return directIssueAccess || windowAccess;
     }
     final target = _reviewTarget();
@@ -499,6 +477,44 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
   DateTime _normalizeDay(DateTime dt) => DateTime(dt.year, dt.month, dt.day);
 
+  DateTime? _parseDate(dynamic rawValue) {
+    final raw = rawValue?.toString().trim();
+    if (raw == null || raw.isEmpty) return null;
+    final direct = DateTime.tryParse(raw);
+    if (direct != null) return direct;
+    final normalized = raw.replaceFirst(" ", "T");
+    if (normalized == raw) return null;
+    return DateTime.tryParse(normalized);
+  }
+
+  bool _hasMagazineWindowAccess({
+    required bool hasSubscription,
+    required DateTime? start,
+    required DateTime? end,
+    required DateTime? issueDate,
+  }) {
+    if (!hasSubscription) return false;
+
+    final normalizedStart = start == null ? null : _normalizeDay(start);
+    final normalizedEnd = end == null ? null : _normalizeDay(end);
+
+    // expires_at yoksa sınırsız abonelik kabul edilir.
+    if (normalizedEnd == null) {
+      if (issueDate == null || normalizedStart == null) return true;
+      return !_normalizeDay(issueDate).isBefore(normalizedStart);
+    }
+
+    if (issueDate == null) return false;
+    final normalizedIssue = _normalizeDay(issueDate);
+    if (normalizedStart != null && normalizedIssue.isBefore(normalizedStart)) {
+      return false;
+    }
+    if (normalizedIssue.isAfter(normalizedEnd)) {
+      return false;
+    }
+    return true;
+  }
+
   bool _hasMagazineSubscriptionForIssue(BuildContext context) {
     if (widget.detail.type != CartItemType.magazineIssue) return false;
     final access = context.read<AccessProvider>();
@@ -506,6 +522,55 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     final magazineId = int.tryParse(magazineIdRaw?.toString() ?? "");
     if (magazineId == null) return false;
     return access.hasAccess("magazine", itemId: magazineId);
+  }
+
+  bool _hasDirectMagazineIssueAccess(BuildContext context) {
+    if (widget.detail.type != CartItemType.magazineIssue) return false;
+    final issueIdRaw = widget.detail.metadata?["productId"];
+    final issueId = int.tryParse(issueIdRaw?.toString() ?? "");
+    if (issueId == null) return false;
+    return context.read<AccessProvider>().hasAccessExact(
+      "magazine_issue",
+      itemId: issueId,
+    );
+  }
+
+  bool _hasMagazineIssueSubscriptionWindowAccess(BuildContext context) {
+    if (widget.detail.type != CartItemType.magazineIssue) return false;
+    final access = context.read<AccessProvider>();
+    final magazineIdRaw = widget.detail.metadata?["magazineId"];
+    final magazineId = int.tryParse(magazineIdRaw?.toString() ?? "");
+    final hasSubscription = magazineId != null
+        ? access.hasAccess("magazine", itemId: magazineId)
+        : false;
+    final start = magazineId != null
+        ? access.startDate("magazine", itemId: magazineId)
+        : null;
+    final end = magazineId != null
+        ? access.expiry("magazine", itemId: magazineId)
+        : null;
+    final issueDate = _parseDate(widget.detail.metadata?["issueDate"]);
+    final windowAccess = _hasMagazineWindowAccess(
+      hasSubscription: hasSubscription,
+      start: start,
+      end: end,
+      issueDate: issueDate,
+    );
+    // Ürün beklentisi: dergi aboneliği aktifse sayı detayında erişim ver.
+    return hasSubscription || windowAccess;
+  }
+
+  String _magazineIssueViewLabel(BuildContext context) {
+    if (widget.detail.type != CartItemType.magazineIssue) {
+      return "Dergiyi Görüntüle";
+    }
+    if (_hasDirectMagazineIssueAccess(context)) {
+      return "Görüntüle (Sınırsız Erişim)";
+    }
+    if (_hasMagazineIssueSubscriptionWindowAccess(context)) {
+      return "Görüntüle (Abonelik)";
+    }
+    return "Dergiyi Görüntüle";
   }
 
   CartItem? _directCartItem() {
@@ -1318,109 +1383,127 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           vertical: 16,
         ),
         child: widget.detail.type == CartItemType.magazineIssue
-            ? Row(
-                children: [
-                  if (_hasContentAccess(context))
-                    Expanded(
-                      child: SizedBox(
-                        height: 54,
-                        child: ElevatedButton(
-                          onPressed: _openingBook
-                              ? null
-                              : () {
-                                  final fileUrl = _currentFileUrl();
-                                  if (fileUrl == null || fileUrl.isEmpty) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text(
-                                          "Bu içerik için indirme bağlantısı bulunamadı.",
-                                        ),
-                                      ),
-                                    );
-                                    return;
-                                  }
-                                  setState(() => _openingBook = true);
-                                  _openPdf(context, fileUrl).whenComplete(() {
-                                    if (mounted) {
-                                      setState(() => _openingBook = false);
-                                    }
-                                  });
-                                },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.blue,
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              const Text("Dergiyi Görüntüle"),
-                              if (_openingBook) ...[
-                                const SizedBox(width: 8),
-                                const SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Colors.white,
-                                  ),
+            ? Builder(
+                builder: (context) {
+                  final hasContentAccess = _hasContentAccess(context);
+                  final hasMagazineSubscription =
+                      _hasMagazineSubscriptionForIssue(context);
+                  final hasDirectIssueAccess = _hasDirectMagazineIssueAccess(
+                    context,
+                  );
+                  final issueViewLabel = _magazineIssueViewLabel(context);
+                  return Row(
+                    children: [
+                      if (hasContentAccess)
+                        Expanded(
+                          child: SizedBox(
+                            height: 54,
+                            child: ElevatedButton(
+                              onPressed: _openingBook
+                                  ? null
+                                  : () {
+                                      final fileUrl = _currentFileUrl();
+                                      if (fileUrl == null || fileUrl.isEmpty) {
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          const SnackBar(
+                                            content: Text(
+                                              "Bu içerik için indirme bağlantısı bulunamadı.",
+                                            ),
+                                          ),
+                                        );
+                                        return;
+                                      }
+                                      setState(() => _openingBook = true);
+                                      _openPdf(
+                                        context,
+                                        fileUrl,
+                                      ).whenComplete(() {
+                                        if (mounted) {
+                                          setState(() => _openingBook = false);
+                                        }
+                                      });
+                                    },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.blue,
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
                                 ),
-                              ],
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  if (_hasMagazineSubscriptionForIssue(context)) ...[
-                    if (_hasContentAccess(context)) const SizedBox(width: 12),
-                    Expanded(
-                      child: SizedBox(
-                        height: 54,
-                        child: ElevatedButton(
-                          onPressed: alreadyInCart
-                              ? null
-                              : () => _addToCart(context),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.red,
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(issueViewLabel),
+                                  if (_openingBook) ...[
+                                    const SizedBox(width: 8),
+                                    const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
                             ),
                           ),
-                          child: Text(
-                            alreadyInCart
-                                ? "Sepette"
-                                : "Sepete Ekle (Sınırsız Erişim)",
-                            textAlign: TextAlign.center,
-                          ),
                         ),
-                      ),
-                    ),
-                  ] else if (!_hasContentAccess(context))
-                    Expanded(
-                      child: SizedBox(
-                        height: 54,
-                        child: ElevatedButton(
-                          onPressed: alreadyInCart
-                              ? null
-                              : () => _addToCart(context),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.red,
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
+                      if (hasMagazineSubscription && !hasDirectIssueAccess) ...[
+                        if (hasContentAccess) const SizedBox(width: 12),
+                        Expanded(
+                          child: SizedBox(
+                            height: 54,
+                            child: ElevatedButton(
+                              onPressed: alreadyInCart
+                                  ? null
+                                  : () => _addToCart(context),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.red,
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              child: Text(
+                                alreadyInCart
+                                    ? "Sepette"
+                                    : "Sepete Ekle (Sınırsız Erişim)",
+                                textAlign: TextAlign.center,
+                              ),
                             ),
                           ),
-                          child: Text(
-                            alreadyInCart ? "Sepette" : "Sepete Ekle",
-                            textAlign: TextAlign.center,
+                        ),
+                      ] else if (!hasContentAccess)
+                        Expanded(
+                          child: SizedBox(
+                            height: 54,
+                            child: ElevatedButton(
+                              onPressed: alreadyInCart
+                                  ? null
+                                  : () => _addToCart(context),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.red,
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              child: Text(
+                                alreadyInCart
+                                    ? "Sepette"
+                                    : "Sepete Ekle (Sınırsız Erişim)",
+                                textAlign: TextAlign.center,
+                              ),
+                            ),
                           ),
                         ),
-                      ),
-                    ),
-                ],
+                    ],
+                  );
+                },
               )
             : SizedBox(
                 height: 54,
@@ -1598,7 +1681,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         case CartItemType.magazine:
           return "Oku";
         case CartItemType.magazineIssue:
-          return "Dergiyi Görüntüle";
+          return _magazineIssueViewLabel(context);
         case CartItemType.newspaperSubscription:
           return _accessText(detail, fallback: "Görüntüle");
         case CartItemType.supplement:

@@ -34,7 +34,9 @@ class _AdminNotificationsPageState extends State<AdminNotificationsPage> {
     } catch (e) {
       final parsed = ErrorManager.parseGraphQLError(e.toString());
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(parsed)));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(parsed)));
       }
     }
     setState(() => _loadingTokens = false);
@@ -54,7 +56,10 @@ class _AdminNotificationsPageState extends State<AdminNotificationsPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text("Bildirim Gönder", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+          const Text(
+            "Bildirim Gönder",
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          ),
           const SizedBox(height: 16),
           Form(
             key: _formKey,
@@ -64,19 +69,23 @@ class _AdminNotificationsPageState extends State<AdminNotificationsPage> {
                 TextFormField(
                   controller: _titleCtrl,
                   decoration: const InputDecoration(labelText: "Başlık"),
-                  validator: (v) => (v == null || v.trim().isEmpty) ? "Başlık gerekli" : null,
+                  validator: (v) =>
+                      (v == null || v.trim().isEmpty) ? "Başlık gerekli" : null,
                 ),
                 const SizedBox(height: 12),
                 TextFormField(
                   controller: _bodyCtrl,
                   maxLines: 4,
                   decoration: const InputDecoration(labelText: "İçerik"),
-                  validator: (v) => (v == null || v.trim().isEmpty) ? "İçerik gerekli" : null,
+                  validator: (v) =>
+                      (v == null || v.trim().isEmpty) ? "İçerik gerekli" : null,
                 ),
                 const SizedBox(height: 12),
                 TextFormField(
                   controller: _userIdCtrl,
-                  decoration: const InputDecoration(labelText: "Kullanıcı ID (boş: toplu gönder)"),
+                  decoration: const InputDecoration(
+                    labelText: "Kullanıcı ID (boş: toplu gönder)",
+                  ),
                   keyboardType: TextInputType.number,
                 ),
                 const SizedBox(height: 16),
@@ -90,27 +99,44 @@ class _AdminNotificationsPageState extends State<AdminNotificationsPage> {
                             if (!_formKey.currentState!.validate()) return;
                             setState(() => _sending = true);
                             try {
-                              final userId = int.tryParse(_userIdCtrl.text.trim());
-                              await NotificationService().sendNotification(
-                                title: _titleCtrl.text.trim(),
-                                body: _bodyCtrl.text.trim(),
-                                userId: userId,
+                              final userId = int.tryParse(
+                                _userIdCtrl.text.trim(),
                               );
-                              if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text("Bildirim kaydedildi / gönderildi")),
-                                );
-                              }
+                              final result = await NotificationService()
+                                  .sendNotification(
+                                    title: _titleCtrl.text.trim(),
+                                    body: _bodyCtrl.text.trim(),
+                                    userId: userId,
+                                  );
+                              final summary = Map<String, dynamic>.from(
+                                result["summary"] as Map? ?? const {},
+                              );
+                              final sent = summary["sent"] ?? 0;
+                              final failed = summary["failed"] ?? 0;
+                              if (!context.mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    "Bildirim gönderildi. Başarılı: $sent, Başarısız: $failed",
+                                  ),
+                                ),
+                              );
                             } catch (e) {
-                              final parsed = ErrorManager.parseGraphQLError(e.toString());
-                              if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(parsed)));
-                              }
+                              final parsed = ErrorManager.parseGraphQLError(
+                                e.toString(),
+                              );
+                              if (!context.mounted) return;
+                              ScaffoldMessenger.of(
+                                context,
+                              ).showSnackBar(SnackBar(content: Text(parsed)));
                             } finally {
                               if (mounted) setState(() => _sending = false);
                             }
                           },
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red,
+                      foregroundColor: Colors.white,
+                    ),
                     child: AnimatedBuilder(
                       animation: LoadingManager.instance,
                       builder: (_, __) {
@@ -118,7 +144,10 @@ class _AdminNotificationsPageState extends State<AdminNotificationsPage> {
                           return const SizedBox(
                             width: 18,
                             height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
                           );
                         }
                         return const Text("Gönder");
@@ -133,7 +162,10 @@ class _AdminNotificationsPageState extends State<AdminNotificationsPage> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text("Kayıtlı cihaz token'ları", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+              const Text(
+                "Kayıtlı cihaz token'ları",
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+              ),
               IconButton(
                 icon: const Icon(Icons.refresh),
                 onPressed: _loadTokens,
@@ -148,7 +180,12 @@ class _AdminNotificationsPageState extends State<AdminNotificationsPage> {
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(12),
-                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8)],
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.05),
+                        blurRadius: 8,
+                      ),
+                    ],
                   ),
                   child: ListView.builder(
                     itemCount: _tokens.length,

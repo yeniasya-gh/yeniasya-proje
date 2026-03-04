@@ -28,7 +28,7 @@ void main() async {
   final revenueCatService = RevenueCatService();
 
   // Link logout cleanup
-  authProvider.onLogout = () {
+  authProvider.onLogout = () async {
     cartProvider.clear();
     accessProvider.clear();
     rootNavigatorKey.currentState?.pushAndRemoveUntil(
@@ -108,7 +108,7 @@ class MyApp extends StatelessWidget {
         color: Colors.white,
         child: SafeArea(
           top: false,
-          bottom: false,
+          bottom: true,
           child: child ?? const SizedBox.shrink(),
         ),
       ),

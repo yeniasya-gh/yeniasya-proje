@@ -206,7 +206,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   const SizedBox(height: 8),
                   const Text(
-                    "Dergi • Kitap • Gazete",
+                    "E-Dergiler • E-Kitaplar • E-Gazete",
                     style: TextStyle(fontSize: 14, color: Colors.black54),
                   ),
                   const SizedBox(height: 12),

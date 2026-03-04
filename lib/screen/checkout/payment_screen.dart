@@ -315,6 +315,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
     int? promoId,
   }) async {
     setState(() => _loading = true);
+    String? mailWarning;
     try {
       // ignore: avoid_print
       print("🟦 PaymentScreen.finalize -> start");
@@ -361,8 +362,15 @@ class _PaymentScreenState extends State<PaymentScreen> {
           );
         }
       } catch (e) {
-        // ignore: avoid_print
-        print("🔴 [Mail] Siparis maili gonderilemedi: $e");
+        if (e is MailDeliveryException) {
+          mailWarning = e.userMessage;
+          // ignore: avoid_print
+          print("🔴 [Mail] Siparis maili gonderilemedi: ${e.debugMessage}");
+        } else {
+          mailWarning = "Bilgilendirme e-postası gönderilemedi.";
+          // ignore: avoid_print
+          print("🔴 [Mail] Siparis maili gonderilemedi: $e");
+        }
       }
 
       if (mounted) {
@@ -382,6 +390,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
           builder: (_) => OrderSuccessScreen(
             orderId: orderId.toString(),
             total: payableTotal.toStringAsFixed(2),
+            mailWarning: mailWarning,
           ),
         ),
         (route) => route.isFirst,

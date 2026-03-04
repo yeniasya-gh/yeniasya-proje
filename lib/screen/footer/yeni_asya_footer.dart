@@ -266,12 +266,14 @@ Başvuru: bilgiislem@yeniasya.com.tr
 ''';
 
 const Map<String, String> footerPageContentMap = {
-  "Dergiler":
-      "Dergiler sayfası için örnek içerik. Tüm dergi ve abonelik paketlerini burada bulabilirsiniz.",
-  "Kitaplar":
-      "Kitaplar sayfası için örnek içerik. Popüler ve yeni çıkan kitaplar listesi.",
-  "Gazeteler":
-      "Gazeteler sayfası için örnek içerik. Günlük gazetelere ve abonelik planlarına buradan erişin.",
+  "E-Dergiler":
+      "E-Dergiler sayfası için örnek içerik. Tüm dergi ve abonelik paketlerini burada bulabilirsiniz.",
+  "E-Kitaplar":
+      "E-Kitaplar sayfası için örnek içerik. Popüler ve yeni çıkan kitaplar listesi.",
+  "E-Gazete":
+      "E-Gazete sayfası için örnek içerik. Günlük gazetelere ve abonelik planlarına buradan erişin.",
+  "E-Ekler":
+      "E-Ekler sayfası için örnek içerik. Tüm e-ek içeriklerine buradan erişebilirsiniz.",
   "Abonelikler":
       "Abonelikler sayfası için örnek içerik. Tüm abonelik paketlerini ve avantajlarını inceleyin.",
   "Yardım Merkezi":
@@ -372,10 +374,10 @@ class YeniAsyaFooter extends StatelessWidget {
               Flexible(
                 flex: 1,
                 child: _footerSection("Kategoriler", [
-                  "Dergiler",
-                  "Kitaplar",
-                  "Gazeteler",
-                  "Abonelikler",
+                  "E-Dergiler",
+                  "E-Kitaplar",
+                  "E-Gazete",
+                  "E-Ekler",
                 ], context),
               ),
 
@@ -448,9 +450,9 @@ class YeniAsyaFooter extends StatelessWidget {
           (item) => Padding(
             padding: const EdgeInsets.symmetric(vertical: 4.0),
             child: InkWell(
-              onTap: () {
+              onTap: () async {
                 if (item == "Bize Ulaşın") {
-                  Navigator.push(
+                  final sent = await Navigator.push<bool>(
                     context,
                     MaterialPageRoute(
                       builder: (_) => Scaffold(
@@ -469,6 +471,13 @@ class YeniAsyaFooter extends StatelessWidget {
                       ),
                     ),
                   );
+                  if (sent == true && context.mounted) {
+                    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+                      const SnackBar(
+                        content: Text("Mesajınız iletildi, teşekkür ederiz."),
+                      ),
+                    );
+                  }
                 } else {
                   final content =
                       footerPageContentMap[item] ??

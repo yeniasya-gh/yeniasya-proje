@@ -45,11 +45,21 @@ class AccessProvider extends ChangeNotifier {
   }
 
   DateTime? expiry(String type, {int? itemId}) {
-    return _expires[type]?[itemId];
+    final map = _expires[type];
+    if (map == null) return null;
+    if (itemId != null && map.containsKey(itemId)) {
+      return map[itemId];
+    }
+    return map[null];
   }
 
   DateTime? startDate(String type, {int? itemId}) {
-    return _starts[type]?[itemId];
+    final map = _starts[type];
+    if (map == null) return null;
+    if (itemId != null && map.containsKey(itemId)) {
+      return map[itemId];
+    }
+    return map[null];
   }
 
   Future<void> load(int userId) async {

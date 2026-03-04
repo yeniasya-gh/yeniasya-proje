@@ -2,7 +2,7 @@
     <!-- Allow network calls in release builds for GraphQL/HTTP services -->
     <uses-permission android:name="android.permission.INTERNET" />
     <application
-        android:label="Yeni Asya"
+        android:label="Yeni Asya Dijital"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

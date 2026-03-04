@@ -34,6 +34,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   bool _loadingAccess = false;
   bool _deletingAccount = false;
+  bool _loggingOut = false;
 
   @override
   Widget build(BuildContext context) {
@@ -209,8 +210,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 _menuTile(
                   Icons.support_agent,
                   "Bize Ulaşın",
-                  onTap: () {
-                    Navigator.push(
+                  onTap: () async {
+                    final sent = await Navigator.push<bool>(
                       context,
                       MaterialPageRoute(
                         builder: (_) => Scaffold(
@@ -226,6 +227,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                       ),
                     );
+                    if (sent == true && context.mounted) {
+                      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+                        const SnackBar(
+                          content: Text("Mesajınız iletildi, teşekkür ederiz."),
+                        ),
+                      );
+                    }
                   },
                 ),
               ],
@@ -236,10 +244,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 width: double.infinity,
                 height: 50,
                 child: ElevatedButton.icon(
-                  onPressed: () {
-                    auth.logout();
-                    Navigator.popUntil(context, (route) => route.isFirst);
-                  },
+                  onPressed: _loggingOut
+                      ? null
+                      : () async {
+                          setState(() => _loggingOut = true);
+                          try {
+                            await auth.logout();
+                          } finally {
+                            if (mounted) {
+                              setState(() => _loggingOut = false);
+                            }
+                          }
+                        },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.red,
                     foregroundColor: Colors.white,
@@ -247,10 +263,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       borderRadius: BorderRadius.circular(14),
                     ),
                   ),
-                  icon: const Icon(Icons.logout),
-                  label: const Text(
-                    "Çıkış Yap",
-                    style: TextStyle(fontSize: 16),
+                  icon: _loggingOut
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.logout),
+                  label: Text(
+                    _loggingOut ? "Çıkış Yapılıyor..." : "Çıkış Yap",
+                    style: const TextStyle(fontSize: 16),
                   ),
                 ),
               ),
@@ -660,16 +685,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final tiles = <Widget>[
       _menuTile(
         Icons.menu_book_outlined,
-        "Kitaplar",
-        onTap: () => _openAccess(auth, "book", "Kitaplarım"),
+        "E-Kitaplar",
+        onTap: () => _openAccess(auth, "book", "E-Kitaplarım"),
       ),
     ];
     tiles.addAll([
       const Divider(height: 1, indent: 56),
       _menuTile(
         Icons.library_books,
-        "Dergiler",
-        onTap: () => _openAccess(auth, "magazine", "Dergi Abonelikleri"),
+        "E-Dergiler",
+        onTap: () => _openAccess(auth, "magazine", "E-Dergiler"),
       ),
       const Divider(height: 1, indent: 56),
       _menuTile(
@@ -680,9 +705,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       const Divider(height: 1, indent: 56),
       _menuTile(
         Icons.newspaper,
-        "Gazete Aboneliği",
-        onTap: () =>
-            _openAccess(auth, "newspaper_subscription", "Gazete Aboneliği"),
+        "E-Gazete",
+        onTap: () => _openAccess(auth, "newspaper_subscription", "E-Gazete"),
       ),
     ]);
     return Container(
