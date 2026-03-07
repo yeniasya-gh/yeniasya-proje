@@ -98,7 +98,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
                       AdminPage.newspaperTypes,
                     ),
                     _menuItem(
-                      "Manuel E-Gazete Kullanıcılar",
+                      "M EGazete",
                       Icons.manage_accounts,
                       AdminPage.manualNewspaperUsers,
                     ),

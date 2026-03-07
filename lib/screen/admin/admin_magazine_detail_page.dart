@@ -125,7 +125,8 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
   }
 
   String _yearToAddedAt(int year) {
-    return DateTime.utc(year, 1, 1).toIso8601String();
+    final normalizedYear = year.clamp(2000, 9999);
+    return "${normalizedYear.toString().padLeft(4, '0')}-01-01";
   }
 
   Future<void> _showAddIssueDialog() async {

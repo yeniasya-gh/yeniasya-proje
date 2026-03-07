@@ -188,7 +188,7 @@ class AdminMagazineService {
         $photo_url: String,
         $price: numeric!,
         $description: String,
-        $added_at: timestamptz
+        $added_at: date
       ) {
         insert_magazine_issue_one(object: {
           magazine_id: $magazine_id,
@@ -235,7 +235,7 @@ class AdminMagazineService {
         $photo_url: String,
         $price: numeric!,
         $description: String,
-        $added_at: timestamptz
+        $added_at: date
       ) {
         update_magazine_issue_by_pk(
           pk_columns: {id: $id},
