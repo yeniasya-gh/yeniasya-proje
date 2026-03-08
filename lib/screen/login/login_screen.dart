@@ -35,6 +35,29 @@ class _LoginScreenState extends State<LoginScreen> {
   bool get _isGoogleLoading => socialLoadingProvider == _googleSocialProvider;
   bool get _isAppleLoading => socialLoadingProvider == _appleSocialProvider;
 
+  Widget _buildAppleButtonIcon() {
+    if (_isAppleLoading) {
+      return const SizedBox(
+        width: 18,
+        height: 18,
+        child: CircularProgressIndicator(strokeWidth: 2),
+      );
+    }
+
+    if (kIsWeb) {
+      return const Icon(
+        Icons.apple,
+        color: Colors.black87,
+        size: 20,
+      );
+    }
+
+    return const Icon(
+      FontAwesomeIcons.apple,
+      color: Colors.black87,
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -482,18 +505,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 child: SizedBox(
                                   height: 48,
                                   child: OutlinedButton.icon(
-                                    icon: _isAppleLoading
-                                        ? const SizedBox(
-                                            width: 18,
-                                            height: 18,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 2,
-                                            ),
-                                          )
-                                        : const Icon(
-                                            FontAwesomeIcons.apple,
-                                            color: Colors.black87,
-                                          ),
+                                    icon: _buildAppleButtonIcon(),
                                     label: const Text(
                                       "Apple ile devam et",
                                       style: TextStyle(

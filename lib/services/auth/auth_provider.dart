@@ -274,6 +274,26 @@ class AuthProvider with ChangeNotifier {
 
   Future<SocialLoginResult> signInWithGoogle() async {
     try {
+      if (kIsWeb) {
+        final provider = GoogleAuthProvider()
+          ..setCustomParameters({"prompt": "select_account"});
+        final result = await FirebaseAuth.instance.signInWithPopup(provider);
+        final firebaseUser = result.user;
+        final email = firebaseUser?.email?.trim();
+        if (email == null || email.isEmpty) {
+          return SocialLoginResult(
+            error:
+                "Google hesabından e-posta bilgisi alınamadı. Lütfen başka bir hesapla tekrar deneyin.",
+          );
+        }
+        final displayName = firebaseUser?.displayName?.trim();
+        final name =
+            (displayName != null && displayName.isNotEmpty)
+            ? displayName
+            : email.split("@").first;
+        return _completeSocialLogin(provider: "google", email: email, name: name);
+      }
+
       const webClientId = String.fromEnvironment(
         "GOOGLE_WEB_CLIENT_ID",
         defaultValue:
@@ -324,6 +344,30 @@ class AuthProvider with ChangeNotifier {
       final name = googleUser.displayName ?? email.split("@").first;
       return _completeSocialLogin(provider: "google", email: email, name: name);
     } catch (e) {
+      if (e is FirebaseAuthException) {
+        switch (e.code) {
+          case "popup-closed-by-user":
+          case "cancelled-popup-request":
+            return SocialLoginResult(
+              error: "Google penceresi kapatıldı, tekrar deneyin.",
+            );
+          case "popup-blocked":
+            return SocialLoginResult(
+              error:
+                  "Tarayıcı Google giriş penceresini engelledi. Popup izni verip tekrar deneyin.",
+            );
+          case "unauthorized-domain":
+            return SocialLoginResult(
+              error:
+                  "Bu domain Firebase Authentication içinde yetkilendirilmemiş. Authorized Domains ayarını kontrol edin.",
+            );
+          case "operation-not-allowed":
+            return SocialLoginResult(
+              error:
+                  "Firebase üzerinde Google giriş sağlayıcısı aktif değil. Authentication -> Sign-in method ayarını kontrol edin.",
+            );
+        }
+      }
       final msg = e.toString();
       if (msg.contains("popup_closed")) {
         return SocialLoginResult(
