@@ -28,17 +28,10 @@ class PaymentService {
 
   Future<String> createSession({required Map<String, dynamic> payload}) async {
     final uri = Uri.parse("$_baseUrl/payment/session");
-    // ignore: avoid_print
-    print("🟦 PaymentService.createSession -> $uri");
-    // ignore: avoid_print
-    print("🟦 Payment payload: ${jsonEncode(payload)}");
     final headers = _authorizedHeaders();
     final resp = await _client
         .post(uri, headers: headers, body: jsonEncode(payload))
         .timeout(const Duration(seconds: 20));
-
-    // ignore: avoid_print
-    print("🟩 Payment session response (${resp.statusCode}): ${resp.body}");
 
     if (resp.statusCode < 200 || resp.statusCode >= 300) {
       throw Exception(
@@ -71,16 +64,11 @@ class PaymentService {
 
   Future<List<SavedCard>> queryCards({required String customer}) async {
     final uri = Uri.parse("$_baseUrl/payment/query-card");
-    // ignore: avoid_print
-    print("🟦 PaymentService.queryCards -> $uri (customer=$customer)");
 
     final headers = _authorizedHeaders();
     final resp = await _client
         .post(uri, headers: headers, body: jsonEncode({"customer": customer}))
         .timeout(const Duration(seconds: 20));
-
-    // ignore: avoid_print
-    print("🟩 Query-card response (${resp.statusCode}): ${resp.body}");
 
     if (resp.statusCode < 200 || resp.statusCode >= 300) {
       throw Exception("Kartlar alinmadi (${resp.statusCode}): ${resp.body}");
@@ -107,16 +95,11 @@ class PaymentService {
 
   Future<void> deleteCard({required String cardToken}) async {
     final uri = Uri.parse("$_baseUrl/payment/delete-card");
-    // ignore: avoid_print
-    print("🟦 PaymentService.deleteCard -> $uri (token=$cardToken)");
 
     final headers = _authorizedHeaders();
     final resp = await _client
         .post(uri, headers: headers, body: jsonEncode({"cardToken": cardToken}))
         .timeout(const Duration(seconds: 20));
-
-    // ignore: avoid_print
-    print("🟩 Delete-card response (${resp.statusCode}): ${resp.body}");
 
     if (resp.statusCode < 200 || resp.statusCode >= 300) {
       throw Exception("Kart silinemedi (${resp.statusCode}): ${resp.body}");

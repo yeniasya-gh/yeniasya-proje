@@ -3,6 +3,30 @@ import '../hasura_manager.dart';
 class AdminBookService {
   final _hasura = HasuraManager.instance;
 
+  Future<List<Map<String, dynamic>>> getPublicBooks() async {
+    const query = r'''
+query GetPublicBooks {
+  books(order_by: {id: desc}) {
+    id
+    title
+    cover_url
+    price
+    discount_price
+    description
+    min_description
+
+    author_rel: authorByAuthorId {
+      id
+      name
+    }
+  }
+}
+  ''';
+
+    final data = await _hasura.graphQLRequest(query: query);
+    return List<Map<String, dynamic>>.from(data["books"]);
+  }
+
   Future<List<Map<String, dynamic>>> getAllBooks() async {
     const query = r'''
 query GetAllBooks {

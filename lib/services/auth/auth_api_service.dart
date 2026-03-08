@@ -120,29 +120,13 @@ class AuthApiService {
     return data;
   }
 
-  Future<Map<String, dynamic>> guestToken({
-    String? username,
-    String? password,
-  }) async {
+  Future<Map<String, dynamic>> guestToken() async {
     final uri = Uri.parse("$_baseUrl/auth/guest-token");
     final headers = {"content-type": "application/json"};
     final resp = await _client.post(
       uri,
       headers: headers,
-      body: jsonEncode({
-        "username":
-            username ??
-            const String.fromEnvironment(
-              "GUEST_USERNAME",
-              defaultValue: "yeniasyaguest",
-            ),
-        "password":
-            password ??
-            const String.fromEnvironment(
-              "GUEST_PASSWORD",
-              defaultValue: "yeniasya.guest.pass.2026",
-            ),
-      }),
+      body: "{}",
     );
     if (resp.statusCode < 200 || resp.statusCode >= 300) {
       throw Exception("Guest token failed (${resp.statusCode}): ${resp.body}");
@@ -190,6 +174,32 @@ class AuthApiService {
     throw Exception(_confirmPasswordResetError(resp));
   }
 
+  Future<String> getNewspaperViewUrl({required DateTime date}) async {
+    final uri = Uri.parse("$_baseUrl/newspaper/view-url");
+    final headers = {
+      "content-type": "application/json",
+      if (AuthTokenStore.token != null && AuthTokenStore.token!.isNotEmpty)
+        "Authorization": "Bearer ${AuthTokenStore.token}",
+    };
+    final dateOnly = date.toUtc().toIso8601String().split("T").first;
+    final resp = await _client.post(
+      uri,
+      headers: headers,
+      body: jsonEncode({"date": dateOnly}),
+    );
+
+    if (resp.statusCode < 200 || resp.statusCode >= 300) {
+      throw Exception(_newspaperViewUrlError(resp));
+    }
+
+    final data = jsonDecode(resp.body) as Map<String, dynamic>;
+    final url = data["url"]?.toString().trim() ?? "";
+    if (data["ok"] != true || url.isEmpty) {
+      throw Exception("E-gazete bağlantısı alınamadı.");
+    }
+    return url;
+  }
+
   String _requestPasswordResetError(http.Response resp) {
     final message = _responseMessage(resp);
     switch (resp.statusCode) {
@@ -222,6 +232,30 @@ class AuthApiService {
         return "Çok fazla deneme yapıldı. Lütfen biraz sonra tekrar deneyin.";
       default:
         return message.isNotEmpty ? message : "Şifre güncellenemedi.";
+    }
+  }
+
+  String _newspaperViewUrlError(http.Response resp) {
+    final message = _responseMessage(resp);
+    switch (resp.statusCode) {
+      case 400:
+        return message.isNotEmpty ? message : "Geçerli bir gazete tarihi seçin.";
+      case 401:
+        return "Gazeteyi görüntülemek için yeniden giriş yapın.";
+      case 403:
+        return message.isNotEmpty
+            ? message
+            : "Aktif e-gazete aboneliğiniz bulunmuyor.";
+      case 404:
+        return "E-gazete görüntüleme servisi bulunamadı.";
+      case 503:
+        return message.isNotEmpty
+            ? message
+            : "E-gazete servisi şu anda kullanılamıyor.";
+      default:
+        return message.isNotEmpty
+            ? message
+            : "E-gazete bağlantısı alınamadı.";
     }
   }
 

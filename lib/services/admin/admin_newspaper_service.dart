@@ -3,6 +3,22 @@ import '../hasura_manager.dart';
 class AdminNewspaperService {
   final _hasura = HasuraManager.instance;
 
+  Future<List<Map<String, dynamic>>> getPublicList() async {
+    const query = r'''
+      query GetPublicNewspapers {
+        newspaper(order_by: {publish_date: desc}) {
+          id
+          image_url
+          publish_date
+          created_at
+        }
+      }
+    ''';
+
+    final data = await _hasura.graphQLRequest(query: query);
+    return List<Map<String, dynamic>>.from(data["newspaper"]);
+  }
+
   Future<List<Map<String, dynamic>>> getAll() async {
     const query = r'''
       query GetNewspapers {
@@ -97,5 +113,26 @@ class AdminNewspaperService {
 
     await _hasura.graphQLRequest(query: mutation, variables: {"id": id});
     return true;
+  }
+
+  Future<Map<String, dynamic>?> getById(int id) async {
+    const query = r'''
+      query GetNewspaper($id: Int!) {
+        newspaper_by_pk(id: $id) {
+          id
+          image_url
+          publish_date
+          file_url
+          created_at
+        }
+      }
+    ''';
+
+    final data = await _hasura.graphQLRequest(
+      query: query,
+      variables: {"id": id},
+    );
+
+    return data["newspaper_by_pk"] as Map<String, dynamic>?;
   }
 }

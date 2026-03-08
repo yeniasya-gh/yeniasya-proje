@@ -38,7 +38,7 @@ class _MagazineIssuesScreenState extends State<MagazineIssuesScreen> {
   @override
   void initState() {
     super.initState();
-    _issuesFuture = _service.getIssues(widget.magazineId);
+    _issuesFuture = _service.getPublicIssues(widget.magazineId);
   }
 
   DateTime? _issueDate(Map<String, dynamic> issue) {
@@ -112,7 +112,6 @@ class _MagazineIssuesScreenState extends State<MagazineIssuesScreen> {
     required Map<String, dynamic> issue,
     required String issueNumber,
     required String imageUrl,
-    required String fileUrl,
   }) {
     final issueId = issue["id"] as int?;
     if (issueId == null) {
@@ -148,7 +147,6 @@ class _MagazineIssuesScreenState extends State<MagazineIssuesScreen> {
       type: CartItemType.magazineIssue,
       metadata: {
         "productId": issueId,
-        "fileUrl": fileUrl,
         "magazineId": widget.magazineId,
         "issueDate": issueDate,
       },
@@ -273,7 +271,6 @@ class _MagazineIssuesScreenState extends State<MagazineIssuesScreen> {
                               issue["photo_url"]?.toString() ??
                               widget.magazineCoverUrl ??
                               "";
-                          final fileUrl = issue["file_url"]?.toString() ?? "";
                           final directIssueAccess = access.hasAccess(
                             "magazine_issue",
                             itemId: issueId,
@@ -363,10 +360,6 @@ class _MagazineIssuesScreenState extends State<MagazineIssuesScreen> {
                                               issue: issue,
                                               issueNumber: issueNumber,
                                               imageUrl: imageUrl,
-                                              fileUrl:
-                                                  UploadService.normalizeUrl(
-                                                    fileUrl,
-                                                  ),
                                             ),
                                       style: OutlinedButton.styleFrom(
                                         padding: EdgeInsets.zero,

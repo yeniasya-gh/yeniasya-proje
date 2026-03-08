@@ -171,6 +171,32 @@ class AdminMagazineService {
     return List<Map<String, dynamic>>.from(data["magazine_issue"]);
   }
 
+  Future<List<Map<String, dynamic>>> getPublicIssues(int magazineId) async {
+    const query = r'''
+      query GetPublicIssues($magazine_id: Int!) {
+        magazine_issue(
+          where: {magazine_id: {_eq: $magazine_id}},
+          order_by: {issue_number: desc}
+        ) {
+          id
+          magazine_id
+          issue_number
+          photo_url
+          price
+          description
+          added_at
+        }
+      }
+    ''';
+
+    final data = await _hasura.graphQLRequest(
+      query: query,
+      variables: {"magazine_id": magazineId},
+    );
+
+    return List<Map<String, dynamic>>.from(data["magazine_issue"]);
+  }
+
   Future<bool> addIssue({
     required int magazineId,
     required int issueNumber,

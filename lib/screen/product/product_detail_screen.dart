@@ -21,6 +21,9 @@ import '../../utils/cart_feedback.dart';
 import 'package:flutter/foundation.dart';
 import '../../utils/pdf_open_helper.dart';
 import '../../services/secure_file_service.dart';
+import '../../services/admin/admin_book_service.dart';
+import '../../services/admin/admin_magazine_service.dart';
+import '../../services/admin/admin_newspaper_service.dart';
 
 class ProductDetail {
   final String id;
@@ -79,6 +82,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   final _reviewService = ReviewService();
   final _magazineTypePriceService = MagazineTypePriceService();
   final _newspaperTypePriceService = NewspaperSubscriptionTypeService();
+  final _bookService = AdminBookService();
+  final _magazineService = AdminMagazineService();
+  final _newspaperService = AdminNewspaperService();
   final TextEditingController _commentCtrl = TextEditingController();
   int _rating = 5;
   bool _reviewSubmitting = false;
@@ -90,6 +96,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   bool _downloadBusy = false;
   bool _openingBook = false;
   double? _downloadProgress;
+  String? _resolvedFileUrl;
 
   @override
   void initState() {
@@ -594,20 +601,18 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   String _shareText() {
     final subtitle = widget.detail.subtitle ?? "";
     final shareUrl = widget.detail.metadata?["shareUrl"]?.toString();
-    final fileUrl = widget.detail.metadata?["fileUrl"]?.toString();
     final imageUrl = widget.detail.imageUrl;
     final deepLink = _shareLink();
-    final targetUrl = [
+    final targetUrl = <String>[
       deepLink,
-      shareUrl,
-      fileUrl,
+      if (shareUrl != null) shareUrl,
       imageUrl,
-    ].firstWhere((u) => u != null && u.toString().isNotEmpty, orElse: () => "");
+    ].firstWhere((u) => u.isNotEmpty, orElse: () => "");
 
     final parts = <String>[
       widget.detail.title,
       if (subtitle.isNotEmpty) subtitle,
-      if (targetUrl is String && targetUrl.isNotEmpty) targetUrl,
+      if (targetUrl.isNotEmpty) targetUrl,
     ];
     return parts.join(" - ");
   }
@@ -686,7 +691,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
   Future<void> _checkLocalCopy() async {
     final fileUrl = _currentFileUrl();
-    if (fileUrl == null || fileUrl.isEmpty) return;
+    if (fileUrl == null || fileUrl.isEmpty) {
+      if (mounted) setState(() => _hasLocalCopy = false);
+      return;
+    }
     final cached = await SecureFileService.instance.hasCached(fileUrl);
     if (mounted) setState(() => _hasLocalCopy = cached);
   }
@@ -732,12 +740,104 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   }
 
   String? _currentFileUrl() {
-    // Yoksa ürün metadata fileUrl
-    final baseUrl = widget.detail.metadata?["fileUrl"]?.toString();
-    if (baseUrl != null && baseUrl.isNotEmpty) {
-      return UploadService.normalizeUrl(baseUrl);
+    for (final candidate in [
+      _resolvedFileUrl,
+      widget.detail.metadata?["fileUrl"]?.toString(),
+    ]) {
+      if (candidate != null && candidate.isNotEmpty) {
+        return UploadService.normalizeUrl(candidate);
+      }
     }
     return null;
+  }
+
+  int? _parseInt(dynamic value) {
+    if (value == null) return null;
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value.toString());
+  }
+
+  int? _newspaperId() {
+    final metadataId = _parseInt(widget.detail.metadata?["newspaperId"]);
+    if (metadataId != null) return metadataId;
+    if (!widget.detail.id.startsWith("news-")) return null;
+    return int.tryParse(widget.detail.id.substring(5));
+  }
+
+  Future<String?> _fetchProtectedFileUrl() async {
+    switch (widget.detail.type) {
+      case CartItemType.book:
+        final productId = _parseInt(widget.detail.metadata?["productId"]);
+        if (productId == null) return null;
+        final book = await _bookService.getBookById(productId);
+        return book?["book_url"]?.toString();
+      case CartItemType.magazineIssue:
+        final issueId = _parseInt(widget.detail.metadata?["productId"]);
+        if (issueId == null) return null;
+        final issue = await _magazineService.getIssueById(issueId);
+        return issue?["file_url"]?.toString();
+      case CartItemType.newspaperSubscription:
+        final newspaperId = _newspaperId();
+        if (newspaperId == null) return null;
+        final newspaper = await _newspaperService.getById(newspaperId);
+        return newspaper?["file_url"]?.toString();
+      case CartItemType.magazine:
+      case CartItemType.supplement:
+        return null;
+    }
+  }
+
+  Future<String?> _ensureFileUrl() async {
+    final current = _currentFileUrl();
+    if (current != null && current.isNotEmpty) return current;
+
+    try {
+      final fetched = await _fetchProtectedFileUrl();
+      if (fetched == null || fetched.isEmpty) return null;
+      final normalized = UploadService.normalizeUrl(fetched);
+      if (!mounted) return normalized;
+      setState(() => _resolvedFileUrl = normalized);
+      await _checkLocalCopy();
+      return normalized;
+    } catch (e) {
+      if (!mounted) return null;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            "İçerik bağlantısı alınamadı: ${ErrorManager.parseGraphQLError(e.toString())}",
+          ),
+        ),
+      );
+      return null;
+    }
+  }
+
+  Future<void> _openAccessibleContent(
+    BuildContext context, {
+    int? magazineId,
+  }) async {
+    if (_openingBook) return;
+    setState(() => _openingBook = true);
+    try {
+      if (widget.detail.type == CartItemType.magazine && magazineId != null) {
+        _openMagazineIssues(context, magazineId);
+        return;
+      }
+      final fileUrl = await _ensureFileUrl();
+      if (!mounted) return;
+      if (fileUrl == null || fileUrl.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Bu içerik için indirme bağlantısı bulunamadı."),
+          ),
+        );
+        return;
+      }
+      await _openPdf(context, fileUrl);
+    } finally {
+      if (mounted) setState(() => _openingBook = false);
+    }
   }
 
   Map<String, dynamic>? _reviewTarget() {
@@ -1402,28 +1502,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                               onPressed: _openingBook
                                   ? null
                                   : () {
-                                      final fileUrl = _currentFileUrl();
-                                      if (fileUrl == null || fileUrl.isEmpty) {
-                                        ScaffoldMessenger.of(
-                                          context,
-                                        ).showSnackBar(
-                                          const SnackBar(
-                                            content: Text(
-                                              "Bu içerik için indirme bağlantısı bulunamadı.",
-                                            ),
-                                          ),
-                                        );
-                                        return;
-                                      }
-                                      setState(() => _openingBook = true);
-                                      _openPdf(
-                                        context,
-                                        fileUrl,
-                                      ).whenComplete(() {
-                                        if (mounted) {
-                                          setState(() => _openingBook = false);
-                                        }
-                                      });
+                                      _openAccessibleContent(context);
                                     },
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.blue,
@@ -1529,27 +1608,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               final hasAccess = _hasContentAccess(context);
 
               if (hasAccess) {
-                if (_openingBook) return;
-                if (widget.detail.type == CartItemType.magazine &&
-                    magazineId != null) {
-                  _openMagazineIssues(context, magazineId);
-                  return;
-                }
-                final fileUrl = _currentFileUrl();
-                if (fileUrl != null && fileUrl.isNotEmpty) {
-                  setState(() => _openingBook = true);
-                  _openPdf(context, fileUrl).whenComplete(() {
-                    if (mounted) setState(() => _openingBook = false);
-                  });
-                } else {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        "Bu içerik için indirme bağlantısı bulunamadı.",
-                      ),
-                    ),
-                  );
-                }
+                _openAccessibleContent(context, magazineId: magazineId);
                 return;
               }
               if (widget.detail.type == CartItemType.newspaperSubscription) {

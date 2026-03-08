@@ -1,14 +1,12 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:math';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:crypto/crypto.dart';
 import '../services/access_provider.dart';
 import '/screen/footer/yeni_asya_footer.dart';
 import '/services/auth/auth_provider.dart';
+import '/services/auth/auth_api_service.dart';
 import '/screen/login/login_screen.dart';
 import '/screen/profile/profile_screen.dart';
 import '/utils/route_guard.dart';
@@ -61,6 +59,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
   final AdminNewspaperService _newsService = AdminNewspaperService();
   final AdminSliderService _sliderService = AdminSliderService();
   final EkService _ekService = EkService();
+  final AuthApiService _authApi = AuthApiService();
   final OrderService _orderService = OrderService();
   final UserContentAccessService _accessService = UserContentAccessService();
   final HomeShowcaseService _homeShowcaseService = HomeShowcaseService();
@@ -122,8 +121,8 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
           });
       final results = await Future.wait([
         _magService.getMagazines(),
-        _bookService.getAllBooks(),
-        _newsService.getAll(),
+        _bookService.getPublicBooks(),
+        _newsService.getPublicList(),
         _ekService.getEkler(),
         _sliderService.getAll(onlyActive: true),
         _homeShowcaseService.getByType("book", onlyActive: true),
@@ -343,6 +342,39 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
 
   DateTime _normalizeDate(DateTime date) =>
       DateTime(date.year, date.month, date.day);
+
+  Future<void> _openArchivedNewspaperForDate(
+    BuildContext context,
+    DateTime date,
+  ) async {
+    final normalized = _normalizeDate(date);
+    final dateLabel =
+        "${normalized.day.toString().padLeft(2, "0")}.${normalized.month.toString().padLeft(2, "0")}.${normalized.year}";
+    try {
+      final pdfUrl = await _authApi.getNewspaperViewUrl(date: normalized);
+      if (!context.mounted) return;
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => PdfViewerScreen(
+            url: pdfUrl,
+            title: "E-Gazete $dateLabel",
+            isPrivate: false,
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      final message = e.toString().replaceFirst("Exception: ", "").trim();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            message.isNotEmpty ? message : "E-gazete bağlantısı alınamadı.",
+          ),
+        ),
+      );
+    }
+  }
 
   List<Map<String, dynamic>> _filteredNewspapers() {
     final hasFilter = _newsSelectedDate != null;
@@ -1391,7 +1423,6 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         issue["created_at"]?.toString();
     final metadata = {
       "productId": issueId,
-      "fileUrl": issue["file_url"]?.toString(),
       "magazineId": magazineId,
       "issueDate": issueDate,
     };
@@ -1427,7 +1458,6 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
       metadata: {
         "productId": mag["id"],
         "disableAdd": hasAccess,
-        "fileUrl": mag["file_url"],
         "period": mag["period"],
       },
       actionLabel: actionLabel,
@@ -1453,7 +1483,6 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
       type: CartItemType.book,
       metadata: {
         "productId": book["id"],
-        "fileUrl": book["book_url"],
         "disableAdd": hasAccess,
       },
       actionLabel: actionLabel,
@@ -1477,7 +1506,6 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     final dateStr = news["publish_date"]?.toString() ?? "";
     final hasSub = _hasNewspaperSubscription(context);
     final title = "E-Gazete";
-    final fileUrl = news["file_url"]?.toString();
     return ProductDetail(
       id: "news-${news["id"] ?? "subscription"}",
       title: title,
@@ -1490,8 +1518,8 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
       type: CartItemType.newspaperSubscription,
       metadata: {
         "productId": "gazete-abonelik",
+        "newspaperId": news["id"],
         "disableAdd": hasSub,
-        "fileUrl": fileUrl,
         "period": news["period"],
       },
       actionLabel: hasSub ? "Görüntüle" : "Abone Ol",
@@ -2402,22 +2430,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         locale: const Locale('tr', 'TR'),
       );
       if (picked == null) return;
-      final normalized = _normalizeDate(picked);
-      final dateLabel =
-          "${normalized.day.toString().padLeft(2, "0")}.${normalized.month.toString().padLeft(2, "0")}.${normalized.year}";
-      final pdfUrl = _legacyNewspaperUrl(normalized);
-      debugPrint("E-gazete PDF URL (tarih seçimi): $pdfUrl");
-      if (!mounted) return;
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => PdfViewerScreen(
-            url: pdfUrl,
-            title: "E-Gazete $dateLabel",
-            isPrivate: false,
-          ),
-        ),
-      );
+      await _openArchivedNewspaperForDate(context, picked);
     }
 
     return Column(
@@ -3518,35 +3531,11 @@ String _formatDateTr(DateTime date) {
   return "$day $month $year";
 }
 
-String _formatDateIso(DateTime date) {
-  final y = date.year.toString().padLeft(4, "0");
-  final m = date.month.toString().padLeft(2, "0");
-  final d = date.day.toString().padLeft(2, "0");
-  return "$y-$m-$d";
-}
-
 String _formatDateShort(DateTime date) {
   final day = date.day.toString().padLeft(2, "0");
   final month = date.month.toString().padLeft(2, "0");
   final year = date.year.toString();
   return "$day.$month.$year";
-}
-
-String _legacyNewspaperToken(String fileName) {
-  const secret = "ya-X4qrNx9VwBK81sw2-";
-  final slice = DateTime.now().toUtc().millisecondsSinceEpoch ~/ 1000 ~/ 600;
-  final key = utf8.encode(secret + fileName);
-  final hmac = Hmac(sha256, key);
-  final bytes = ByteData(8)..setInt64(0, slice, Endian.little);
-  final digest = hmac.convert(bytes.buffer.asUint8List());
-  final hex = digest.toString().toUpperCase();
-  return hex.substring(0, 16);
-}
-
-String _legacyNewspaperUrl(DateTime date) {
-  final fileName = "${_formatDateIso(date)}.pdf";
-  final token = _legacyNewspaperToken(fileName);
-  return "https://www.yeniasya.com.tr/e-gazete/content/0/$token/$fileName";
 }
 
 int _cartCount(CartProvider cart) {
@@ -4035,22 +4024,7 @@ class _NewspaperListScreenState extends State<_NewspaperListScreen> {
       locale: const Locale('tr', 'TR'),
     );
     if (picked == null) return;
-    final normalized = DateTime(picked.year, picked.month, picked.day);
-    final dateLabel =
-        "${normalized.day.toString().padLeft(2, "0")}.${normalized.month.toString().padLeft(2, "0")}.${normalized.year}";
-    final pdfUrl = _legacyNewspaperUrl(normalized);
-    debugPrint("E-gazete PDF URL (tarih seçimi - mobil): $pdfUrl");
-    if (!mounted) return;
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => PdfViewerScreen(
-          url: pdfUrl,
-          title: "E-Gazete $dateLabel",
-          isPrivate: false,
-        ),
-      ),
-    );
+    await widget.homeState._openArchivedNewspaperForDate(context, picked);
   }
 
   @override
@@ -4484,7 +4458,6 @@ class _MagazineBrowseScreenState extends State<_MagazineBrowseScreen> {
     final photo = (issue["photo_url"] ?? mag["cover_image_url"] ?? "")
         .toString();
     final imageUrl = UploadService.normalizeUrl(photo);
-    final fileUrl = (issue["file_url"] ?? "").toString();
 
     return Container(
       width: 142,

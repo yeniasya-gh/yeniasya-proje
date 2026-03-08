@@ -179,10 +179,6 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
   Future<void> _loadRedirect() async {
     try {
       final payload = widget.payload.toJson();
-      // ignore: avoid_print
-      print("🟦 PaymentWebViewScreen.loadRedirect -> ${widget.redirectUri}");
-      // ignore: avoid_print
-      print("🟦 PaymentWebViewScreen payload: ${jsonEncode(payload)}");
 
       final token = AuthTokenStore.token?.trim();
       if (token == null || token.isEmpty) {

@@ -109,8 +109,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
         _loadingSavedCards = false;
       });
     } catch (e) {
-      // ignore: avoid_print
-      print("🟨 PaymentScreen.loadSavedCards error: $e");
       if (!mounted) return;
       setState(() {
         _savedCards = const [];
@@ -139,14 +137,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
     final discountAmount = cart.discountAmount;
     try {
       setState(() => _loading = true);
-      // ignore: avoid_print
-      print("🟦 PaymentScreen.submit -> start");
       final user = context.read<AuthProvider>().user;
       if (user == null) {
         throw Exception("Kullanici bilgisi bulunamadi.");
       }
-      // ignore: avoid_print
-      print("🟦 PaymentScreen.submit -> user: ${user.id}");
 
       String? cardToken;
       if (_useSavedCard) {
@@ -156,10 +150,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
       final itemsPayload = _buildOrderItemsPayload(cart.items);
       final accessItems = _buildAccessItems(cart.items);
-      // ignore: avoid_print
-      print(
-        "🟦 PaymentScreen.submit -> items: ${itemsPayload.length}, access: ${accessItems.length}",
-      );
       final billing = await _addressService.getAddressById(
         widget.billingAddressId,
       );
@@ -167,8 +157,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
         widget.deliveryAddressId,
       );
       final merchantPaymentId = _buildMerchantPaymentId(user.id);
-      // ignore: avoid_print
-      print("🟦 PaymentScreen.submit -> merchantPaymentId: $merchantPaymentId");
 
       final sessionPayload = _buildSessionPayload(
         user: user,
@@ -182,8 +170,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
       final sessionToken = await _paymentService.createSession(
         payload: sessionPayload,
       );
-      // ignore: avoid_print
-      print("🟦 PaymentScreen.submit -> sessionToken ok");
 
       if (!mounted) return;
       final createdOrder = await _orderService.createOrder(
@@ -221,8 +207,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
               saveCard: _saveCard,
               cardName: _saveCard ? _cardNameCtrl.text.trim() : null,
             );
-      // ignore: avoid_print
-      print("🟦 PaymentScreen.submit -> open webview");
 
       PaymentResult? result;
 
@@ -263,13 +247,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
           paymentErrorCode: result?.errorCode,
           paymentErrorMsg: result?.errorMsg ?? result?.message,
         );
-        // ignore: avoid_print
-        print("🟨 PaymentScreen.submit -> webview failed: ${result?.message}");
         return;
       }
 
-      // ignore: avoid_print
-      print("🟩 PaymentScreen.submit -> webview success");
       await _orderService.updateOrderPaymentStatus(
         orderId: orderId,
         status: "paid",
@@ -288,8 +268,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
         accessItems: accessItems,
       );
     } catch (e) {
-      // ignore: avoid_print
-      print("🟥 PaymentScreen.submit error: $e");
       if (mounted) {
         setState(() => _loading = false);
         if (e is PaymentSessionException) {
@@ -317,8 +295,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
     setState(() => _loading = true);
     String? mailWarning;
     try {
-      // ignore: avoid_print
-      print("🟦 PaymentScreen.finalize -> start");
       final directAccessItems = accessItems
           .where((item) => item["item_type"] != "newspaper_subscription")
           .toList();
@@ -343,8 +319,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
           );
         }
       }
-      // ignore: avoid_print
-      print("🟦 PaymentScreen.finalize -> access ok");
 
       if (promoId != null) {
         await _promoService.markUsed(promoId);
@@ -364,12 +338,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
       } catch (e) {
         if (e is MailDeliveryException) {
           mailWarning = e.userMessage;
-          // ignore: avoid_print
-          print("🔴 [Mail] Siparis maili gonderilemedi: ${e.debugMessage}");
         } else {
           mailWarning = "Bilgilendirme e-postası gönderilemedi.";
-          // ignore: avoid_print
-          print("🔴 [Mail] Siparis maili gonderilemedi: $e");
         }
       }
 
@@ -396,8 +366,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
         (route) => route.isFirst,
       );
     } catch (e) {
-      // ignore: avoid_print
-      print("🟥 PaymentScreen.finalize error: $e");
       final parsed = ErrorManager.parseGraphQLError(e.toString());
       if (mounted) {
         ScaffoldMessenger.of(
@@ -433,12 +401,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
         expirationDate: expiresAt,
         lifetime: expiresAt == null,
       );
-      // ignore: avoid_print
-      print("🟩 PaymentScreen.finalize -> revenuecat grant ok");
       return true;
     } catch (e) {
-      // ignore: avoid_print
-      print("🟨 PaymentScreen.finalize -> revenuecat grant failed: $e");
       return false;
     }
   }
@@ -625,9 +589,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
     int orderId,
   ) async {
     try {
-      // ignore: avoid_print
-      print("🟦 PaymentScreen._handleWebPayment -> start");
-
       // POST kart bilgileriyle redirect endpoint'ine
       final redirectUri = _paymentService.redirectUri();
       final token = AuthTokenStore.token?.trim();
@@ -648,11 +609,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
             body: jsonEncode(payload.toJson()),
           )
           .timeout(const Duration(seconds: 30));
-
-      // ignore: avoid_print
-      print(
-        "🟦 PaymentScreen._handleWebPayment -> response: ${resp.statusCode}",
-      );
 
       if (resp.statusCode < 200 || resp.statusCode >= 300) {
         return PaymentResult(
@@ -683,8 +639,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
       ).firstMatch(body);
       if (actionMatch != null) {
         final actionUrl = actionMatch.group(1)!;
-        // ignore: avoid_print
-        print("🟦 PaymentScreen._handleWebPayment -> found action: $actionUrl");
         return await _openWebPaymentPopup(actionUrl);
       }
 
@@ -695,29 +649,17 @@ class _PaymentScreenState extends State<PaymentScreen> {
       ).firstMatch(body);
       if (iframeSrcMatch != null) {
         final iframeSrc = iframeSrcMatch.group(1)!;
-        // ignore: avoid_print
-        print(
-          "🟦 PaymentScreen._handleWebPayment -> found iframe src: $iframeSrc",
-        );
         return await _openWebPaymentPopup(iframeSrc);
       }
 
       // Direct HTML content - blob URL ile popup aç
-      // ignore: avoid_print
-      print(
-        "🟦 PaymentScreen._handleWebPayment -> opening popup with HTML content",
-      );
       return await _openWebPaymentPopupWithHtml(body);
     } catch (e) {
-      // ignore: avoid_print
-      print("🟥 PaymentScreen._handleWebPayment error: $e");
       return PaymentResult(false, "Ödeme işlemi başlatılamadı: $e");
     }
   }
 
   Future<PaymentResult?> _openWebPaymentPopup(String url) async {
-    // ignore: avoid_print
-    print("🟦 PaymentScreen._openWebPaymentPopup -> $url");
     final result = await openPaymentWindowAndWait(url);
     return result;
   }
