@@ -15,6 +15,9 @@ class SliderDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final imageHeight = (MediaQuery.sizeOf(context).height * 0.34)
+        .clamp(220.0, 420.0)
+        .toDouble();
     final title = (slide["title"] ?? "").toString();
     final subtitle = (slide["subtitle"] ?? "").toString();
     final description = (slide["description"] ?? "").toString();
@@ -36,14 +39,28 @@ class SliderDetailScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(16),
-              child: AspectRatio(
-                aspectRatio: 16 / 9,
-                child: safeImage(
-                  imageUrl,
-                  fit: BoxFit.cover,
-                  fallbackIcon: Icons.image,
+            Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 960),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: ColoredBox(
+                    color: const Color(0xFFF5F5F5),
+                    child: SizedBox(
+                      width: double.infinity,
+                      height: imageHeight,
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: safeImage(
+                          imageUrl,
+                          width: double.infinity,
+                          height: double.infinity,
+                          fit: BoxFit.contain,
+                          fallbackIcon: Icons.image,
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ),

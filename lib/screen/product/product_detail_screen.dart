@@ -1689,10 +1689,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       }
     }
     if (!hasAccess && detail.type == CartItemType.newspaperSubscription) {
-      final rc = context.read<RevenueCatService>();
-      if (!rc.supportsNativePurchaseUi) {
-        return "Sepete Ekle";
-      }
+      return "Abone Ol";
     }
     if (detail.type == CartItemType.magazine) {
       final period = _periodLabel(detail.metadata?["period"]);

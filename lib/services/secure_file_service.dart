@@ -459,7 +459,7 @@ class SecureFileService {
     _ViewTokenData tokenData, {
     ValueChanged<double>? onProgress,
   }) async {
-    final secureUrl = _buildSecureUrl(tokenData);
+    final secureUrl = _buildSecureUrl(tokenData, renderRaw: true);
     final req = http.Request("GET", Uri.parse(secureUrl))
       ..headers["accept"] = "application/pdf";
     final token = AuthTokenStore.token;
@@ -604,18 +604,26 @@ class SecureFileService {
     return _buildSecureUrl(token);
   }
 
-  String _buildSecureUrl(_ViewTokenData tokenData) {
+  String _buildSecureUrl(_ViewTokenData tokenData, {bool renderRaw = false}) {
+    Uri withRender(Uri uri) {
+      if (!renderRaw) return uri;
+      final query = Map<String, String>.from(uri.queryParameters);
+      query["render"] = "raw";
+      return uri.replace(queryParameters: query);
+    }
+
     if (tokenData.url != null && tokenData.url!.isNotEmpty) {
-      return UploadService.normalizeUrl(tokenData.url!);
+      final normalized = UploadService.normalizeUrl(tokenData.url!);
+      return withRender(Uri.parse(normalized)).toString();
     }
     final token = tokenData.token;
     if (token == null || token.isEmpty) {
       throw Exception("Token bulunamadı");
     }
     final base = UploadService.normalizeUrl("/private/view-secure");
-    return Uri.parse(
-      base,
-    ).replace(queryParameters: {"token": token}).toString();
+    return withRender(
+      Uri.parse(base).replace(queryParameters: {"token": token}),
+    ).toString();
   }
 
   String _extractPath(String url) {

@@ -2,10 +2,13 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../services/access_provider.dart';
 import '../../services/auth/auth_provider.dart';
+import '../../services/revenuecat_service.dart';
 import '../register/register_bottom_sheet.dart';
 import '../register/social_register_bottom_sheet.dart';
 import '../home_responsive_screen.dart';
+import 'password_reset_screen.dart';
 import '../../main.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
@@ -52,6 +55,19 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
+  Future<void> _primePostLoginState() async {
+    final user = context.read<AuthProvider>().user;
+    if (user == null) return;
+    try {
+      await Future.wait([
+        context.read<AccessProvider>().load(user.id),
+        context.read<RevenueCatService>().syncWithAuthUser(user),
+      ]);
+    } catch (e) {
+      debugPrint("Post-login state prime failed: $e");
+    }
+  }
+
   Future<void> _handleGoogleSignIn() async {
     if (_isAnySocialLoading) return;
     final auth = context.read<AuthProvider>();
@@ -60,6 +76,7 @@ class _LoginScreenState extends State<LoginScreen> {
       final result = await auth.signInWithGoogle();
 
       if (result.user != null) {
+        await _primePostLoginState();
         _goHome();
         return;
       }
@@ -76,6 +93,7 @@ class _LoginScreenState extends State<LoginScreen> {
           builder: (_) => SocialRegisterBottomSheet(draft: result.draft!),
         );
         if (completed == true && mounted) {
+          await _primePostLoginState();
           _goHome();
         }
         return;
@@ -99,6 +117,7 @@ class _LoginScreenState extends State<LoginScreen> {
       final result = await auth.signInWithApple();
 
       if (result.user != null) {
+        await _primePostLoginState();
         _goHome();
         return;
       }
@@ -115,6 +134,7 @@ class _LoginScreenState extends State<LoginScreen> {
           builder: (_) => SocialRegisterBottomSheet(draft: result.draft!),
         );
         if (completed == true && mounted) {
+          await _primePostLoginState();
           _goHome();
         }
         return;
@@ -342,7 +362,16 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                                 const Spacer(),
                                 TextButton(
-                                  onPressed: () {},
+                                  onPressed: () {
+                                    Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder: (_) =>
+                                            PasswordResetScreen(
+                                              email: emailCtrl.text.trim(),
+                                            ),
+                                      ),
+                                    );
+                                  },
                                   child: const Text(
                                     "Şifremi unuttum",
                                     style: TextStyle(
@@ -377,6 +406,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                           passwordCtrl.text.trim(),
                                           rememberMe: rememberMe,
                                         );
+                                        if (auth.isLoggedIn) {
+                                          await _primePostLoginState();
+                                        }
                                         setState(() => isLoading = false);
 
                                         if (auth.isLoggedIn) {
@@ -442,7 +474,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
                             const SizedBox(height: 10),
 
-                            if (!kIsWeb && Platform.isIOS) ...[
+                            if (kIsWeb || Platform.isIOS) ...[
                               Opacity(
                                 opacity: _isAnySocialLoading && !_isAppleLoading
                                     ? 0.6

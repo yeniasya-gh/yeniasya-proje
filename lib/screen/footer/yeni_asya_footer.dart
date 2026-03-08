@@ -320,27 +320,14 @@ class YeniAsyaFooter extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: const [
-                        Icon(
-                          Icons.newspaper_rounded,
-                          color: Colors.red,
-                          size: 28,
-                        ),
-                        SizedBox(width: 8),
-                        Text(
-                          "Yeni Asya",
-                          style: TextStyle(
-                            color: Colors.red,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 20,
-                          ),
-                        ),
-                      ],
+                    Image.asset(
+                      "assets/images/logo.png",
+                      height: 40,
+                      fit: BoxFit.contain,
                     ),
                     const SizedBox(height: 12),
                     const Text(
-                      "Dijital yayın dünyasının öncü platformu. Binlerce içeriğe anında erişim.",
+                      "İnsanı ve kâinatı okumak için...",
                       style: TextStyle(color: Colors.white70, fontSize: 14),
                     ),
                     const SizedBox(height: 20),

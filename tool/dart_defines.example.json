@@ -1,4 +1,5 @@
 {
+  "GOOGLE_WEB_CLIENT_ID": "921079372710-ma27ah75aficaj4187kd4bnsls6386rr.apps.googleusercontent.com",
   "MAIL_API_URL": "https://cdn.yeniasyadigital.com/mail/send",
   "MAIL_ORDER_SUMMARY_API_URL": "https://cdn.yeniasyadigital.com/mail/order-summary",
   "MAIL_WELCOME_API_URL": "https://cdn.yeniasyadigital.com/mail/welcome",

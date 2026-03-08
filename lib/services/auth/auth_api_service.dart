@@ -153,4 +153,93 @@ class AuthApiService {
     }
     return data;
   }
+
+  Future<void> requestPasswordReset({required String email}) async {
+    final uri = Uri.parse("$_baseUrl/auth/password-reset/request");
+    final resp = await _client.post(
+      uri,
+      headers: const {"content-type": "application/json"},
+      body: jsonEncode({"email": email.trim()}),
+    );
+
+    if (resp.statusCode >= 200 && resp.statusCode < 300) {
+      return;
+    }
+
+    throw Exception(_requestPasswordResetError(resp));
+  }
+
+  Future<void> confirmPasswordReset({
+    required String token,
+    required String newPassword,
+  }) async {
+    final uri = Uri.parse("$_baseUrl/auth/password-reset/confirm");
+    final resp = await _client.post(
+      uri,
+      headers: const {"content-type": "application/json"},
+      body: jsonEncode({
+        "token": token.trim(),
+        "password": newPassword,
+      }),
+    );
+
+    if (resp.statusCode >= 200 && resp.statusCode < 300) {
+      return;
+    }
+
+    throw Exception(_confirmPasswordResetError(resp));
+  }
+
+  String _requestPasswordResetError(http.Response resp) {
+    final message = _responseMessage(resp);
+    switch (resp.statusCode) {
+      case 404:
+        return "Şifre sıfırlama servisi henüz aktif değil.";
+      case 429:
+        return "Çok fazla deneme yapıldı. Lütfen biraz sonra tekrar deneyin.";
+      default:
+        return message.isNotEmpty
+            ? message
+            : "Şifre sıfırlama isteği gönderilemedi.";
+    }
+  }
+
+  String _confirmPasswordResetError(http.Response resp) {
+    final message = _responseMessage(resp);
+    switch (resp.statusCode) {
+      case 400:
+      case 401:
+        return message.isNotEmpty
+            ? message
+            : "Sıfırlama bağlantısı geçersiz veya kullanılmış.";
+      case 410:
+        return message.isNotEmpty
+            ? message
+            : "Sıfırlama bağlantısının süresi dolmuş.";
+      case 404:
+        return "Şifre sıfırlama servisi henüz aktif değil.";
+      case 429:
+        return "Çok fazla deneme yapıldı. Lütfen biraz sonra tekrar deneyin.";
+      default:
+        return message.isNotEmpty ? message : "Şifre güncellenemedi.";
+    }
+  }
+
+  String _responseMessage(http.Response resp) {
+    try {
+      final decoded = jsonDecode(resp.body);
+      if (decoded is Map<String, dynamic>) {
+        final message =
+            decoded["message"]?.toString().trim() ??
+            decoded["error"]?.toString().trim() ??
+            decoded["detail"]?.toString().trim();
+        if (message != null && message.isNotEmpty) {
+          return message;
+        }
+      }
+    } catch (_) {
+      // Ignore non-JSON bodies and fall back to a generic message.
+    }
+    return "";
+  }
 }

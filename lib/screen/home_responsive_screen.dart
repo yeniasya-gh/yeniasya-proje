@@ -40,6 +40,7 @@ import 'attachment/ek_detail_screen.dart';
 import 'slider/slider_detail_screen.dart';
 import 'slider/slider_webview_screen.dart';
 import 'contact/contact_form.dart';
+import 'login/password_reset_screen.dart';
 
 enum HomeSection { home, magazines, books, newspapers, attachments }
 
@@ -1475,9 +1476,6 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
   ProductDetail _mapNewspaperDetail(Map<String, dynamic> news) {
     final dateStr = news["publish_date"]?.toString() ?? "";
     final hasSub = _hasNewspaperSubscription(context);
-    final supportsNativePurchaseUi = context
-        .read<RevenueCatService>()
-        .supportsNativePurchaseUi;
     final title = "E-Gazete";
     final fileUrl = news["file_url"]?.toString();
     return ProductDetail(
@@ -1496,9 +1494,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         "fileUrl": fileUrl,
         "period": news["period"],
       },
-      actionLabel: hasSub
-          ? "Görüntüle"
-          : (supportsNativePurchaseUi ? "Abone Ol" : "Sepete Ekle"),
+      actionLabel: hasSub ? "Görüntüle" : "Abone Ol",
     );
   }
 
@@ -1511,6 +1507,12 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
   Widget? _buildStandalonePageByPath(String rawPath) {
     final path = _normalizeStandalonePath(rawPath);
 
+    if (path == "/sifre-sifirla" || path == "/reset-password") {
+      return PasswordResetScreen(
+        token: widget.initialUri?.queryParameters["token"],
+        email: widget.initialUri?.queryParameters["email"],
+      );
+    }
     if (path == "/privacy" || path == "/gizlilik-politikasi") {
       return StaticInfoPage(
         title: "Gizlilik Politikası",
@@ -1618,11 +1620,11 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
                         Row(
                           children: [
                             _menuItem("Anasayfa", HomeSection.home),
+                            if (!_hideNewspapers)
+                              _menuItem("E-Gazete", HomeSection.newspapers),
                             if (!_hideMagazines)
                               _menuItem("E-Dergiler", HomeSection.magazines),
                             _menuItem("E-Kitaplar", HomeSection.books),
-                            if (!_hideNewspapers)
-                              _menuItem("E-Gazete", HomeSection.newspapers),
                             _menuItem("E-Ekler", HomeSection.attachments),
                           ],
                         ),
@@ -2182,7 +2184,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         ),
         const SizedBox(height: 12),
         SizedBox(
-          height: isWeb ? 265 : 264,
+          height: isWeb ? 336 : 264,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             itemCount: displayList.length,
@@ -2205,7 +2207,9 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
                     "desc": category.isNotEmpty ? category : description,
                     "price": isWeb && !isSubscribed ? "Fiyat için tıkla" : "",
                   },
-                  imageHeight: isWeb ? 170 : 148,
+                  imageHeight: isWeb ? 196 : 148,
+                  spacious: isWeb,
+                  fullWidthAction: true,
                   hideAction: isSubscribed,
                   onAdd: () => _openProductDetail(_mapMagazineDetail(magazine)),
                   onTap: () => _openProductDetail(_mapMagazineDetail(magazine)),
@@ -2348,21 +2352,34 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         const SizedBox(height: 12),
         if (items.isNotEmpty)
           SizedBox(
-            height: isWeb ? 240 : (showRead ? 220 : 200),
+            height: isWeb ? 336 : 264,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               itemCount: items.length,
               separatorBuilder: (_, __) => const SizedBox(width: 14),
-              itemBuilder: (_, i) => _newspaperPreviewCard(
-                items[i],
-                width: isWeb ? 160 : 150,
-                compact: true,
-                imageHeight: showRead ? 120 : 135,
-                showRead: showRead,
-                onTap: () => _openProductDetail(
-                  _mapNewspaperDetail(items[i]["raw"] as Map<String, dynamic>),
-                ),
-              ),
+              itemBuilder: (_, i) {
+                final raw = items[i]["raw"] as Map<String, dynamic>;
+                return SizedBox(
+                  width: isWeb ? 160 : 146,
+                  child: _magazineCard(
+                    {
+                      "image": items[i]["image"],
+                      "title": items[i]["title"],
+                      "desc": items[i]["date"],
+                      "price": "",
+                    },
+                    imageHeight: isWeb ? 196 : 148,
+                    spacious: isWeb,
+                    fullWidthAction: true,
+                    actionPadding: showRead
+                        ? const EdgeInsets.symmetric(vertical: 4)
+                        : EdgeInsets.zero,
+                    hideAction: showRead,
+                    onAdd: () => _openProductDetail(_mapNewspaperDetail(raw)),
+                    onTap: () => _openProductDetail(_mapNewspaperDetail(raw)),
+                  ),
+                );
+              },
             ),
           ),
       ],
@@ -2425,8 +2442,8 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     if (attachments.isEmpty) return const SizedBox.shrink();
     final list = attachments.take(isWeb ? 5 : 4).toList();
     final viewportHeight = max(0.0, MediaQuery.of(context).size.height);
-    final maxCardHeight = viewportHeight * (isWeb ? 0.32 : 0.35);
-    final height = min(isWeb ? 299.0 : 259.0, maxCardHeight);
+    final maxCardHeight = viewportHeight * (isWeb ? 0.35 : 0.38);
+    final height = min(isWeb ? 324.0 : 278.0, maxCardHeight);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2561,16 +2578,17 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
       builder: (context, constraints) {
         final spacing = 16.0;
         final textScaler = MediaQuery.textScalerOf(context);
-        final titleHeight = textScaler.scale(16) * 1.25; // 1 line
+        final titleHeight =
+            textScaler.scale(16) * 1.25 * (isWeb ? 2 : 1); // 1-2 lines
         final descHeight = textScaler.scale(13) * 1.25 * 2; // 2 lines
         final rowHeight = max(
           textScaler.scale(15) * 1.4,
-          40.0,
+          isWeb ? 38.0 : 40.0,
         ); // price/button row
-        const verticalGaps = 4 + 8; // SizedBox heights in card
-        const contentPadding = 12 * 2; // Padding.all(12)
-        final imageHeight = isWeb ? 170.0 : 148.0;
-        const safetyMargin = 10.0;
+        final verticalGaps = isWeb ? 6.0 + 12.0 : 4.0 + 8.0;
+        final contentPadding = (isWeb ? 14.0 : 12.0) * 2;
+        final imageHeight = isWeb ? 196.0 : 148.0;
+        final safetyMargin = isWeb ? 16.0 : 10.0;
         final cardHeight =
             imageHeight +
             contentPadding +
@@ -2583,24 +2601,32 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           padding: EdgeInsets.zero,
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: crossAxisCount,
-            crossAxisSpacing: spacing,
-            mainAxisSpacing: 16,
-            mainAxisExtent: cardHeight,
-          ),
+          gridDelegate: isWeb
+              ? SliverGridDelegateWithMaxCrossAxisExtent(
+                  maxCrossAxisExtent: 176,
+                  crossAxisSpacing: spacing,
+                  mainAxisSpacing: 16,
+                  mainAxisExtent: cardHeight,
+                )
+              : SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: crossAxisCount,
+                  crossAxisSpacing: spacing,
+                  mainAxisSpacing: 16,
+                  mainAxisExtent: cardHeight,
+                ),
           itemCount: orderedMagazines.length,
           itemBuilder: (_, i) {
             final magazine = orderedMagazines[i];
             final hasAccess = _hasPurchased("magazine", _toInt(magazine["id"]));
-            return _magazineCard(
+            final card = _magazineCard(
               {
                 "image": magazine["cover_image_url"],
                 "title": magazine["name"],
                 "desc": magazine["description"] ?? magazine["category"],
                 "price": hasAccess ? "" : "Fiyat için tıkla",
               },
-              imageHeight: isWeb ? 170 : 148,
+              imageHeight: isWeb ? 196 : 148,
+              spacious: isWeb,
               hideAction: hasAccess,
               onAdd: hasAccess
                   ? null
@@ -2610,6 +2636,11 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
               onTap: () {
                 _openProductDetail(_mapMagazineDetail(magazine));
               },
+            );
+            if (!isWeb) return card;
+            return Align(
+              alignment: Alignment.topCenter,
+              child: SizedBox(width: 160, child: card),
             );
           },
         );
@@ -2629,8 +2660,8 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         final authorHeight = textScaler.scale(12) * 1.25; // 1 line
         final rowHeight = 36.0; // action button + price row
         const verticalGaps = 4.0; // SizedBox height between title/author
-        const contentPadding = 10.0 * 2; // Padding.all(10)
-        final imageHeight = isWeb ? 150.0 : 138.0;
+        final contentPadding = (isWeb ? 8.0 : 9.0) * 2;
+        final imageHeight = isWeb ? 140.0 : 138.0;
         const safetyMargin = 8.0;
         final cardHeight =
             imageHeight +
@@ -2645,12 +2676,19 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           padding: EdgeInsets.zero,
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: crossAxisCount,
-            crossAxisSpacing: spacing,
-            mainAxisSpacing: spacing,
-            mainAxisExtent: cardHeight,
-          ),
+          gridDelegate: isWeb
+              ? SliverGridDelegateWithMaxCrossAxisExtent(
+                  maxCrossAxisExtent: 176,
+                  crossAxisSpacing: spacing,
+                  mainAxisSpacing: spacing,
+                  mainAxisExtent: cardHeight,
+                )
+              : SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: crossAxisCount,
+                  crossAxisSpacing: spacing,
+                  mainAxisSpacing: spacing,
+                  mainAxisExtent: cardHeight,
+                ),
           itemCount: books.length,
           itemBuilder: (_, i) {
             final effectivePrice = _effectiveBookPrice(books[i]);
@@ -2665,7 +2703,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
               metadata: {"productId": books[i]["id"]},
             );
             final alreadyInCart = cart.contains(item);
-            return _bookCard(
+            final card = _bookCard(
               {
                 "image": books[i]["cover_url"],
                 "title": books[i]["title"],
@@ -2684,6 +2722,11 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
               onTap: () {
                 _openProductDetail(_mapBookDetail(books[i]));
               },
+            );
+            if (!isWeb) return card;
+            return Align(
+              alignment: Alignment.topCenter,
+              child: SizedBox(width: 160, child: card),
             );
           },
         );
@@ -2927,6 +2970,7 @@ Widget _cardActionButton({
   _CardActionVariant variant = _CardActionVariant.primary,
   bool compact = false,
   double height = 32,
+  bool fullWidth = false,
 }) {
   final disabled = onPressed == null;
   late final Color bg;
@@ -2969,6 +3013,7 @@ Widget _cardActionButton({
   }
 
   return SizedBox(
+    width: fullWidth ? double.infinity : null,
     height: height,
     child: TextButton.icon(
       onPressed: onPressed,
@@ -3017,7 +3062,14 @@ Widget _magazineCard(
   VoidCallback? onTap,
   bool hideAction = false,
   double imageHeight = 170,
+  bool spacious = false,
+  bool fullWidthAction = false,
+  EdgeInsetsGeometry actionPadding = EdgeInsets.zero,
 }) {
+  final contentPadding = spacious ? 14.0 : 12.0;
+  final titleLines = spacious ? 2 : 1;
+  final descLines = spacious ? 2 : 1;
+  final actionHeight = spacious ? 38.0 : 32.0;
   return InkWell(
     onTap: onTap,
     borderRadius: BorderRadius.circular(14),
@@ -3043,45 +3095,55 @@ Widget _magazineCard(
           ),
           Expanded(
             child: Padding(
-              padding: const EdgeInsets.all(12.0),
+              padding: EdgeInsets.all(contentPadding),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     item["title"] ?? "",
-                    maxLines: 1,
+                    maxLines: titleLines,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                  const SizedBox(height: 4),
+                  SizedBox(height: spacious ? 6 : 4),
                   Text(
                     item["desc"] ?? "",
                     style: const TextStyle(color: Colors.black54, fontSize: 13),
-                    maxLines: 1,
+                    maxLines: descLines,
                     overflow: TextOverflow.ellipsis,
                   ),
                   const Spacer(),
                   if (hideAction)
-                    Align(
-                      alignment: Alignment.center,
-                      child: _cardActionButton(
-                        label: "Oku",
-                        onPressed: onTap,
-                        icon: Icons.auto_stories_rounded,
-                        variant: _CardActionVariant.read,
+                    Padding(
+                      padding: actionPadding,
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: _cardActionButton(
+                          label: "Oku",
+                          onPressed: onTap,
+                          icon: Icons.auto_stories_rounded,
+                          variant: _CardActionVariant.read,
+                          height: actionHeight,
+                          fullWidth: fullWidthAction,
+                        ),
                       ),
                     )
                   else if (onAdd != null)
-                    Align(
-                      alignment: Alignment.center,
-                      child: _cardActionButton(
-                        label: "Abone Ol",
-                        onPressed: onAdd,
-                        icon: Icons.workspace_premium_rounded,
-                        variant: _CardActionVariant.primary,
+                    Padding(
+                      padding: actionPadding,
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: _cardActionButton(
+                          label: "Abone Ol",
+                          onPressed: onAdd,
+                          icon: Icons.workspace_premium_rounded,
+                          variant: _CardActionVariant.primary,
+                          height: actionHeight,
+                          fullWidth: fullWidthAction,
+                        ),
                       ),
                     ),
                 ],
@@ -4181,13 +4243,13 @@ class _BookBrowseBodyState extends State<_BookBrowseBody> {
 
     const spacing = 14.0;
     final textScaler = MediaQuery.textScalerOf(context);
-    final titleHeight = textScaler.scale(15) * 1.3 * 3;
+    final titleHeight = textScaler.scale(15) * 1.3 * 2;
     final authorHeight = textScaler.scale(12) * 1.25;
     final rowHeight = 36.0;
     const verticalGaps = 4.0;
-    const contentPadding = 10.0 * 2;
-    const imageHeight = 150.0;
-    const safetyMargin = 10.0;
+    const contentPadding = 9.0 * 2;
+    const imageHeight = 138.0;
+    const safetyMargin = 8.0;
     final cardHeight =
         imageHeight +
         contentPadding +
@@ -4313,7 +4375,7 @@ class _BookBrowseBodyState extends State<_BookBrowseBody> {
                 widget.homeState._toInt(book["id"]),
               );
               final isFree = effectivePrice <= 0;
-              return _bookCard(
+              final card = _bookCard(
                 {
                   "image": book["cover_url"],
                   "title": book["title"],
@@ -4332,6 +4394,10 @@ class _BookBrowseBodyState extends State<_BookBrowseBody> {
                     widget.homeState._mapBookDetail(book),
                   );
                 },
+              );
+              return Align(
+                alignment: Alignment.topCenter,
+                child: SizedBox(width: 146, child: card),
               );
             },
           ),
@@ -4377,86 +4443,32 @@ class _MagazineBrowseScreenState extends State<_MagazineBrowseScreen> {
     return !issueDay.isBefore(startDay) && !issueDay.isAfter(endDay);
   }
 
-  Widget _magazineCard(BuildContext context, Map<String, dynamic> mag) {
-    final title = (mag["name"] ?? "-").toString();
-    final subtitle = ((mag["category"] ?? mag["description"] ?? "").toString())
-        .trim();
-    final imageUrl = UploadService.normalizeUrl(
-      (mag["cover_image_url"] ?? "").toString(),
+  Widget _browseMagazineCard(BuildContext context, Map<String, dynamic> mag) {
+    final category = (mag["category"] ?? "").toString().trim();
+    final description = (mag["description"] ?? "").toString().trim();
+    final hasAccess = widget.homeState._hasPurchased(
+      "magazine",
+      widget.homeState._toInt(mag["id"]),
     );
-    return InkWell(
-      onTap: () => widget.homeState._openProductDetail(
-        widget.homeState._mapMagazineDetail(mag),
-      ),
-      borderRadius: BorderRadius.circular(14),
-      child: Container(
-        width: 142,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: const Color(0xFFE5E5E5)),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 6,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            ClipRRect(
-              borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(14),
+
+    return SizedBox(
+      width: 146,
+      child: _magazineCard(
+        {
+          "image": mag["cover_image_url"],
+          "title": mag["name"],
+          "desc": category.isNotEmpty ? category : description,
+          "price": hasAccess ? "" : "Fiyat için tıkla",
+        },
+        imageHeight: 148,
+        hideAction: hasAccess,
+        onAdd: hasAccess
+            ? null
+            : () => widget.homeState._openProductDetail(
+                widget.homeState._mapMagazineDetail(mag),
               ),
-              child: safeImage(
-                imageUrl,
-                height: 126,
-                width: double.infinity,
-                fit: BoxFit.cover,
-                fallbackIcon: Icons.auto_stories,
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(10, 6, 10, 3),
-              child: Text(
-                title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-            if (subtitle.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(10, 0, 10, 4),
-                child: Text(
-                  subtitle,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 11, color: Colors.black54),
-                ),
-              ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(10, 0, 10, 6),
-              child: SizedBox(
-                height: 30,
-                width: double.infinity,
-                child: _cardActionButton(
-                  label: "Detay",
-                  onPressed: () => widget.homeState._openProductDetail(
-                    widget.homeState._mapMagazineDetail(mag),
-                  ),
-                  icon: Icons.visibility_outlined,
-                  variant: _CardActionVariant.neutral,
-                  height: 30,
-                ),
-              ),
-            ),
-          ],
+        onTap: () => widget.homeState._openProductDetail(
+          widget.homeState._mapMagazineDetail(mag),
         ),
       ),
     );
@@ -4597,13 +4609,13 @@ class _MagazineBrowseScreenState extends State<_MagazineBrowseScreen> {
                 final issues = snap.data ?? const <Map<String, dynamic>>[];
 
                 return SizedBox(
-                  height: 224,
+                  height: 264,
                   child: ListView.separated(
                     scrollDirection: Axis.horizontal,
                     itemCount: 1 + issues.length,
                     separatorBuilder: (_, __) => const SizedBox(width: 14),
                     itemBuilder: (context, idx) {
-                      if (idx == 0) return _magazineCard(context, mag);
+                      if (idx == 0) return _browseMagazineCard(context, mag);
                       final issue = issues[idx - 1];
                       final issueId = widget.homeState._toInt(issue["id"]);
                       final directIssueAccess = access.hasAccess(

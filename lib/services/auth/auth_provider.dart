@@ -276,7 +276,8 @@ class AuthProvider with ChangeNotifier {
     try {
       const webClientId = String.fromEnvironment(
         "GOOGLE_WEB_CLIENT_ID",
-        defaultValue: "",
+        defaultValue:
+            "921079372710-ma27ah75aficaj4187kd4bnsls6386rr.apps.googleusercontent.com",
       );
       const iosClientId = String.fromEnvironment(
         "GOOGLE_IOS_CLIENT_ID",
@@ -657,6 +658,20 @@ class AuthProvider with ChangeNotifier {
     return _userService.changePassword(
       id: current.id,
       currentPassword: currentPassword,
+      newPassword: newPassword,
+    );
+  }
+
+  Future<void> requestPasswordReset({required String email}) {
+    return _authApi.requestPasswordReset(email: email);
+  }
+
+  Future<void> confirmPasswordReset({
+    required String token,
+    required String newPassword,
+  }) {
+    return _authApi.confirmPasswordReset(
+      token: token,
       newPassword: newPassword,
     );
   }
