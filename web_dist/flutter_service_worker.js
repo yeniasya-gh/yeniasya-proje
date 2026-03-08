@@ -3,7 +3,7 @@ const MANIFEST = 'flutter-app-manifest';
 const TEMP = 'flutter-temp-cache';
 const CACHE_NAME = 'flutter-app-cache';
 
-const RESOURCES = {"flutter_bootstrap.js": "03b5d65773d6179a952e182e392cee20",
+const RESOURCES = {"flutter_bootstrap.js": "833d37c64f0cc4f244ebad168d7bacb7",
 "cerez-politikasi/index.html": "379624066b6300b61989940f93be22cf",
 "version.json": "b2aea8978d97a247439a4b162c702c00",
 "splash/img/light-2x.png": "78988e7c4d052997e515d27c8d747e08",
@@ -20,7 +20,7 @@ const RESOURCES = {"flutter_bootstrap.js": "03b5d65773d6179a952e182e392cee20",
 "privacy/index.html": "362971ac1c9349cfbfc96fbdeb56b216",
 "iletisim/index.html": "379624066b6300b61989940f93be22cf",
 "sifre-sifirla/index.html": "d60f473529c4416fe21b8d20470d7bcd",
-"main.dart.js": "ae38cd38114e208108808b3cc76a622d",
+"main.dart.js": "5dff440fe912e41ce79c08c6d10f1085",
 "flutter.js": "888483df48293866f9f41d3d9274a779",
 "kullanim-kosullari/index.html": "379624066b6300b61989940f93be22cf",
 "gizlilik-politikasi/index.html": "379624066b6300b61989940f93be22cf",

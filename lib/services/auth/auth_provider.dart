@@ -400,6 +400,37 @@ class AuthProvider with ChangeNotifier {
 
   Future<SocialLoginResult> signInWithApple() async {
     try {
+      if (kIsWeb) {
+        final provider = AppleAuthProvider();
+        provider.addScope("email");
+        provider.addScope("name");
+
+        final result = await FirebaseAuth.instance.signInWithPopup(provider);
+        final firebaseUser = result.user;
+        final profile = result.additionalUserInfo?.profile ?? const {};
+
+        final email =
+            _normalizedValue(firebaseUser?.email) ??
+            _normalizedValue(profile["email"]?.toString());
+        if (email == null || email.isEmpty) {
+          return SocialLoginResult(error: "Apple e-posta bilgisi alınamadı.");
+        }
+
+        final displayName = _normalizedValue(firebaseUser?.displayName);
+        final givenName = _normalizedValue(profile["firstName"]?.toString());
+        final familyName = _normalizedValue(profile["lastName"]?.toString());
+        final fallbackName = [givenName, familyName]
+            .whereType<String>()
+            .where((value) => value.isNotEmpty)
+            .join(" ")
+            .trim();
+        final name = displayName ?? (fallbackName.isNotEmpty
+            ? fallbackName
+            : email.split("@").first);
+
+        return _completeSocialLogin(provider: "apple", email: email, name: name);
+      }
+
       final available = await SignInWithApple.isAvailable();
       if (!available) {
         return SocialLoginResult(error: "Apple ile giriş kullanılamıyor.");
@@ -464,6 +495,16 @@ class AuthProvider with ChangeNotifier {
       }
       if (code == "operation-not-allowed") {
         return "Firebase üzerinde Apple ile giriş etkin değil.";
+      }
+      if (code == "popup-closed-by-user" ||
+          code == "cancelled-popup-request") {
+        return "Apple giriş penceresi kapatıldı, tekrar deneyin.";
+      }
+      if (code == "popup-blocked") {
+        return "Tarayıcı Apple giriş penceresini engelledi. Popup izni verip tekrar deneyin.";
+      }
+      if (code == "unauthorized-domain") {
+        return "Bu domain Firebase Authentication içinde yetkilendirilmemiş. Authorized Domains ayarını kontrol edin.";
       }
       if (code == "missing-or-invalid-nonce") {
         return "Apple nonce doğrulaması başarısız oldu. Uygulamayı kapatıp tekrar deneyin.";
