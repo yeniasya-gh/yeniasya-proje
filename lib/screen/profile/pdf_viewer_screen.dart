@@ -31,6 +31,9 @@ class PdfViewerScreen extends StatefulWidget {
 }
 
 class _PdfViewerScreenState extends State<PdfViewerScreen> {
+  static const double _minZoomLevel = 1.0;
+  static const double _maxZoomLevel = 5.0;
+
   Uint8List? _bytes;
   bool _loading = true;
   String? _error;
@@ -301,6 +304,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
 
   Widget _buildViewer() {
     if (_bytes == null) return _errorView();
+    final isMobile = !kIsWeb;
 
     return SfPdfViewer.memory(
       _bytes!,
@@ -309,10 +313,12 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       canShowScrollHead: !kIsWeb,
       canShowScrollStatus: !kIsWeb,
       canShowPaginationDialog: false,
-      maxZoomLevel: 5.0,
-      pageLayoutMode: kIsWeb
-          ? PdfPageLayoutMode.continuous
-          : PdfPageLayoutMode.single,
+      maxZoomLevel: _maxZoomLevel,
+      pageLayoutMode: PdfPageLayoutMode.continuous,
+      scrollDirection: PdfScrollDirection.vertical,
+      interactionMode: isMobile
+          ? PdfInteractionMode.pan
+          : PdfInteractionMode.selection,
       enableDoubleTapZooming: true,
       onTap: _handleViewerTap,
       onZoomLevelChanged: (details) {
@@ -483,10 +489,10 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
                   SizedBox(
                     width: isWeb ? 150 : 120,
                     child: Slider(
-                      min: 1.0,
-                      max: 5.0,
+                      min: _minZoomLevel,
+                      max: _maxZoomLevel,
                       divisions: 20,
-                      value: _zoom.clamp(1.0, 5.0),
+                      value: _zoom.clamp(_minZoomLevel, _maxZoomLevel),
                       label: "${(_zoom * 100).round()}%",
                       onChanged: _setZoom,
                     ),
@@ -1018,7 +1024,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   }
 
   void _setZoom(double value) {
-    final nextZoom = value.clamp(1.0, 5.0);
+    final nextZoom = value.clamp(_minZoomLevel, _maxZoomLevel);
     setState(() => _zoom = nextZoom);
     _controller.zoomLevel = nextZoom;
   }

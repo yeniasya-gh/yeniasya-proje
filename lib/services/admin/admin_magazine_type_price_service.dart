@@ -82,10 +82,23 @@ class AdminMagazineTypePriceService {
       variables: {"magazine_id": magazineId},
     );
 
-    if (prices.isEmpty) return;
+    final sanitizedPrices = prices.where((item) {
+      final typeId = int.tryParse(item["magazine_type_id"]?.toString() ?? "");
+      final priceRaw = item["price"];
+      final price = priceRaw is num
+          ? priceRaw.toDouble()
+          : double.tryParse(priceRaw?.toString() ?? "");
+      return typeId != null && price != null && price >= 0;
+    }).map((item) {
+      final normalized = Map<String, dynamic>.from(item);
+      normalized["magazine_id"] = magazineId;
+      return normalized;
+    }).toList();
+
+    if (sanitizedPrices.isEmpty) return;
     await _hasura.graphQLRequest(
       query: insertMutation,
-      variables: {"items": prices},
+      variables: {"items": sanitizedPrices},
     );
   }
 }

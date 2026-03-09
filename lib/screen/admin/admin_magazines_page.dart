@@ -264,6 +264,7 @@ class _AdminMagazinesPageState extends State<AdminMagazinesPage> {
                   return TextFormField(
                     controller: ctrl,
                     onChanged: (value) {
+                      if (value.trim().isEmpty) return;
                       final formatted = formatAsMoney(value);
                       ctrl.value = TextEditingValue(
                         text: formatted,
@@ -277,7 +278,8 @@ class _AdminMagazinesPageState extends State<AdminMagazinesPage> {
                       prefixText: "₺ ",
                     ),
                     validator: (v) {
-                      final price = _parsePrice(v ?? "");
+                      if (v == null || v.trim().isEmpty) return null;
+                      final price = _parsePrice(v);
                       if (price == null) return "Geçerli bir fiyat girin";
                       if (price < 0) return "Fiyat negatif olamaz";
                       return null;
@@ -302,9 +304,17 @@ class _AdminMagazinesPageState extends State<AdminMagazinesPage> {
               for (final type in types) {
                 final typeId = type["id"] as int?;
                 if (typeId == null || !priceControllers.containsKey(typeId)) continue;
-                final price = _parsePrice(priceControllers[typeId]!.text);
-                if (price == null || price < 0) {
-                  await _showError("Tüm dergi tipleri için geçerli fiyat girin");
+                final rawPrice = priceControllers[typeId]!.text.trim();
+                if (rawPrice.isEmpty) {
+                  continue;
+                }
+                final price = _parsePrice(rawPrice);
+                if (price == null) {
+                  await _showError("Girilen dergi tipi fiyatlarından biri geçersiz.");
+                  return;
+                }
+                if (price < 0) {
+                  await _showError("Dergi tipi fiyatı negatif olamaz.");
                   return;
                 }
                 typePrices.add({

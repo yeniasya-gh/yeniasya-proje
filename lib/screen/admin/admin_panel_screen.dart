@@ -16,6 +16,7 @@ import 'admin_newspaper_subscription_types_page.dart';
 import 'admin_home_showcase_page.dart';
 import 'admin_magazine_types_page.dart';
 import 'admin_manual_newspaper_users_page.dart';
+import 'admin_faq_page.dart';
 import '../../services/loading_manager.dart';
 
 enum AdminPage {
@@ -27,6 +28,7 @@ enum AdminPage {
   newspapers,
   newspaperTypes,
   manualNewspaperUsers,
+  faqs,
   notifications,
   promotions,
   orders,
@@ -102,6 +104,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
                       Icons.manage_accounts,
                       AdminPage.manualNewspaperUsers,
                     ),
+                    _menuItem("SSS", Icons.quiz_outlined, AdminPage.faqs),
                     _menuItem(
                       "Bildirimler",
                       Icons.notifications,
@@ -205,6 +208,8 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
         return const AdminNewspaperSubscriptionTypesPage();
       case AdminPage.manualNewspaperUsers:
         return const AdminManualNewspaperUsersPage();
+      case AdminPage.faqs:
+        return const AdminFaqPage();
       case AdminPage.notifications:
         return const AdminNotificationsPage();
       case AdminPage.promotions:

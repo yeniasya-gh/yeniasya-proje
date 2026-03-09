@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../contact/contact_form.dart';
+import 'faq_page.dart';
 
 const String kCorporateContactInfo = '''
 YENİ ASYA AŞ. — İLETİŞİM BİLGİLERİ
@@ -276,12 +277,7 @@ const Map<String, String> footerPageContentMap = {
       "E-Ekler sayfası için örnek içerik. Tüm e-ek içeriklerine buradan erişebilirsiniz.",
   "Abonelikler":
       "Abonelikler sayfası için örnek içerik. Tüm abonelik paketlerini ve avantajlarını inceleyin.",
-  "Yardım Merkezi":
-      "Yardım Merkezi için örnek içerik. Sık karşılaşılan sorunlar ve çözümler.",
   "İletişim": kCorporateContactInfo,
-  "SSS": "Sıkça Sorulan Sorular. Üyelik, ödeme ve içerik hakkında sık sorular.",
-  "Geri Bildirim":
-      "Geri bildirimlerinizi bizimle paylaşın. İyileştirmeler için her zaman açığız.",
   "Gizlilik Politikası": kPrivacyPolicyContent,
   "Kullanım Koşulları": kTermsOfUseContent,
   "Çerez Politikası": kCookiePolicyContent,
@@ -376,10 +372,8 @@ class YeniAsyaFooter extends StatelessWidget {
               Flexible(
                 flex: 1,
                 child: _footerSection("Destek", [
-                  "Yardım Merkezi",
                   "İletişim",
                   "SSS",
-                  "Geri Bildirim",
                   "Bize Ulaşın",
                 ], context),
               ),
@@ -477,6 +471,11 @@ class YeniAsyaFooter extends StatelessWidget {
                       ),
                     );
                   }
+                } else if (item == "SSS") {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const FaqPage()),
+                  );
                 } else {
                   final content =
                       footerPageContentMap[item] ??

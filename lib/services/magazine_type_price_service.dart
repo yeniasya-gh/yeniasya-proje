@@ -24,7 +24,15 @@ class MagazineTypePriceService {
       query: query,
       variables: {"magazine_id": magazineId},
     );
-    final prices = List<Map<String, dynamic>>.from(data["magazine_type_price"] ?? []);
+    final prices = List<Map<String, dynamic>>.from(
+      data["magazine_type_price"] ?? [],
+    ).where((item) {
+      final priceRaw = item["price"];
+      final price = priceRaw is num
+          ? priceRaw.toDouble()
+          : double.tryParse(priceRaw?.toString() ?? "");
+      return price != null && price >= 0;
+    }).toList();
     final typeIds = prices
         .map((item) => int.tryParse(item["magazine_type_id"]?.toString() ?? ""))
         .whereType<int>()

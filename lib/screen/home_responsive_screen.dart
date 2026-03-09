@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/access_provider.dart';
+import '/screen/footer/faq_page.dart';
 import '/screen/footer/yeni_asya_footer.dart';
 import '/services/auth/auth_provider.dart';
 import '/services/auth/auth_api_service.dart';
@@ -39,6 +40,7 @@ import 'slider/slider_detail_screen.dart';
 import 'slider/slider_webview_screen.dart';
 import 'contact/contact_form.dart';
 import 'login/password_reset_screen.dart';
+import 'checkout/payment_web_return_screen.dart';
 
 enum HomeSection { home, magazines, books, newspapers, attachments }
 
@@ -1491,10 +1493,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
       imageUrl: book["cover_url"] ?? "",
       price: price,
       type: CartItemType.book,
-      metadata: {
-        "productId": book["id"],
-        "disableAdd": hasAccess,
-      },
+      metadata: {"productId": book["id"], "disableAdd": hasAccess},
       actionLabel: actionLabel,
     );
   }
@@ -1551,6 +1550,9 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         email: widget.initialUri?.queryParameters["email"],
       );
     }
+    if (path == "/payment/pay/success" || path == "/payment/pay/error") {
+      return PaymentWebReturnScreen(resultUri: widget.initialUri ?? Uri.base);
+    }
     if (path == "/privacy" || path == "/gizlilik-politikasi") {
       return StaticInfoPage(
         title: "Gizlilik Politikası",
@@ -1571,6 +1573,9 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
           child: ContactForm(popOnSuccess: false, showCompanyInfo: true),
         ),
       );
+    }
+    if (path == "/sss" || path == "/faq") {
+      return const FaqPage();
     }
 
     final legalPathToTitle = <String, String>{
@@ -1956,7 +1961,11 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
             const SizedBox(height: 12),
             _newspaperFilters(context),
             const SizedBox(height: 16),
-            _newspaperListGrid(context, isWeb, _filteredNewspapers()),
+            _NewspaperBrowseBody(
+              homeState: this,
+              items: _filteredNewspapers(),
+              isWeb: isWeb,
+            ),
           ],
         );
       case HomeSection.attachments:
@@ -2766,8 +2775,12 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     BuildContext context,
     bool isWeb,
     List<Map<String, dynamic>> items,
+    int? itemLimit,
   ) {
     final hasSub = _hasNewspaperSubscription(context, listen: true);
+    final visibleItems = itemLimit == null
+        ? items
+        : items.take(itemLimit.clamp(0, items.length)).toList();
     return LayoutBuilder(
       builder: (context, constraints) {
         const spacing = 14.0;
@@ -2800,22 +2813,19 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
             mainAxisSpacing: spacing,
             mainAxisExtent: cardHeight,
           ),
-          itemCount: items.length,
+          itemCount: visibleItems.length,
           itemBuilder: (_, i) {
-            final dateStr = items[i]["publish_date"]?.toString() ?? "";
+            final item = visibleItems[i];
+            final dateStr = item["publish_date"]?.toString() ?? "";
             final dt = DateTime.tryParse(dateStr);
             final label = dt != null ? _formatDateTr(dt) : dateStr;
             final title = label.isNotEmpty ? label : "Gazete";
             return _newspaperPreviewCard(
-              {
-                "image": items[i]["image_url"],
-                "title": title,
-                "date": "E-Gazete",
-              },
+              {"image": item["image_url"], "title": title, "date": "E-Gazete"},
               compact: true,
               imageHeight: imageHeight,
               showRead: hasSub,
-              onTap: () => _openProductDetail(_mapNewspaperDetail(items[i])),
+              onTap: () => _openProductDetail(_mapNewspaperDetail(item)),
             );
           },
         );
@@ -4080,17 +4090,12 @@ class _NewspaperListScreenState extends State<_NewspaperListScreen> {
         ],
       ),
       body: SafeArea(
-        child: SingleChildScrollView(
+        child: Padding(
           padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              widget.homeState._newspaperListGrid(
-                context,
-                false,
-                widget.homeState.newspapers,
-              ),
-            ],
+          child: _NewspaperBrowseBody(
+            homeState: widget.homeState,
+            items: widget.homeState.newspapers,
+            isWeb: false,
           ),
         ),
       ),
@@ -4143,6 +4148,126 @@ void _openFullList(
       ),
     ),
   );
+}
+
+class _NewspaperBrowseBody extends StatefulWidget {
+  final _HomeResponsiveScreenState homeState;
+  final List<Map<String, dynamic>> items;
+  final bool isWeb;
+
+  const _NewspaperBrowseBody({
+    required this.homeState,
+    required this.items,
+    required this.isWeb,
+  });
+
+  @override
+  State<_NewspaperBrowseBody> createState() => _NewspaperBrowseBodyState();
+}
+
+class _NewspaperBrowseBodyState extends State<_NewspaperBrowseBody> {
+  static const int _webBatchSize = 18;
+  static const int _mobileBatchSize = 12;
+
+  int _visibleCount = 0;
+
+  int get _batchSize => widget.isWeb ? _webBatchSize : _mobileBatchSize;
+
+  @override
+  void initState() {
+    super.initState();
+    _visibleCount = _initialVisibleCount(widget.items.length);
+  }
+
+  @override
+  void didUpdateWidget(covariant _NewspaperBrowseBody oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.items, widget.items) ||
+        oldWidget.items.length != widget.items.length) {
+      _visibleCount = _initialVisibleCount(widget.items.length);
+      return;
+    }
+    if (_visibleCount > widget.items.length) {
+      _visibleCount = widget.items.length;
+    }
+  }
+
+  int _initialVisibleCount(int total) {
+    if (total <= 0) return 0;
+    return total < _batchSize ? total : _batchSize;
+  }
+
+  void _loadMore() {
+    if (_visibleCount >= widget.items.length) return;
+    setState(() {
+      final nextCount = _visibleCount + _batchSize;
+      _visibleCount = nextCount > widget.items.length
+          ? widget.items.length
+          : nextCount;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final total = widget.items.length;
+    if (total == 0) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 16),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF8F8F8),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFFE8E8E8)),
+        ),
+        child: const Text(
+          "Henüz e-gazete bulunamadı.",
+          textAlign: TextAlign.center,
+          style: TextStyle(color: Colors.black54),
+        ),
+      );
+    }
+
+    final visibleCount = _visibleCount.clamp(0, total);
+    final hasMore = visibleCount < total;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          "$visibleCount / $total gazete gösteriliyor",
+          style: const TextStyle(
+            color: Colors.black54,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 12),
+        widget.homeState._newspaperListGrid(
+          context,
+          widget.isWeb,
+          widget.items,
+          visibleCount,
+        ),
+        if (hasMore) ...[
+          const SizedBox(height: 16),
+          Center(
+            child: OutlinedButton.icon(
+              onPressed: _loadMore,
+              icon: const Icon(Icons.expand_more),
+              label: Text("Daha Fazla Göster (${total - visibleCount})"),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.red,
+                side: const BorderSide(color: Colors.red),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 12,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
 }
 
 Widget _statusChip(String label, Color color) {
@@ -4263,8 +4388,10 @@ class _BookBrowseBodyState extends State<_BookBrowseBody> {
           child: LayoutBuilder(
             builder: (context, constraints) {
               final fieldWidth = isWeb
-                  ? (((constraints.maxWidth - 10) / 2).clamp(240.0, 360.0))
-                        .toDouble()
+                  ? (((constraints.maxWidth - 10) / 2).clamp(
+                      240.0,
+                      360.0,
+                    )).toDouble()
                   : constraints.maxWidth;
               return Wrap(
                 spacing: 10,

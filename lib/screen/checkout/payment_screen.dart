@@ -23,7 +23,9 @@ import '../../services/revenuecat_backend_service.dart';
 import '../../config/revenuecat_config.dart';
 import 'payment_webview_screen.dart';
 import '../../config/payment_config.dart';
-import '../../helpers/payment_web_helper.dart';
+import '../../helpers/payment_web_launcher.dart'
+    if (dart.library.html) '../../helpers/payment_web_launcher_web.dart';
+import '../../helpers/payment_web_pending_store.dart';
 
 class PaymentScreen extends StatefulWidget {
   final int deliveryAddressId;
@@ -205,25 +207,77 @@ class _PaymentScreenState extends State<PaymentScreen> {
               cardName: _saveCard ? _cardNameCtrl.text.trim() : null,
             );
 
-      PaymentResult? result;
-
       if (kIsWeb) {
-        // Web: POST to redirect endpoint and open popup for 3D payment
-        result = await _handleWebPayment(redirectPayload, orderId);
-      } else {
-        // iOS/Android: Use WebView screen
-        result = await Navigator.push<PaymentResult>(
-          context,
-          MaterialPageRoute(
-            builder: (_) => PaymentWebViewScreen(
-              payload: redirectPayload,
-              redirectUri: _paymentService.redirectUri(),
-              returnUrl: PaymentConfig.returnUrl,
-              orderId: orderId,
-            ),
+        final immediateResult = await _handleWebPayment(
+          payload: redirectPayload,
+          pending: PendingWebPayment(
+            orderId: orderId,
+            userId: widget.userId,
+            payableTotal: payableTotal,
+            promoId: promo?.id,
+            itemsPayload: itemsPayload,
+            accessItems: accessItems,
           ),
         );
+
+        if (immediateResult == null) {
+          return;
+        }
+
+        if (!immediateResult.success) {
+          if (mounted) {
+            setState(() => _loading = false);
+            final msg =
+                immediateResult.errorMsg ??
+                immediateResult.message ??
+                "Odeme tamamlanamadi.";
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(SnackBar(content: Text(msg)));
+          }
+          await _orderService.updateOrderPaymentStatus(
+            orderId: orderId,
+            status: "pending",
+            paymentApproved: false,
+            paymentResponseCode: immediateResult.responseCode,
+            paymentResponseMsg: immediateResult.responseMsg,
+            paymentErrorCode: immediateResult.errorCode,
+            paymentErrorMsg: immediateResult.errorMsg ?? immediateResult.message,
+          );
+          return;
+        }
+
+        await _orderService.updateOrderPaymentStatus(
+          orderId: orderId,
+          status: "paid",
+          paymentApproved: true,
+          paymentResponseCode: immediateResult.responseCode,
+          paymentResponseMsg: immediateResult.responseMsg,
+          paymentErrorCode: immediateResult.errorCode,
+          paymentErrorMsg: immediateResult.errorMsg,
+        );
+        await _finalizeOrder(
+          orderId: orderId,
+          cart: cart,
+          payableTotal: payableTotal,
+          promoId: promo?.id,
+          itemsPayload: itemsPayload,
+          accessItems: accessItems,
+        );
+        return;
       }
+
+      final result = await Navigator.push<PaymentResult>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => PaymentWebViewScreen(
+            payload: redirectPayload,
+            redirectUri: _paymentService.redirectUri(),
+            returnUrl: PaymentConfig.returnUrl,
+            orderId: orderId,
+          ),
+        ),
+      );
 
       if (result == null || !result.success) {
         if (mounted) {
@@ -504,7 +558,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
       "AMOUNT": total.toStringAsFixed(2),
       "CURRENCY": "TRY",
       "MERCHANTPAYMENTID": merchantPaymentId,
-      "RETURNURL": PaymentConfig.returnUrl,
+      "RETURNURL": PaymentConfig.resolveReturnUrl(),
       "CUSTOMER": (user.payUniqe != null && user.payUniqe!.trim().isNotEmpty)
           ? user.payUniqe!.trim()
           : "Customer-${user.id}",
@@ -579,14 +633,14 @@ class _PaymentScreenState extends State<PaymentScreen> {
     }
   }
 
-  /// Web için ödeme akışı: POST ile kart bilgileri gönderilir,
-  /// dönen HTML'den 3D URL'i çıkarılır ve popup açılır.
-  Future<PaymentResult?> _handleWebPayment(
-    PaymentRedirectPayload payload,
-    int orderId,
-  ) async {
+  /// Web için ödeme akışı aynı sekmede top-level navigation kullanır.
+  /// Browser iframe/frame kısıtlarına takılmamak için 3D HTML doğrudan
+  /// aktif sekmeyi devralır. Sonuç app'e geri döndüğünde ayrı route işler.
+  Future<PaymentResult?> _handleWebPayment({
+    required PaymentRedirectPayload payload,
+    required PendingWebPayment pending,
+  }) async {
     try {
-      // POST kart bilgileriyle redirect endpoint'ine
       final redirectUri = _paymentService.redirectUri();
       final token = AuthTokenStore.token?.trim();
       if (token == null || token.isEmpty) {
@@ -626,57 +680,23 @@ class _PaymentScreenState extends State<PaymentScreen> {
         );
       }
 
-      // Redirect response veya HTML dönebilir
       final location = resp.headers["location"];
       if (location != null && location.isNotEmpty) {
-        // Direct redirect durumu - success/error URL'i olabilir
         if (location.contains("/payment/pay/success") ||
             location.contains("/payment/pay/error")) {
           return _parseWebPaymentResult(location);
         }
-        // 3D sayfa URL'ine redirect
-        return await _openWebPaymentPopup(location);
+        await PaymentWebPendingStore.save(pending);
+        launchPaymentUrlInSameTab(location);
+        return null;
       }
 
-      // Mobildeki gibi dönen 3D HTML'ini olduğu gibi yükle.
-      // Form action'ını ayıklayıp doğrudan bankaya gitmek hidden input'ları düşürür.
       final body = resp.body;
-      return await _openWebPaymentPopupWithHtml(body);
+      await PaymentWebPendingStore.save(pending);
+      launchPaymentHtmlInSameTab(body);
+      return null;
     } catch (e) {
       return PaymentResult(false, "Ödeme işlemi başlatılamadı: $e");
-    }
-  }
-
-  Future<PaymentResult?> _openWebPaymentPopup(String url) async {
-    final result = await openPaymentWindowAndWait(url);
-    return result;
-  }
-
-  Future<PaymentResult?> _openWebPaymentPopupWithHtml(
-    String htmlContent,
-  ) async {
-    // Web helper ile HTML blob URL'i oluşturup popup aç
-    // Bu durumda polling mekanizması çalışacak
-    final handle = openPaymentWindow("about:blank");
-    if (handle == null) {
-      return const PaymentResult(
-        false,
-        "Popup penceresi açılamadı. Lütfen popup engelleyiciyi kapatın.",
-      );
-    }
-
-    await loadPaymentHtml(handle, htmlContent);
-
-    try {
-      final result = await handle.onResult.first.timeout(
-        const Duration(minutes: 5),
-        onTimeout: () =>
-            const PaymentResult(false, "Ödeme zaman aşımına uğradı."),
-      );
-      return result;
-    } catch (e) {
-      handle.dispose();
-      return PaymentResult(false, "Ödeme işlemi sırasında hata: $e");
     }
   }
 
