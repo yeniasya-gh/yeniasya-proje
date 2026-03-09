@@ -43,14 +43,12 @@ class PaymentScreen extends StatefulWidget {
 
 class _PaymentScreenState extends State<PaymentScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _savedCardFormKey = GlobalKey<FormState>();
   final _cardHolderCtrl = TextEditingController();
   final _cardNumberCtrl = TextEditingController();
   final _expiryCtrl = TextEditingController();
   final _cvvCtrl = TextEditingController();
   final _cardNameCtrl = TextEditingController();
   bool _saveCard = false;
-  final _savedCardCvvCtrl = TextEditingController();
 
   bool _loading = false;
   bool _loadingSavedCards = false;
@@ -79,7 +77,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
     _expiryCtrl.dispose();
     _cvvCtrl.dispose();
     _cardNameCtrl.dispose();
-    _savedCardCvvCtrl.dispose();
     super.dispose();
   }
 
@@ -611,9 +608,21 @@ class _PaymentScreenState extends State<PaymentScreen> {
           .timeout(const Duration(seconds: 30));
 
       if (resp.statusCode < 200 || resp.statusCode >= 300) {
+        String message = "3D ödeme sayfası yüklenemedi (${resp.statusCode})";
+        try {
+          final data = jsonDecode(resp.body);
+          if (data is Map<String, dynamic>) {
+            final apiMessage =
+                data["error"]?.toString().trim() ??
+                data["message"]?.toString().trim();
+            if (apiMessage != null && apiMessage.isNotEmpty) {
+              message = apiMessage;
+            }
+          }
+        } catch (_) {}
         return PaymentResult(
           false,
-          "3D ödeme sayfası yüklenemedi (${resp.statusCode})",
+          message,
         );
       }
 
@@ -629,30 +638,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
         return await _openWebPaymentPopup(location);
       }
 
-      // HTML döndüyse, içinden 3D URL'i veya form'u çıkar
+      // Mobildeki gibi dönen 3D HTML'ini olduğu gibi yükle.
+      // Form action'ını ayıklayıp doğrudan bankaya gitmek hidden input'ları düşürür.
       final body = resp.body;
-
-      // 3D form action URL'sini bul (genellikle iframe veya form içinde)
-      final actionMatch = RegExp(
-        'action=["\']([^"\']+)["\']',
-        caseSensitive: false,
-      ).firstMatch(body);
-      if (actionMatch != null) {
-        final actionUrl = actionMatch.group(1)!;
-        return await _openWebPaymentPopup(actionUrl);
-      }
-
-      // iFrame src bul
-      final iframeSrcMatch = RegExp(
-        '<iframe[^>]*src=["\']([^"\']+)["\']',
-        caseSensitive: false,
-      ).firstMatch(body);
-      if (iframeSrcMatch != null) {
-        final iframeSrc = iframeSrcMatch.group(1)!;
-        return await _openWebPaymentPopup(iframeSrc);
-      }
-
-      // Direct HTML content - blob URL ile popup aç
       return await _openWebPaymentPopupWithHtml(body);
     } catch (e) {
       return PaymentResult(false, "Ödeme işlemi başlatılamadı: $e");
@@ -709,7 +697,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
     return PaymentResult(
       isSuccess,
-      isSuccess ? null : (errorMsg ?? responseMsg ?? "Ödeme başarısız."),
+      isSuccess
+          ? null
+          : resolvePaymentFailureMessage(
+              errorMsg: errorMsg,
+              responseMsg: responseMsg,
+              fallback: "Ödeme başarısız.",
+            ),
       approved: isSuccess,
       merchantPaymentId: merchantPaymentId,
       responseCode: responseCode,
@@ -800,7 +794,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
                     if (!v) return;
                     setState(() {
                       _useSavedCard = false;
-                      _savedCardCvvCtrl.clear();
                     });
                   },
                   selectedColor: Colors.red.shade50,
@@ -831,33 +824,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
   }
 
   Widget _savedCardsSection() {
-    InputDecoration _inputDecoration(String label, {IconData? icon}) {
-      return InputDecoration(
-        labelText: label,
-        prefixIcon: icon != null
-            ? Icon(icon, color: Colors.red.shade400)
-            : null,
-        filled: true,
-        fillColor: const Color(0xFFF7F8FA),
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 14,
-          vertical: 14,
-        ),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.red.shade400, width: 1.2),
-        ),
-      );
-    }
-
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -871,113 +837,112 @@ class _PaymentScreenState extends State<PaymentScreen> {
           ),
         ],
       ),
-      child: Form(
-        key: _savedCardFormKey,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              "Kayıtlı Kartlar",
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 12),
-            ListView.separated(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: _savedCards.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 10),
-              itemBuilder: (ctx, i) {
-                final card = _savedCards[i];
-                final selected = i == _selectedSavedCardIndex;
-                final brand = (card.cardBrand ?? "").trim();
-                final last4 = (card.panLast4 ?? "").trim();
-                final expiry = (card.cardExpiry ?? "").trim();
-                final title = (card.cardName ?? "").trim();
-                final subtitle = [
-                  if (brand.isNotEmpty) brand,
-                  if (last4.isNotEmpty) "•••• $last4",
-                  if (expiry.isNotEmpty) "SKT $expiry",
-                ].join(" · ");
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            "Kayıtlı Kartlar",
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 12),
+          ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: _savedCards.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 10),
+            itemBuilder: (ctx, i) {
+              final card = _savedCards[i];
+              final selected = i == _selectedSavedCardIndex;
+              final brand = (card.cardBrand ?? "").trim();
+              final last4 = (card.panLast4 ?? "").trim();
+              final expiry = (card.cardExpiry ?? "").trim();
+              final title = (card.cardName ?? "").trim();
+              final subtitle = [
+                if (brand.isNotEmpty) brand,
+                if (last4.isNotEmpty) "•••• $last4",
+                if (expiry.isNotEmpty) "SKT $expiry",
+              ].join(" · ");
 
-                return InkWell(
-                  borderRadius: BorderRadius.circular(14),
-                  onTap: () {
-                    setState(() => _selectedSavedCardIndex = i);
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color: selected
-                            ? Colors.red.shade400
-                            : const Color(0xFFE5E7EB),
-                      ),
+              return InkWell(
+                borderRadius: BorderRadius.circular(14),
+                onTap: () {
+                  setState(() {
+                    _selectedSavedCardIndex = i;
+                  });
+                },
+                child: Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
                       color: selected
-                          ? Colors.red.shade50
-                          : const Color(0xFFFDFDFD),
+                          ? Colors.red.shade400
+                          : const Color(0xFFE5E7EB),
                     ),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 44,
-                          height: 44,
-                          decoration: BoxDecoration(
-                            color: selected
-                                ? Colors.red.shade100
-                                : const Color(0xFFF3F4F6),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Icon(
-                            Icons.credit_card,
-                            color: selected
-                                ? Colors.red.shade700
-                                : Colors.grey.shade700,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                title.isNotEmpty && title != "-"
-                                    ? title
-                                    : (card.cardOwner ?? "Kayıtlı Kart"),
-                                style: const TextStyle(
-                                  fontSize: 14.5,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                subtitle,
-                                style: TextStyle(color: Colors.grey.shade700),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Icon(
-                          selected
-                              ? Icons.radio_button_checked
-                              : Icons.radio_button_off,
-                          color: selected
-                              ? Colors.red.shade600
-                              : Colors.grey.shade500,
-                        ),
-                      ],
-                    ),
+                    color: selected
+                        ? Colors.red.shade50
+                        : const Color(0xFFFDFDFD),
                   ),
-                );
-              },
-            ),
-          ],
-        ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: selected
+                              ? Colors.red.shade100
+                              : const Color(0xFFF3F4F6),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(
+                          Icons.credit_card,
+                          color: selected
+                              ? Colors.red.shade700
+                              : Colors.grey.shade700,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              title.isNotEmpty && title != "-"
+                                  ? title
+                                  : (card.cardOwner ?? "Kayıtlı Kart"),
+                              style: const TextStyle(
+                                fontSize: 14.5,
+                                fontWeight: FontWeight.w700,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              subtitle,
+                              style: TextStyle(color: Colors.grey.shade700),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Icon(
+                        selected
+                            ? Icons.radio_button_checked
+                            : Icons.radio_button_off,
+                        color: selected
+                            ? Colors.red.shade600
+                            : Colors.grey.shade500,
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
       ),
     );
   }

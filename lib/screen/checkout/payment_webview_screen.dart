@@ -209,7 +209,25 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
           return;
         }
         if (resp.statusCode < 200 || resp.statusCode >= 300) {
-          throw Exception("Redirect yüklenemedi (${resp.statusCode})");
+          String message = "Ödeme işlemi başlatılamadı.";
+          try {
+            final data = jsonDecode(resp.body);
+            if (data is Map<String, dynamic>) {
+              final apiMessage =
+                  data["error"]?.toString().trim() ??
+                  data["message"]?.toString().trim();
+              if (apiMessage != null && apiMessage.isNotEmpty) {
+                message = apiMessage;
+              }
+            }
+          } catch (_) {
+            final body = resp.body.trim();
+            if (body.isNotEmpty) {
+              message = body;
+            }
+          }
+          _finishWithResult(PaymentResult(false, message));
+          return;
         }
         await _controller.loadHtmlString(
           resp.body,
@@ -323,7 +341,13 @@ class PaymentResult {
     final responseMsg = _decodeMaybe(json["responseMsg"]?.toString());
     return PaymentResult(
       approved,
-      approved ? null : (errorMsg ?? responseMsg ?? "Odeme basarisiz."),
+      approved
+          ? null
+          : resolvePaymentFailureMessage(
+              errorMsg: errorMsg,
+              responseMsg: responseMsg,
+              fallback: "Odeme basarisiz.",
+            ),
       approved: json["approved"] == true,
       merchantPaymentId: json["merchantPaymentId"]?.toString(),
       customerId: json["customerId"]?.toString(),
@@ -339,6 +363,24 @@ class PaymentResult {
   }
 }
 
+String resolvePaymentFailureMessage({
+  String? errorMsg,
+  String? responseMsg,
+  String fallback = "Odeme basarisiz.",
+}) {
+  final explicitError = errorMsg?.trim();
+  if (explicitError != null && explicitError.isNotEmpty) {
+    return explicitError;
+  }
+
+  final normalizedResponse = _normalizePaymentStatusMessage(responseMsg);
+  if (normalizedResponse != null && normalizedResponse.isNotEmpty) {
+    return normalizedResponse;
+  }
+
+  return fallback;
+}
+
 String? _decodeMaybe(String? raw) {
   if (raw == null) return null;
   final normalized = raw.replaceAll("+", " ");
@@ -347,4 +389,19 @@ String? _decodeMaybe(String? raw) {
   } catch (_) {
     return normalized;
   }
+}
+
+String? _normalizePaymentStatusMessage(String? raw) {
+  final value = raw?.trim();
+  if (value == null || value.isEmpty) return null;
+
+  final lower = value.toLowerCase();
+  if (lower == "declined" ||
+      lower == "cancelled" ||
+      lower == "canceled" ||
+      lower.contains("user cancelled")) {
+    return "İşlem iptal edildi.";
+  }
+
+  return value;
 }

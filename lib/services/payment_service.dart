@@ -26,6 +26,29 @@ class PaymentService {
     };
   }
 
+  String _extractApiMessage(String body, {required String fallback}) {
+    final trimmed = body.trim();
+    if (trimmed.isEmpty) return fallback;
+
+    try {
+      final data = jsonDecode(trimmed);
+      if (data is Map<String, dynamic>) {
+        final message =
+            data["error"]?.toString().trim() ??
+            data["message"]?.toString().trim() ??
+            data["responseMsg"]?.toString().trim() ??
+            data["errorMsg"]?.toString().trim();
+        if (message != null && message.isNotEmpty) {
+          return message;
+        }
+      }
+    } catch (_) {
+      // Fall back to raw body below.
+    }
+
+    return trimmed;
+  }
+
   Future<String> createSession({required Map<String, dynamic> payload}) async {
     final uri = Uri.parse("$_baseUrl/payment/session");
     final headers = _authorizedHeaders();
@@ -34,8 +57,11 @@ class PaymentService {
         .timeout(const Duration(seconds: 20));
 
     if (resp.statusCode < 200 || resp.statusCode >= 300) {
-      throw Exception(
-        "Session token alinmadi (${resp.statusCode}): ${resp.body}",
+      throw PaymentSessionException(
+        _extractApiMessage(
+          resp.body,
+          fallback: "Ödeme oturumu oluşturulamadı (${resp.statusCode}).",
+        ),
       );
     }
 
@@ -71,7 +97,12 @@ class PaymentService {
         .timeout(const Duration(seconds: 20));
 
     if (resp.statusCode < 200 || resp.statusCode >= 300) {
-      throw Exception("Kartlar alinmadi (${resp.statusCode}): ${resp.body}");
+      throw PaymentSessionException(
+        _extractApiMessage(
+          resp.body,
+          fallback: "Kayıtlı kartlar alınamadı (${resp.statusCode}).",
+        ),
+      );
     }
 
     final data = jsonDecode(resp.body) as Map<String, dynamic>;
@@ -102,7 +133,12 @@ class PaymentService {
         .timeout(const Duration(seconds: 20));
 
     if (resp.statusCode < 200 || resp.statusCode >= 300) {
-      throw Exception("Kart silinemedi (${resp.statusCode}): ${resp.body}");
+      throw PaymentSessionException(
+        _extractApiMessage(
+          resp.body,
+          fallback: "Kart silinemedi (${resp.statusCode}).",
+        ),
+      );
     }
 
     final data = jsonDecode(resp.body) as Map<String, dynamic>;

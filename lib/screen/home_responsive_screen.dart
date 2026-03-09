@@ -95,6 +95,20 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
   AuthProvider? _authListener;
   DateTime? _newsSelectedDate;
 
+  void _openSectionFromFooter(String label) {
+    final section = switch (label) {
+      "E-Dergiler" => HomeSection.magazines,
+      "E-Kitaplar" => HomeSection.books,
+      "E-Gazete" => HomeSection.newspapers,
+      "E-Ekler" => HomeSection.attachments,
+      _ => null,
+    };
+    if (section == null) return;
+    if (section == HomeSection.magazines && _hideMagazines) return;
+    if (section == HomeSection.newspapers && _hideNewspapers) return;
+    setState(() => _section = section);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -353,15 +367,11 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     try {
       final pdfUrl = await _authApi.getNewspaperViewUrl(date: normalized);
       if (!context.mounted) return;
-      Navigator.push(
+      await PdfOpenHelper.downloadAndOpen(
         context,
-        MaterialPageRoute(
-          builder: (_) => PdfViewerScreen(
-            url: pdfUrl,
-            title: "E-Gazete $dateLabel",
-            isPrivate: false,
-          ),
-        ),
+        url: pdfUrl,
+        title: "E-Gazete $dateLabel",
+        isPrivate: true,
       );
     } catch (e) {
       if (!context.mounted) return;
@@ -1831,7 +1841,10 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
                               ),
                             ),
                           ),
-                          if (isWeb) const YeniAsyaFooter(),
+                          if (isWeb)
+                            YeniAsyaFooter(
+                              onCategoryTap: _openSectionFromFooter,
+                            ),
                         ],
                       ),
                     ),
@@ -1928,7 +1941,9 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
           children: [
             _sectionHeadingText("E-Kitaplar"),
             const SizedBox(height: 16),
-            _bookListGrid(context, isWeb, isTablet),
+            isWeb
+                ? _BookBrowseBody(homeState: this)
+                : _bookListGrid(context, isWeb, isTablet),
             const SizedBox(height: 24),
           ],
         );
@@ -4210,6 +4225,7 @@ class _BookBrowseBodyState extends State<_BookBrowseBody> {
   Widget build(BuildContext context) {
     final books = widget.homeState.books;
     final cart = context.watch<CartProvider>();
+    final isWeb = MediaQuery.of(context).size.width > 900;
     final isTablet = isTabletLayout(context);
     final authorOptions = _authorOptions(books);
     final categoryOptions = _categoryOptions(books);
@@ -4221,8 +4237,8 @@ class _BookBrowseBodyState extends State<_BookBrowseBody> {
     final authorHeight = textScaler.scale(12) * 1.25;
     final rowHeight = 36.0;
     const verticalGaps = 4.0;
-    const contentPadding = 9.0 * 2;
-    const imageHeight = 138.0;
+    final contentPadding = (isWeb ? 8.0 : 9.0) * 2;
+    final imageHeight = isWeb ? 140.0 : 138.0;
     const safetyMargin = 8.0;
     final cardHeight =
         imageHeight +
@@ -4232,7 +4248,7 @@ class _BookBrowseBodyState extends State<_BookBrowseBody> {
         authorHeight +
         rowHeight +
         safetyMargin;
-    final crossAxisCount = isTablet ? 3 : 2;
+    final crossAxisCount = isWeb ? 4 : (isTablet ? 3 : 2);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -4244,54 +4260,71 @@ class _BookBrowseBodyState extends State<_BookBrowseBody> {
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: const Color(0xFFE8E8E8)),
           ),
-          child: Column(
-            children: [
-              DropdownButtonFormField<String>(
-                initialValue: _selectedAuthor,
-                decoration: const InputDecoration(
-                  labelText: "Yazar",
-                  border: OutlineInputBorder(),
-                ),
-                items: [
-                  const DropdownMenuItem<String>(
-                    value: _allAuthors,
-                    child: Text("Tüm Yazarlar"),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final fieldWidth = isWeb
+                  ? (((constraints.maxWidth - 10) / 2).clamp(240.0, 360.0))
+                        .toDouble()
+                  : constraints.maxWidth;
+              return Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  SizedBox(
+                    width: fieldWidth,
+                    child: DropdownButtonFormField<String>(
+                      initialValue: _selectedAuthor,
+                      decoration: const InputDecoration(
+                        labelText: "Yazar",
+                        border: OutlineInputBorder(),
+                      ),
+                      items: [
+                        const DropdownMenuItem<String>(
+                          value: _allAuthors,
+                          child: Text("Tüm Yazarlar"),
+                        ),
+                        ...authorOptions.map(
+                          (author) => DropdownMenuItem<String>(
+                            value: author,
+                            child: Text(author),
+                          ),
+                        ),
+                      ],
+                      onChanged: (value) {
+                        setState(() => _selectedAuthor = value ?? _allAuthors);
+                      },
+                    ),
                   ),
-                  ...authorOptions.map(
-                    (author) => DropdownMenuItem<String>(
-                      value: author,
-                      child: Text(author),
+                  SizedBox(
+                    width: fieldWidth,
+                    child: DropdownButtonFormField<String>(
+                      initialValue: _selectedCategory,
+                      decoration: const InputDecoration(
+                        labelText: "Kategori",
+                        border: OutlineInputBorder(),
+                      ),
+                      items: [
+                        const DropdownMenuItem<String>(
+                          value: _allCategories,
+                          child: Text("Tüm Kategoriler"),
+                        ),
+                        ...categoryOptions.map(
+                          (category) => DropdownMenuItem<String>(
+                            value: category,
+                            child: Text(category),
+                          ),
+                        ),
+                      ],
+                      onChanged: (value) {
+                        setState(
+                          () => _selectedCategory = value ?? _allCategories,
+                        );
+                      },
                     ),
                   ),
                 ],
-                onChanged: (value) {
-                  setState(() => _selectedAuthor = value ?? _allAuthors);
-                },
-              ),
-              const SizedBox(height: 10),
-              DropdownButtonFormField<String>(
-                initialValue: _selectedCategory,
-                decoration: const InputDecoration(
-                  labelText: "Kategori",
-                  border: OutlineInputBorder(),
-                ),
-                items: [
-                  const DropdownMenuItem<String>(
-                    value: _allCategories,
-                    child: Text("Tüm Kategoriler"),
-                  ),
-                  ...categoryOptions.map(
-                    (category) => DropdownMenuItem<String>(
-                      value: category,
-                      child: Text(category),
-                    ),
-                  ),
-                ],
-                onChanged: (value) {
-                  setState(() => _selectedCategory = value ?? _allCategories);
-                },
-              ),
-            ],
+              );
+            },
           ),
         ),
         const SizedBox(height: 12),
@@ -4323,12 +4356,19 @@ class _BookBrowseBodyState extends State<_BookBrowseBody> {
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             padding: EdgeInsets.zero,
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: crossAxisCount,
-              crossAxisSpacing: spacing,
-              mainAxisSpacing: spacing,
-              mainAxisExtent: cardHeight,
-            ),
+            gridDelegate: isWeb
+                ? SliverGridDelegateWithMaxCrossAxisExtent(
+                    maxCrossAxisExtent: 176,
+                    crossAxisSpacing: spacing,
+                    mainAxisSpacing: spacing,
+                    mainAxisExtent: cardHeight,
+                  )
+                : SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: crossAxisCount,
+                    crossAxisSpacing: spacing,
+                    mainAxisSpacing: spacing,
+                    mainAxisExtent: cardHeight,
+                  ),
             itemCount: filtered.length,
             itemBuilder: (_, i) {
               final book = filtered[i];
@@ -4371,7 +4411,7 @@ class _BookBrowseBodyState extends State<_BookBrowseBody> {
               );
               return Align(
                 alignment: Alignment.topCenter,
-                child: SizedBox(width: 146, child: card),
+                child: SizedBox(width: isWeb ? 160 : 146, child: card),
               );
             },
           ),

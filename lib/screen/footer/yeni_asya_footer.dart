@@ -289,7 +289,9 @@ const Map<String, String> footerPageContentMap = {
 };
 
 class YeniAsyaFooter extends StatelessWidget {
-  const YeniAsyaFooter({super.key});
+  final ValueChanged<String>? onCategoryTap;
+
+  const YeniAsyaFooter({super.key, this.onCategoryTap});
 
   @override
   Widget build(BuildContext context) {
@@ -438,6 +440,16 @@ class YeniAsyaFooter extends StatelessWidget {
             padding: const EdgeInsets.symmetric(vertical: 4.0),
             child: InkWell(
               onTap: () async {
+                final isCategoryItem = const {
+                  "E-Dergiler",
+                  "E-Kitaplar",
+                  "E-Gazete",
+                  "E-Ekler",
+                }.contains(item);
+                if (isCategoryItem && onCategoryTap != null) {
+                  onCategoryTap!(item);
+                  return;
+                }
                 if (item == "Bize Ulaşın") {
                   final sent = await Navigator.push<bool>(
                     context,

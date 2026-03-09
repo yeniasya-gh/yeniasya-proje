@@ -247,7 +247,9 @@ class AuthApiService {
             ? message
             : "Aktif e-gazete aboneliğiniz bulunmuyor.";
       case 404:
-        return "E-gazete görüntüleme servisi bulunamadı.";
+        return message.isNotEmpty
+            ? message
+            : "Seçilen tarihe ait e-gazete bulunamadı.";
       case 503:
         return message.isNotEmpty
             ? message

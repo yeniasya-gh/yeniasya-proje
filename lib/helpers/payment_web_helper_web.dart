@@ -69,7 +69,13 @@ class PaymentWindowHandle {
 
     return PaymentResult(
       isSuccess,
-      isSuccess ? null : (errorMsg ?? responseMsg ?? "Ödeme başarısız."),
+      isSuccess
+          ? null
+          : resolvePaymentFailureMessage(
+              errorMsg: errorMsg,
+              responseMsg: responseMsg,
+              fallback: "Ödeme başarısız.",
+            ),
       approved: isSuccess,
       merchantPaymentId: merchantPaymentId,
       responseCode: responseCode,
