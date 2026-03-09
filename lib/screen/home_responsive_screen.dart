@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../services/access_provider.dart';
 import '/screen/footer/faq_page.dart';
 import '/screen/footer/yeni_asya_footer.dart';
@@ -359,6 +361,33 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
   DateTime _normalizeDate(DateTime date) =>
       DateTime(date.year, date.month, date.day);
 
+  String _formatIsoDateOnly(DateTime date) {
+    final normalized = _normalizeDate(date);
+    return "${normalized.year.toString().padLeft(4, "0")}-"
+        "${normalized.month.toString().padLeft(2, "0")}-"
+        "${normalized.day.toString().padLeft(2, "0")}";
+  }
+
+  String _resolveArchivedNewspaperUrl(
+    Map<String, dynamic> viewInfo, {
+    required DateTime fallbackDate,
+  }) {
+    final rawUrl = viewInfo["url"]?.toString().trim() ?? "";
+    final source = viewInfo["source"]?.toString().trim().toLowerCase() ?? "";
+    if (source != "legacy") return rawUrl;
+
+    final responseDate = viewInfo["date"]?.toString().trim() ?? "";
+    final fileNameMatch = RegExp(
+      r"(\d{4}-\d{2}-\d{2})\.pdf",
+      caseSensitive: false,
+    ).firstMatch(rawUrl);
+    final isoDate = RegExp(r"^\d{4}-\d{2}-\d{2}$").hasMatch(responseDate)
+        ? responseDate
+        : fileNameMatch?.group(1) ?? _formatIsoDateOnly(fallbackDate);
+
+    return "https://www.yeniasya.com.tr/Sites/YeniAsya/Upload/files/EPub/$isoDate.pdf";
+  }
+
   Future<void> _openArchivedNewspaperForDate(
     BuildContext context,
     DateTime date,
@@ -367,13 +396,31 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     final dateLabel =
         "${normalized.day.toString().padLeft(2, "0")}.${normalized.month.toString().padLeft(2, "0")}.${normalized.year}";
     try {
-      final pdfUrl = await _authApi.getNewspaperViewUrl(date: normalized);
+      final viewInfo = await _authApi.getNewspaperViewInfo(date: normalized);
+      final source = viewInfo["source"]?.toString().trim().toLowerCase() ?? "";
+      final pdfUrl = _resolveArchivedNewspaperUrl(
+        viewInfo,
+        fallbackDate: normalized,
+      );
+      final isPrivate = source == "legacy"
+          ? false
+          : viewInfo["isPrivate"] == true;
+      if (pdfUrl.isEmpty) {
+        throw Exception("E-gazete bağlantısı alınamadı.");
+      }
       if (!context.mounted) return;
+      if (kIsWeb && source == "legacy") {
+        final uri = Uri.tryParse(pdfUrl);
+        if (uri == null || !await launchUrl(uri, webOnlyWindowName: "_blank")) {
+          throw Exception("Eski tarihli e-gazete bağlantısı açılamadı.");
+        }
+        return;
+      }
       await PdfOpenHelper.downloadAndOpen(
         context,
         url: pdfUrl,
         title: "E-Gazete $dateLabel",
-        isPrivate: true,
+        isPrivate: isPrivate,
       );
     } catch (e) {
       if (!context.mounted) return;
