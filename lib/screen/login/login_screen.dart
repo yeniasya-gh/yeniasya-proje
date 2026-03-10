@@ -9,6 +9,7 @@ import '../register/register_bottom_sheet.dart';
 import '../register/social_register_bottom_sheet.dart';
 import '../home_responsive_screen.dart';
 import 'password_reset_screen.dart';
+import 'email_verification_screen.dart';
 import '../../main.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
@@ -538,6 +539,31 @@ class _LoginScreenState extends State<LoginScreen> {
                                     color: Colors.red,
                                     fontSize: 13,
                                     fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ),
+
+                            if (auth.needsEmailVerification)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 6),
+                                child: TextButton(
+                                  onPressed: () {
+                                    Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder: (_) => EmailVerificationScreen(
+                                          email:
+                                              auth.verificationEmailHint ??
+                                              emailCtrl.text.trim(),
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                  child: const Text(
+                                    "Doğrulama Mailini Tekrar Gönder",
+                                    style: TextStyle(
+                                      color: Colors.red,
+                                      fontWeight: FontWeight.w700,
+                                    ),
                                   ),
                                 ),
                               ),

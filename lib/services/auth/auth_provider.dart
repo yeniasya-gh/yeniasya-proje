@@ -12,7 +12,6 @@ import 'auth_api_service.dart';
 import 'auth_token_store.dart';
 import 'user_service.dart';
 import '../notification_service.dart';
-import '../mail_manager.dart';
 import '../secure_file_service.dart';
 
 class AuthProvider with ChangeNotifier {
@@ -22,6 +21,8 @@ class AuthProvider with ChangeNotifier {
   AppUser? _user;
   bool _isLoggedIn = false;
   String? _errorMessage;
+  bool _needsEmailVerification = false;
+  String? _verificationEmailHint;
   Timer? _expiryTimer;
 
   Future<void> Function()? onLogout;
@@ -29,15 +30,10 @@ class AuthProvider with ChangeNotifier {
   AppUser? get user => _user;
   bool get isLoggedIn => _isLoggedIn;
   String? get errorMessage => _errorMessage;
+  bool get needsEmailVerification => _needsEmailVerification;
+  String? get verificationEmailHint => _verificationEmailHint;
 
   static const keyUserJson = "session_user_json";
-
-  String _generateRandomPassword() {
-    const chars =
-        "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-    final rand = Random.secure();
-    return List.generate(16, (_) => chars[rand.nextInt(chars.length)]).join();
-  }
 
   String _generateNonce([int length = 32]) {
     const charset =
@@ -119,6 +115,8 @@ class AuthProvider with ChangeNotifier {
     _user = null;
     _isLoggedIn = false;
     _errorMessage = null;
+    _needsEmailVerification = false;
+    _verificationEmailHint = null;
     _scheduleExpiry(expiresAt);
     if (notify) notifyListeners();
   }
@@ -170,6 +168,8 @@ class AuthProvider with ChangeNotifier {
       _user = AppUser.fromJson(userMap);
       _isLoggedIn = true;
       _errorMessage = null;
+      _needsEmailVerification = false;
+      _verificationEmailHint = null;
 
       _scheduleExpiry(expiresAt);
       notifyListeners();
@@ -182,13 +182,15 @@ class AuthProvider with ChangeNotifier {
         debugPrint("🔴 [Auth] guest session bootstrap failed: $guestError");
         _expiryTimer?.cancel();
         _expiryTimer = null;
-        await AuthTokenStore.clear();
-        _user = null;
-        _isLoggedIn = false;
-        _errorMessage = null;
-        notifyListeners();
-      }
+      await AuthTokenStore.clear();
+      _user = null;
+      _isLoggedIn = false;
+      _errorMessage = null;
+      _needsEmailVerification = false;
+      _verificationEmailHint = null;
+      notifyListeners();
     }
+  }
   }
 
   Future<void> _saveSession({
@@ -256,13 +258,21 @@ class AuthProvider with ChangeNotifier {
         userId: user.id,
         forceRefresh: true,
       );
+      _needsEmailVerification = false;
+      _verificationEmailHint = null;
+      _errorMessage = null;
       notifyListeners();
       return SocialLoginResult(user: user);
     } catch (e) {
       final msg = e.toString();
       if (msg.contains("SOCIAL_USER_NOT_FOUND")) {
         return SocialLoginResult(
-          draft: SocialDraft(email: email, name: name, phone: phone),
+          draft: SocialDraft(
+            email: email,
+            name: name,
+            phone: phone,
+            provider: provider,
+          ),
         );
       }
       return SocialLoginResult(
@@ -530,22 +540,20 @@ class AuthProvider with ChangeNotifier {
   Future<AppUser?> registerSocialUser({
     required String email,
     required String name,
+    required String provider,
     String? phone,
   }) async {
     try {
-      final password = _generateRandomPassword();
-      final data = await _authApi.register(
+      _errorMessage = null;
+      final data = await _authApi.socialRegister(
         name: name,
         email: email,
-        password: password,
+        provider: provider,
         phone: phone,
       );
       final user = AppUser.fromAuthJson(data["user"] as Map<String, dynamic>);
-      final token = data["token"]?.toString();
-      final rawExp = data["expiresAt"]?.toString();
-      final expiresAt = rawExp != null && rawExp.isNotEmpty
-          ? DateTime.parse(rawExp)
-          : DateTime.now().add(const Duration(days: 1));
+      final token = _tokenFromPayload(data);
+      final expiresAt = _expiresAtFromPayload(data);
       if (token == null || token.isEmpty) {
         throw Exception("Token alınamadı.");
       }
@@ -558,20 +566,16 @@ class AuthProvider with ChangeNotifier {
         userId: user.id,
         forceRefresh: true,
       );
-      try {
-        await MailManager.instance.sendWelcomeEmail(
-          to: user.email,
-          name: user.name,
-        );
-      } catch (e) {
-        // ignore: avoid_print
-        print("🔴 [Mail] Welcome mail gönderilemedi: $e");
-      }
+      _needsEmailVerification = false;
+      _verificationEmailHint = null;
+      _errorMessage = null;
       notifyListeners();
       return user;
     } catch (e) {
       _isLoggedIn = false;
       _user = null;
+      _needsEmailVerification = false;
+      _verificationEmailHint = null;
       _errorMessage = e.toString().replaceFirst("Exception:", "").trim();
       notifyListeners();
       return null;
@@ -584,14 +588,13 @@ class AuthProvider with ChangeNotifier {
     bool rememberMe = false,
   }) async {
     _errorMessage = null;
+    _needsEmailVerification = false;
+    _verificationEmailHint = null;
     try {
       final data = await _authApi.login(email: email, password: password);
       final user = AppUser.fromAuthJson(data["user"] as Map<String, dynamic>);
-      final token = data["token"]?.toString();
-      final rawExp = data["expiresAt"]?.toString();
-      final expiresAt = rawExp != null && rawExp.isNotEmpty
-          ? DateTime.parse(rawExp)
-          : DateTime.now().add(const Duration(days: 1));
+      final token = _tokenFromPayload(data);
+      final expiresAt = _expiresAtFromPayload(data);
 
       if (token == null || token.isEmpty) {
         throw Exception("Token alınamadı.");
@@ -619,8 +622,13 @@ class AuthProvider with ChangeNotifier {
       final msg = e.toString();
       if (msg.contains("INVALID_CREDENTIALS")) {
         _errorMessage = "E-posta veya şifre hatalı.";
+      } else if (msg.contains("EMAIL_NOT_VERIFIED")) {
+        _needsEmailVerification = true;
+        _verificationEmailHint = email.trim();
+        _errorMessage =
+            "Hesabınızı onaylayın. E-posta adresinize gönderilen bağlantı ile hesabınızı aktifleştirin.";
       } else {
-        _errorMessage = "Bir hata oluştu. Lütfen tekrar deneyiniz.";
+        _errorMessage = e.toString().replaceFirst("Exception:", "").trim();
       }
     }
 
@@ -628,61 +636,37 @@ class AuthProvider with ChangeNotifier {
     return _user;
   }
 
-  Future<AppUser?> register({
+  Future<bool> register({
     required String name,
     String? phone,
     required String email,
     required String password,
   }) async {
     _errorMessage = null;
+    _needsEmailVerification = false;
+    _verificationEmailHint = null;
     try {
-      final data = await _authApi.register(
+      await _authApi.register(
         name: name,
         email: email,
         password: password,
         phone: phone,
       );
-      final user = AppUser.fromAuthJson(data["user"] as Map<String, dynamic>);
-      final token = data["token"]?.toString();
-      final rawExp = data["expiresAt"]?.toString();
-      final expiresAt = rawExp != null && rawExp.isNotEmpty
-          ? DateTime.parse(rawExp)
-          : DateTime.now().add(const Duration(days: 1));
-
-      if (token == null || token.isEmpty) {
-        throw Exception("Token alınamadı.");
-      }
-      await AuthTokenStore.save(token: token, expiresAt: expiresAt);
-
-      _isLoggedIn = true;
-      _user = user;
-      await _saveSession(user: user, expiresAt: expiresAt);
-      _scheduleExpiry(expiresAt);
-      await NotificationService().registerDeviceToken(
-        userId: user.id,
-        forceRefresh: true,
-      );
-      try {
-        await MailManager.instance.sendWelcomeEmail(
-          to: user.email,
-          name: user.name,
-        );
-      } catch (e) {
-        // ignore: avoid_print
-        print("🔴 [Mail] Welcome mail gönderilemedi: $e");
-      }
-
-      notifyListeners();
-      return user;
-    } catch (e) {
-      // ignore: avoid_print
-      print("🔴 [Register] Hata: $e");
       _isLoggedIn = false;
       _user = null;
+      _verificationEmailHint = email.trim();
+      _needsEmailVerification = false;
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _isLoggedIn = false;
+      _user = null;
+      _verificationEmailHint = email.trim();
+      _needsEmailVerification = false;
       _errorMessage = e.toString().replaceFirst("Exception:", "").trim();
 
       notifyListeners();
-      return null;
+      return false;
     }
   }
 
@@ -697,6 +681,8 @@ class AuthProvider with ChangeNotifier {
     _user = null;
     _isLoggedIn = false;
     _errorMessage = null;
+    _needsEmailVerification = false;
+    _verificationEmailHint = null;
 
     if (bootstrapGuest) {
       try {
@@ -751,6 +737,20 @@ class AuthProvider with ChangeNotifier {
     return _authApi.requestPasswordReset(email: email);
   }
 
+  Future<void> requestEmailVerification({required String email}) async {
+    await _authApi.requestEmailVerification(email: email);
+    _verificationEmailHint = email.trim();
+    notifyListeners();
+  }
+
+  Future<void> confirmEmailVerification({required String token}) async {
+    await _authApi.confirmEmailVerification(token: token);
+    _needsEmailVerification = false;
+    _verificationEmailHint = null;
+    _errorMessage = null;
+    notifyListeners();
+  }
+
   Future<void> confirmPasswordReset({
     required String token,
     required String newPassword,
@@ -791,8 +791,14 @@ class SocialDraft {
   final String email;
   final String name;
   final String? phone;
+  final String provider;
 
-  SocialDraft({required this.email, required this.name, this.phone});
+  SocialDraft({
+    required this.email,
+    required this.name,
+    this.phone,
+    required this.provider,
+  });
 }
 
 class SocialLoginResult {

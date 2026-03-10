@@ -134,7 +134,7 @@ class _RegisterBottomSheetState extends State<RegisterBottomSheet> {
                               phoneCtrl.text,
                             );
 
-                            final newUser = await auth.register(
+                            final registered = await auth.register(
                               name: nameCtrl.text,
                               phone: normalizedPhone.isEmpty
                                   ? null
@@ -146,11 +146,12 @@ class _RegisterBottomSheetState extends State<RegisterBottomSheet> {
                             if (!context.mounted) return;
                             setState(() => isLoading = false);
 
-                            if (newUser != null) {
+                            if (registered) {
                               Navigator.pop(context);
 
                               Fluttertoast.showToast(
-                                msg: "Kayıt başarılı 🎉",
+                                msg:
+                                    "Üye kaydı başarılı. E-posta adresinize gönderilen mail ile hesabınızı aktifleştirin.",
                                 toastLength: Toast.LENGTH_LONG,
                                 gravity: ToastGravity.BOTTOM,
                                 backgroundColor: Colors.green,

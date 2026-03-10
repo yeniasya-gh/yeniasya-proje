@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../services/admin/admin_user_service.dart';
 import '../../services/error/error_manager.dart';
 import '../../services/admin/admin_book_service.dart';
@@ -6,6 +7,8 @@ import '../../services/admin/admin_magazine_service.dart';
 import '../../services/admin/admin_magazine_type_service.dart';
 import '../../services/admin/admin_newspaper_subscription_type_service.dart';
 import '../../services/admin/admin_ek_service.dart';
+import '../../services/admin/admin_user_access_audit_service.dart';
+import '../../services/auth/auth_provider.dart';
 import '../../services/user_content_access_service.dart';
 import 'admin_user_detail_page.dart';
 
@@ -19,6 +22,7 @@ class AdminUsersPage extends StatefulWidget {
 class _AdminUsersPageState extends State<AdminUsersPage> {
   final TextEditingController searchCtrl = TextEditingController();
   final AdminUserService _adminService = AdminUserService();
+  final AdminUserAccessAuditService _auditService = AdminUserAccessAuditService();
 
   List<Map<String, dynamic>> allUsers = [];
   List<Map<String, dynamic>> filteredUsers = [];
@@ -84,12 +88,16 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
 
   // ❌ Kullanıcı sil
   void _deleteUser(int id) async {
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
     try {
       final ok = await _adminService.deleteUser(id);
+      if (!mounted) return;
       if (ok) {
         _loadUsers();
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text("Kullanıcı silindi")));
+        messenger.showSnackBar(
+          const SnackBar(content: Text("Kullanıcı silindi")),
+        );
       }
     } catch (e) {
       _showError("Kullanıcı silinemedi:\n$e");
@@ -112,7 +120,7 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
     final passCtrl = TextEditingController(text: initialData?["password"] ?? "");
     final phoneCtrl = TextEditingController(text: initialData?["phone"] ?? "");
 
-    final _formKey = GlobalKey<FormState>();
+    final formKey = GlobalKey<FormState>();
 
     showDialog(
       context: context,
@@ -122,7 +130,7 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
           content: SizedBox(
             width: 400,
             child: Form(
-              key: _formKey,
+              key: formKey,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -169,7 +177,7 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
               onPressed: () async {
-                if (!_formKey.currentState!.validate()) return;
+                if (!formKey.currentState!.validate()) return;
 
                 final payload = {
                   "name": nameCtrl.text,
@@ -217,83 +225,90 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
 
     showDialog(
       context: context,
-      builder: (_) {
-        return AlertDialog(
-          title: const Text("Kullanıcı Düzenle"),
-          content: SizedBox(
-            width: 400,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: nameCtrl,
-                  decoration: const InputDecoration(labelText: "Ad Soyad"),
-                ),
-                TextField(
-                  controller: emailCtrl,
-                  decoration: const InputDecoration(labelText: "E-posta"),
-                ),
-                TextField(
-                  controller: phoneCtrl,
-                  decoration: const InputDecoration(labelText: "Telefon"),
-                ),
-                DropdownButtonFormField<int>(
-                  value: roleId,
-                  decoration: const InputDecoration(labelText: "Rol"),
-                  items: allRoles.map((r) =>
-                    DropdownMenuItem<int>(
-                      value: r["id"],
-                      child: Text(r["name"]),
-                    ),
-                  ).toList(),
-                  onChanged: (v) {
-                    if (v != null) {
-                      setState(() => roleId = v);
-                    }
-                  },
-                ),
-              ],
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) => AlertDialog(
+            title: const Text("Kullanıcı Düzenle"),
+            content: SizedBox(
+              width: 400,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: nameCtrl,
+                    decoration: const InputDecoration(labelText: "Ad Soyad"),
+                  ),
+                  TextField(
+                    controller: emailCtrl,
+                    decoration: const InputDecoration(labelText: "E-posta"),
+                  ),
+                  TextField(
+                    controller: phoneCtrl,
+                    decoration: const InputDecoration(labelText: "Telefon"),
+                  ),
+                  DropdownButtonFormField<int>(
+                    initialValue: roleId,
+                    decoration: const InputDecoration(labelText: "Rol"),
+                    items: allRoles
+                        .map(
+                          (r) => DropdownMenuItem<int>(
+                            value: r["id"],
+                            child: Text(r["name"]),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (v) {
+                      if (v != null) {
+                        setDialogState(() => roleId = v);
+                      }
+                    },
+                  ),
+                ],
+              ),
             ),
-          ),
-          actions: [
-            TextButton(
-              child: const Text("Kapat"),
-              onPressed: () => Navigator.pop(context),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-              child: const Text("Kaydet", style: TextStyle(color: Colors.white)),
-              onPressed: () async {
-                final payload = {
-                  "id": user["id"],
-                  "name": nameCtrl.text,
-                  "email": emailCtrl.text,
-                  "phone": phoneCtrl.text,
-                  "role_id": roleId,
-                };
+            actions: [
+              TextButton(
+                child: const Text("Kapat"),
+                onPressed: () => Navigator.pop(dialogContext),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                child: const Text(
+                  "Kaydet",
+                  style: TextStyle(color: Colors.white),
+                ),
+                onPressed: () async {
+                  final payload = {
+                    "id": user["id"],
+                    "name": nameCtrl.text,
+                    "email": emailCtrl.text,
+                    "phone": phoneCtrl.text,
+                    "role_id": roleId,
+                  };
 
-                Navigator.pop(context);
+                  Navigator.pop(dialogContext);
 
-                try {
-                  await _adminService.updateUser(
-                    id: payload["id"] as int,
-                    name: payload["name"] as String,
-                    email: payload["email"] as String,
-                    phone: payload["phone"] as String?,
-                    roleId: payload["role_id"] as int,
-                  );
-                  _loadUsers();
-                } catch (e) {
-                  await _showError("Güncelleme hatası:\n$e");
-                  if (mounted) {
-                    await Future.microtask(
-                      () => _showEditUserDialog(payload),
+                  try {
+                    await _adminService.updateUser(
+                      id: payload["id"] as int,
+                      name: payload["name"] as String,
+                      email: payload["email"] as String,
+                      phone: payload["phone"] as String?,
+                      roleId: payload["role_id"] as int,
                     );
+                    _loadUsers();
+                  } catch (e) {
+                    await _showError("Güncelleme hatası:\n$e");
+                    if (mounted) {
+                      await Future.microtask(
+                        () => _showEditUserDialog(payload),
+                      );
+                    }
                   }
-                }
-              },
-            ),
-          ],
+                },
+              ),
+            ],
+          ),
         );
       },
     );
@@ -306,6 +321,8 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
     final magazineTypeService = AdminMagazineTypeService();
     final searchTypeService = AdminNewspaperSubscriptionTypeService();
     final ekService = AdminEkService();
+    final authProvider = context.read<AuthProvider>();
+    final pageMessenger = ScaffoldMessenger.of(context);
 
     String? selectedCategory; // 'book', 'magazine', 'newspaper', 'ek'
     dynamic selectedItem;
@@ -313,7 +330,107 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
     List<dynamic> items = [];
     List<dynamic> subTypes = [];
     bool loadingItems = false;
+    bool loadingExistingSubscription = false;
     bool isSaving = false;
+    Map<String, dynamic>? existingSubscription;
+    DateTime? projectedExpiry;
+    bool willExtendExistingSubscription = false;
+    var previewRequestId = 0;
+
+    Future<void> refreshSubscriptionPreview(
+      BuildContext dialogContext,
+      StateSetter setSt,
+    ) async {
+      final category = selectedCategory;
+      if (category != "magazine" && category != "newspaper") {
+        setSt(() {
+          loadingExistingSubscription = false;
+          existingSubscription = null;
+          projectedExpiry = null;
+          willExtendExistingSubscription = false;
+        });
+        return;
+      }
+
+      int? itemId;
+      int? durationMonths;
+      String? itemType;
+
+      if (category == "magazine") {
+        if (selectedItem == null || selectedSubType == null) {
+          setSt(() {
+            loadingExistingSubscription = false;
+            existingSubscription = null;
+            projectedExpiry = null;
+            willExtendExistingSubscription = false;
+          });
+          return;
+        }
+        itemType = "magazine";
+        itemId = _asInt(selectedItem["id"]);
+        durationMonths = (selectedSubType["duration_months"] as num?)?.toInt();
+      } else {
+        if (selectedItem == null) {
+          setSt(() {
+            loadingExistingSubscription = false;
+            existingSubscription = null;
+            projectedExpiry = null;
+            willExtendExistingSubscription = false;
+          });
+          return;
+        }
+        itemType = "newspaper_subscription";
+        durationMonths = (selectedItem["duration_months"] as num?)?.toInt();
+      }
+
+      if (durationMonths == null || durationMonths <= 0) {
+        setSt(() {
+          loadingExistingSubscription = false;
+          existingSubscription = null;
+          projectedExpiry = null;
+          willExtendExistingSubscription = false;
+        });
+        return;
+      }
+
+      final requestId = ++previewRequestId;
+      setSt(() {
+        loadingExistingSubscription = true;
+        existingSubscription = null;
+        projectedExpiry = null;
+        willExtendExistingSubscription = false;
+      });
+
+      try {
+        final current = await accessService.getLatestGrantableAccessEntry(
+          userId: user["id"] as int,
+          itemType: itemType,
+          itemId: itemId,
+        );
+        if (!dialogContext.mounted || requestId != previewRequestId) return;
+
+        final now = DateTime.now();
+        final currentExpiry = _parseDateTime(current?["expires_at"]);
+        final isCurrentlyActive =
+            currentExpiry != null && currentExpiry.isAfter(now);
+        final baseDate = isCurrentlyActive ? currentExpiry : now;
+
+        setSt(() {
+          loadingExistingSubscription = false;
+          existingSubscription = current;
+          willExtendExistingSubscription = isCurrentlyActive;
+          projectedExpiry = _addMonths(baseDate, durationMonths!);
+        });
+      } catch (_) {
+        if (!dialogContext.mounted || requestId != previewRequestId) return;
+        setSt(() {
+          loadingExistingSubscription = false;
+          existingSubscription = null;
+          projectedExpiry = null;
+          willExtendExistingSubscription = false;
+        });
+      }
+    }
 
     showDialog(
       context: context,
@@ -338,7 +455,7 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       DropdownButtonFormField<String>(
-                        value: selectedCategory,
+                        initialValue: selectedCategory,
                         decoration: const InputDecoration(labelText: "Kategori"),
                         items: const [
                           DropdownMenuItem(value: "book", child: Text("Kitap")),
@@ -357,6 +474,10 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
                             items = [];
                             subTypes = [];
                             loadingItems = true;
+                            loadingExistingSubscription = false;
+                            existingSubscription = null;
+                            projectedExpiry = null;
+                            willExtendExistingSubscription = false;
                           });
 
                           try {
@@ -371,9 +492,10 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
                               items = await ekService.getAll();
                             }
                           } catch (e) {
-                            if (mounted) {
+                            if (ctx.mounted) {
                               ScaffoldMessenger.of(ctx).showSnackBar(
-                                  SnackBar(content: Text("Yükleme hatası: $e")));
+                                SnackBar(content: Text("Yükleme hatası: $e")),
+                              );
                             }
                           } finally {
                             setSt(() => loadingItems = false);
@@ -389,58 +511,139 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
                         const SizedBox(height: 12),
                         if (selectedCategory == "book")
                           DropdownButtonFormField<dynamic>(
-                            value: selectedItem,
+                            initialValue: selectedItem,
                             decoration: const InputDecoration(labelText: "Kitap Seçin"),
                             items: items
                                 .map((i) => DropdownMenuItem(
                                     value: i, child: Text(i["title"] ?? "")))
                                 .toList(),
-                            onChanged: (val) => setSt(() => selectedItem = val),
+                            onChanged: (val) {
+                              setSt(() => selectedItem = val);
+                            },
                           ),
                         if (selectedCategory == "magazine") ...[
                           DropdownButtonFormField<dynamic>(
-                            value: selectedItem,
+                            initialValue: selectedItem,
                             decoration:
                                 const InputDecoration(labelText: "Dergi Seçin"),
                             items: items
                                 .map((i) => DropdownMenuItem(
                                     value: i, child: Text(i["name"] ?? "")))
                                 .toList(),
-                            onChanged: (val) => setSt(() => selectedItem = val),
+                            onChanged: (val) async {
+                              setSt(() => selectedItem = val);
+                              await refreshSubscriptionPreview(context, setSt);
+                            },
                           ),
                           const SizedBox(height: 12),
                           DropdownButtonFormField<dynamic>(
-                            value: selectedSubType,
+                            initialValue: selectedSubType,
                             decoration:
                                 const InputDecoration(labelText: "Abonelik Süresi"),
                             items: subTypes
                                 .map((i) => DropdownMenuItem(
                                     value: i, child: Text(i["title"] ?? "")))
                                 .toList(),
-                            onChanged: (val) => setSt(() => selectedSubType = val),
+                            onChanged: (val) async {
+                              setSt(() => selectedSubType = val);
+                              await refreshSubscriptionPreview(context, setSt);
+                            },
                           ),
                         ],
                         if (selectedCategory == "newspaper")
                           DropdownButtonFormField<dynamic>(
-                            value: selectedItem,
+                            initialValue: selectedItem,
                             decoration:
                                 const InputDecoration(labelText: "Abonelik Tipi"),
                             items: items
                                 .map((i) => DropdownMenuItem(
                                     value: i, child: Text(i["title"] ?? "")))
                                 .toList(),
-                            onChanged: (val) => setSt(() => selectedItem = val),
+                            onChanged: (val) async {
+                              setSt(() => selectedItem = val);
+                              await refreshSubscriptionPreview(context, setSt);
+                            },
                           ),
                         if (selectedCategory == "ek")
                           DropdownButtonFormField<dynamic>(
-                            value: selectedItem,
+                            initialValue: selectedItem,
                             decoration: const InputDecoration(labelText: "Ek Seçin"),
                             items: items
                                 .map((i) => DropdownMenuItem(
                                     value: i, child: Text(i["ad"] ?? "")))
                                 .toList(),
-                            onChanged: (val) => setSt(() => selectedItem = val),
+                            onChanged: (val) {
+                              setSt(() => selectedItem = val);
+                            },
                           ),
+                        if ((selectedCategory == "magazine" ||
+                                selectedCategory == "newspaper") &&
+                            (loadingExistingSubscription ||
+                                projectedExpiry != null)) ...[
+                          const SizedBox(height: 12),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.red.shade50,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: Colors.red.shade100),
+                            ),
+                            child: loadingExistingSubscription
+                                ? const Row(
+                                    children: [
+                                      SizedBox(
+                                        width: 18,
+                                        height: 18,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      ),
+                                      SizedBox(width: 12),
+                                      Expanded(
+                                        child: Text(
+                                          "Mevcut abonelik süresi kontrol ediliyor...",
+                                        ),
+                                      ),
+                                    ],
+                                  )
+                                : Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        willExtendExistingSubscription
+                                            ? "Mevcut aktif abonelik bulundu. Yeni tanımlama mevcut sürenin üzerine eklenecek."
+                                            : (_parseDateTime(
+                                                        existingSubscription?[
+                                                            "expires_at"],
+                                                      ) !=
+                                                      null
+                                                  ? "Önceki abonelik süresi dolmuş. Yeni tanımlama yeni bir dönem başlatacak."
+                                                  : "Bu kullanıcı için aktif abonelik bulunmuyor. Yeni tanımlama yeni bir dönem başlatacak."),
+                                        style: const TextStyle(height: 1.4),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      if (_parseDateTime(existingSubscription?[
+                                            "expires_at"]) !=
+                                          null)
+                                        Text(
+                                          "Mevcut bitiş: ${_formatDate(_parseDateTime(existingSubscription?["expires_at"]))}",
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      if (projectedExpiry != null)
+                                        Text(
+                                          "Yeni bitiş: ${_formatDate(projectedExpiry)}",
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                          ),
+                        ],
                       ],
                     ],
                   ),
@@ -484,8 +687,7 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
                                             as num?)
                                         ?.toInt() ??
                                     1;
-                                expiresAt = DateTime.now()
-                                    .add(Duration(days: 30 * months));
+                                expiresAt = _addMonths(DateTime.now(), months);
                                 price = 0; // Manuel tanımlama
                               } else if (selectedCategory == "newspaper") {
                                 itemType = "newspaper_subscription";
@@ -494,8 +696,7 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
                                     (selectedItem["duration_months"] as num?)
                                             ?.toInt() ??
                                         1;
-                                expiresAt = DateTime.now()
-                                    .add(Duration(days: 30 * months));
+                                expiresAt = _addMonths(DateTime.now(), months);
                                 price = 0;
                               } else if (selectedCategory == "ek") {
                                 itemType = "ek";
@@ -519,17 +720,53 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
                                 ],
                               );
 
-                              if (mounted) {
-                                Navigator.pop(ctx);
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                        content:
-                                            Text("Erişim başarıyla tanımlandı")));
+                              try {
+                                final actor = authProvider.user;
+                                await _auditService.logEntry(
+                                  userId: user["id"] as int,
+                                  actorUserId: actor?.id,
+                                  action: willExtendExistingSubscription
+                                      ? "extend"
+                                      : "grant",
+                                  itemType: itemType,
+                                  itemId: itemId,
+                                  itemTitle: _resolveGrantItemTitle(
+                                    selectedCategory: selectedCategory,
+                                    selectedItem: selectedItem,
+                                  ),
+                                  accessSource: willExtendExistingSubscription
+                                      ? (existingSubscription?["source"]
+                                                ?.toString() ??
+                                            "user_content_access")
+                                      : "user_content_access",
+                                  previousExpiresAt: _parseDateTime(
+                                    existingSubscription?["expires_at"],
+                                  ),
+                                  newExpiresAt: projectedExpiry ?? expiresAt,
+                                  note: "Admin paneli erişim tanımlama",
+                                );
+                              } catch (_) {
+                                // Audit log migration'ı henüz uygulanmadıysa ana akışı bozma.
                               }
+
+                              if (!mounted || !ctx.mounted) return;
+                              Navigator.pop(ctx);
+                              pageMessenger.showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    willExtendExistingSubscription &&
+                                            projectedExpiry != null
+                                        ? "Mevcut abonelik ${_formatDate(projectedExpiry)} tarihine kadar uzatıldı."
+                                        : "Erişim başarıyla tanımlandı.",
+                                  ),
+                                ),
+                              );
                             } catch (e) {
                               setSt(() => isSaving = false);
+                              if (!ctx.mounted) return;
                               ScaffoldMessenger.of(ctx).showSnackBar(
-                                  SnackBar(content: Text("Hata: $e")));
+                                SnackBar(content: Text("Hata: $e")),
+                              );
                             }
                           },
                     child: const Text("Tanımla"),
@@ -590,7 +827,7 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
               borderRadius: BorderRadius.circular(16),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.04),
+                  color: Colors.black.withValues(alpha: 0.04),
                   blurRadius: 8,
                   offset: const Offset(0, 4),
                 ),
@@ -602,7 +839,7 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
                   constraints: const BoxConstraints(minWidth: double.infinity),
                   child: DataTable(
                     headingRowColor:
-                        MaterialStateProperty.all(Colors.grey.shade100),
+                        WidgetStateProperty.all(Colors.grey.shade100),
                     columns: const [
                       DataColumn(label: Text("#")),
                       DataColumn(label: Text("Ad Soyad")),
@@ -656,5 +893,47 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
         ),
       ],
     );
+  }
+
+  DateTime _addMonths(DateTime date, int months) {
+    return DateTime(date.year, date.month + months, date.day);
+  }
+
+  DateTime? _parseDateTime(dynamic value) {
+    final raw = value?.toString().trim();
+    if (raw == null || raw.isEmpty) return null;
+    return DateTime.tryParse(raw);
+  }
+
+  String _formatDate(DateTime? date) {
+    if (date == null) return "-";
+    final day = date.day.toString().padLeft(2, "0");
+    final month = date.month.toString().padLeft(2, "0");
+    return "$day.$month.${date.year}";
+  }
+
+  int? _asInt(dynamic value) {
+    if (value is int) return value;
+    if (value == null) return null;
+    return int.tryParse(value.toString());
+  }
+
+  String? _resolveGrantItemTitle({
+    required String? selectedCategory,
+    required dynamic selectedItem,
+  }) {
+    if (selectedItem == null) return null;
+    switch (selectedCategory) {
+      case "book":
+        return selectedItem["title"]?.toString();
+      case "magazine":
+        return selectedItem["name"]?.toString();
+      case "newspaper":
+        return selectedItem["title"]?.toString();
+      case "ek":
+        return selectedItem["ad"]?.toString();
+      default:
+        return null;
+    }
   }
 }

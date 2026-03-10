@@ -79,6 +79,8 @@ class ProductDetailScreen extends StatefulWidget {
 }
 
 class _ProductDetailScreenState extends State<ProductDetailScreen> {
+  static const int _reviewCommentMaxLength = 1000;
+
   final _reviewService = ReviewService();
   final _magazineTypePriceService = MagazineTypePriceService();
   final _newspaperTypePriceService = NewspaperSubscriptionTypeService();
@@ -567,6 +569,31 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     return hasSubscription || windowAccess;
   }
 
+  bool _canReviewWithAccess({
+    required AccessProvider access,
+    RevenueCatService? revenueCat,
+  }) {
+    final target = _reviewTarget();
+    if (target == null) return false;
+
+    if (widget.detail.forceAccess) return true;
+
+    switch (widget.detail.type) {
+      case CartItemType.magazineIssue:
+        return _hasDirectMagazineIssueAccess(context) ||
+            _hasMagazineIssueSubscriptionWindowAccess(context);
+      case CartItemType.newspaperSubscription:
+        final rc = revenueCat ?? context.read<RevenueCatService>();
+        return access.hasAccess("newspaper_subscription") ||
+            rc.isYeniasyaProActive;
+      default:
+        return access.hasAccess(
+          target["productType"] as String,
+          itemId: target["productId"] as int?,
+        );
+    }
+  }
+
   String _magazineIssueViewLabel(BuildContext context) {
     if (widget.detail.type != CartItemType.magazineIssue) {
       return "Dergiyi Görüntüle";
@@ -910,14 +937,13 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     }
 
     final access = context.read<AccessProvider>();
-    final hasAccess = access.hasAccess(
-      target["productType"] as String,
-      itemId: target["productId"] as int?,
-    );
+    final hasAccess = _canReviewWithAccess(access: access);
     if (!hasAccess) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text("Satın aldığınız ürünlere yorum ekleyebilirsiniz."),
+          content: Text(
+            "Satın aldığınız veya aboneliğinizin kapsadığı ürünlere yorum ekleyebilirsiniz.",
+          ),
         ),
       );
       return;
@@ -928,6 +954,14 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text("Lütfen yorum yazın.")));
+      return;
+    }
+    if (comment.length > _reviewCommentMaxLength) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Yorum en fazla 1.000 karakter olabilir."),
+        ),
+      );
       return;
     }
 
@@ -967,9 +1001,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       return const SizedBox.shrink();
     }
     final access = context.watch<AccessProvider>();
-    final canReview = access.hasAccess(
-      target["productType"] as String,
-      itemId: target["productId"] as int?,
+    final revenueCat = context.watch<RevenueCatService>();
+    final canReview = _canReviewWithAccess(
+      access: access,
+      revenueCat: revenueCat,
     );
 
     return Column(
@@ -1079,12 +1114,13 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           TextField(
             controller: _commentCtrl,
             maxLines: 3,
+            maxLength: _reviewCommentMaxLength,
             decoration: InputDecoration(
               hintText: user == null
                   ? "Yorum yapmak için giriş yapın"
                   : (canReview
                         ? "Yorumunuzu yazın"
-                        : "Sadece satın alınan ürünlere yorum yapılabilir"),
+                        : "Sadece satın aldığınız veya aboneliğinizin kapsadığı ürünlere yorum yapılabilir"),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(10),
               ),
@@ -1124,7 +1160,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             const Padding(
               padding: EdgeInsets.only(top: 6.0),
               child: Text(
-                "Bu ürünü satın aldıktan sonra yorum yapabilirsiniz.",
+                "Bu ürünü satın aldıktan veya erişim sağlayan aboneliğiniz aktif olduktan sonra yorum yapabilirsiniz.",
                 style: TextStyle(color: Colors.black54, fontSize: 12),
               ),
             ),

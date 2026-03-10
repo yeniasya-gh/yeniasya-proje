@@ -34,7 +34,7 @@ class AuthApiService {
     );
 
     if (resp.statusCode < 200 || resp.statusCode >= 300) {
-      throw Exception("Register failed (${resp.statusCode}): ${resp.body}");
+      throw Exception(_registerError(resp));
     }
     final data = jsonDecode(resp.body) as Map<String, dynamic>;
     if (data["ok"] != true) {
@@ -59,13 +59,28 @@ class AuthApiService {
       body: jsonEncode({"email": email, "password": password}),
     );
 
+    Map<String, dynamic>? payload;
+    try {
+      payload = jsonDecode(resp.body) as Map<String, dynamic>;
+    } catch (_) {
+      payload = null;
+    }
+
     if (resp.statusCode == 401) {
       throw Exception("INVALID_CREDENTIALS");
     }
-    if (resp.statusCode < 200 || resp.statusCode >= 300) {
-      throw Exception("Login failed (${resp.statusCode}): ${resp.body}");
+    if (resp.statusCode == 403 &&
+        payload?["code"]?.toString() == "EMAIL_NOT_VERIFIED") {
+      throw Exception("EMAIL_NOT_VERIFIED");
     }
-    final data = jsonDecode(resp.body) as Map<String, dynamic>;
+    if (resp.statusCode < 200 || resp.statusCode >= 300) {
+      throw Exception(
+        _responseMessage(resp).isNotEmpty
+            ? _responseMessage(resp)
+            : "Login failed (${resp.statusCode})",
+      );
+    }
+    final data = payload ?? (jsonDecode(resp.body) as Map<String, dynamic>);
     if (data["ok"] != true) {
       throw Exception(data["message"]?.toString() ?? "Login failed");
     }
@@ -120,6 +135,48 @@ class AuthApiService {
     return data;
   }
 
+  Future<Map<String, dynamic>> socialRegister({
+    required String email,
+    required String name,
+    required String provider,
+    String? phone,
+  }) async {
+    final uri = Uri.parse("$_baseUrl/auth/social-register");
+    final headers = {
+      "content-type": "application/json",
+      if (AuthTokenStore.token != null && AuthTokenStore.token!.isNotEmpty)
+        "Authorization": "Bearer ${AuthTokenStore.token}",
+    };
+    final resp = await _client.post(
+      uri,
+      headers: headers,
+      body: jsonEncode({
+        "email": email,
+        "name": name,
+        "provider": provider,
+        if (phone != null && phone.trim().isNotEmpty) "phone": phone.trim(),
+      }),
+    );
+
+    if (resp.statusCode < 200 || resp.statusCode >= 300) {
+      throw Exception(
+        _responseMessage(resp).isNotEmpty
+            ? _responseMessage(resp)
+            : "SOCIAL_REGISTER_FAILED (${resp.statusCode})",
+      );
+    }
+
+    final data = jsonDecode(resp.body) as Map<String, dynamic>;
+    if (data["ok"] != true) {
+      throw Exception(
+        data["error"]?.toString() ??
+            data["message"]?.toString() ??
+            "SOCIAL_REGISTER_FAILED",
+      );
+    }
+    return data;
+  }
+
   Future<Map<String, dynamic>> guestToken() async {
     final uri = Uri.parse("$_baseUrl/auth/guest-token");
     final headers = {"content-type": "application/json"};
@@ -147,6 +204,36 @@ class AuthApiService {
     }
 
     throw Exception(_requestPasswordResetError(resp));
+  }
+
+  Future<void> requestEmailVerification({required String email}) async {
+    final uri = Uri.parse("$_baseUrl/auth/email-verification/request");
+    final resp = await _client.post(
+      uri,
+      headers: const {"content-type": "application/json"},
+      body: jsonEncode({"email": email.trim()}),
+    );
+
+    if (resp.statusCode >= 200 && resp.statusCode < 300) {
+      return;
+    }
+
+    throw Exception(_requestEmailVerificationError(resp));
+  }
+
+  Future<void> confirmEmailVerification({required String token}) async {
+    final uri = Uri.parse("$_baseUrl/auth/email-verification/confirm");
+    final resp = await _client.post(
+      uri,
+      headers: const {"content-type": "application/json"},
+      body: jsonEncode({"token": token.trim()}),
+    );
+
+    if (resp.statusCode >= 200 && resp.statusCode < 300) {
+      return;
+    }
+
+    throw Exception(_confirmEmailVerificationError(resp));
   }
 
   Future<void> confirmPasswordReset({
@@ -220,6 +307,57 @@ class AuthApiService {
         return message.isNotEmpty
             ? message
             : "Şifre sıfırlama isteği gönderilemedi.";
+    }
+  }
+
+  String _registerError(http.Response resp) {
+    final message = _responseMessage(resp);
+    switch (resp.statusCode) {
+      case 400:
+        return message.isNotEmpty ? message : "Üyelik bilgileri geçersiz.";
+      case 409:
+        return message.isNotEmpty
+            ? message
+            : "Bu e-posta adresiyle kayıtlı bir hesap zaten var.";
+      case 429:
+        return "Çok fazla deneme yapıldı. Lütfen biraz sonra tekrar deneyin.";
+      default:
+        return message.isNotEmpty ? message : "Üyelik işlemi tamamlanamadı.";
+    }
+  }
+
+  String _requestEmailVerificationError(http.Response resp) {
+    final message = _responseMessage(resp);
+    switch (resp.statusCode) {
+      case 404:
+        return "Hesap aktivasyon servisi henüz aktif değil.";
+      case 429:
+        return "Çok fazla deneme yapıldı. Lütfen biraz sonra tekrar deneyin.";
+      default:
+        return message.isNotEmpty
+            ? message
+            : "Aktivasyon maili gönderilemedi.";
+    }
+  }
+
+  String _confirmEmailVerificationError(http.Response resp) {
+    final message = _responseMessage(resp);
+    switch (resp.statusCode) {
+      case 400:
+      case 401:
+        return message.isNotEmpty
+            ? message
+            : "Aktivasyon bağlantısı geçersiz veya kullanılmış.";
+      case 410:
+        return message.isNotEmpty
+            ? message
+            : "Aktivasyon bağlantısının süresi dolmuş.";
+      case 404:
+        return "Hesap aktivasyon servisi henüz aktif değil.";
+      case 429:
+        return "Çok fazla deneme yapıldı. Lütfen biraz sonra tekrar deneyin.";
+      default:
+        return message.isNotEmpty ? message : "Hesap aktifleştirilemedi.";
     }
   }
 

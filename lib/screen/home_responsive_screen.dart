@@ -1,10 +1,8 @@
 import 'dart:async';
 import 'dart:math';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../services/access_provider.dart';
 import '/screen/footer/faq_page.dart';
 import '/screen/footer/yeni_asya_footer.dart';
@@ -41,6 +39,7 @@ import 'attachment/ek_detail_screen.dart';
 import 'slider/slider_detail_screen.dart';
 import 'slider/slider_webview_screen.dart';
 import 'contact/contact_form.dart';
+import 'login/email_verification_screen.dart';
 import 'login/password_reset_screen.dart';
 import 'checkout/payment_web_return_screen.dart';
 
@@ -374,7 +373,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
   }) {
     final rawUrl = viewInfo["url"]?.toString().trim() ?? "";
     final source = viewInfo["source"]?.toString().trim().toLowerCase() ?? "";
-    if (source != "legacy") return rawUrl;
+    if (source != "legacy" || rawUrl.isNotEmpty) return rawUrl;
 
     final responseDate = viewInfo["date"]?.toString().trim() ?? "";
     final fileNameMatch = RegExp(
@@ -385,7 +384,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         ? responseDate
         : fileNameMatch?.group(1) ?? _formatIsoDateOnly(fallbackDate);
 
-    return "https://www.yeniasya.com.tr/Sites/YeniAsya/Upload/files/EPub/$isoDate.pdf";
+    return "/newspaper/legacy-file?date=$isoDate";
   }
 
   Future<void> _openArchivedNewspaperForDate(
@@ -409,13 +408,6 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         throw Exception("E-gazete bağlantısı alınamadı.");
       }
       if (!context.mounted) return;
-      if (kIsWeb && source == "legacy") {
-        final uri = Uri.tryParse(pdfUrl);
-        if (uri == null || !await launchUrl(uri, webOnlyWindowName: "_blank")) {
-          throw Exception("Eski tarihli e-gazete bağlantısı açılamadı.");
-        }
-        return;
-      }
       await PdfOpenHelper.downloadAndOpen(
         context,
         url: pdfUrl,
@@ -1164,12 +1156,15 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         final expiresAt = expiresAtRaw == null
             ? null
             : DateTime.tryParse(expiresAtRaw);
+        final isActive = _isLibraryAccessEntryActive(entry);
         return _AccessItem(
           title: "Gazete aboneliği",
           subtitle: expiresAt != null
               ? "Bitiş Tarihi: ${_formatDateShort(expiresAt)}"
               : "Abonelik aktif",
           icon: _iconForType(type),
+          statusLabel: isActive ? "Aktif" : "Pasif",
+          statusColor: isActive ? Colors.green : Colors.grey,
           onTap: null,
         );
       default:
@@ -1395,9 +1390,39 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
                                   subtitle: data.subtitle != null
                                       ? Text(data.subtitle!)
                                       : null,
-                                  trailing: data.onTap != null
-                                      ? const Icon(Icons.chevron_right)
-                                      : const SizedBox.shrink(),
+                                  trailing: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      if (data.statusLabel != null)
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 10,
+                                            vertical: 4,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: (data.statusColor ??
+                                                    Colors.grey)
+                                                .withValues(alpha: 0.12),
+                                            borderRadius:
+                                                BorderRadius.circular(999),
+                                          ),
+                                          child: Text(
+                                            data.statusLabel!,
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w700,
+                                              color:
+                                                  data.statusColor ??
+                                                  Colors.grey,
+                                            ),
+                                          ),
+                                        ),
+                                      if (data.onTap != null) ...[
+                                        const SizedBox(width: 8),
+                                        const Icon(Icons.chevron_right),
+                                      ],
+                                    ],
+                                  ),
                                   onTap: data.onTap,
                                 );
                               },
@@ -1411,6 +1436,15 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         );
       },
     );
+  }
+
+  bool _isLibraryAccessEntryActive(Map<String, dynamic> entry) {
+    if (entry["is_active"] == false) return false;
+    final expiresAtRaw = entry["expires_at"]?.toString();
+    if (expiresAtRaw == null || expiresAtRaw.isEmpty) return true;
+    final expiresAt = DateTime.tryParse(expiresAtRaw);
+    if (expiresAt == null) return true;
+    return expiresAt.isAfter(DateTime.now());
   }
 
   Future<void> _openMagazineIssues(int magazineId) async {
@@ -1593,6 +1627,12 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
 
     if (path == "/sifre-sifirla" || path == "/reset-password") {
       return PasswordResetScreen(
+        token: widget.initialUri?.queryParameters["token"],
+        email: widget.initialUri?.queryParameters["email"],
+      );
+    }
+    if (path == "/hesap-aktivasyon" || path == "/verify-email") {
+      return EmailVerificationScreen(
         token: widget.initialUri?.queryParameters["token"],
         email: widget.initialUri?.queryParameters["email"],
       );
@@ -4841,7 +4881,16 @@ class _AccessItem {
   final String title;
   final String? subtitle;
   final IconData? icon;
+  final String? statusLabel;
+  final Color? statusColor;
   final VoidCallback? onTap;
 
-  _AccessItem({required this.title, this.subtitle, this.icon, this.onTap});
+  _AccessItem({
+    required this.title,
+    this.subtitle,
+    this.icon,
+    this.statusLabel,
+    this.statusColor,
+    this.onTap,
+  });
 }

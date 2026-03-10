@@ -106,6 +106,7 @@ class _SocialRegisterBottomSheetState extends State<SocialRegisterBottomSheet> {
                             final user = await auth.registerSocialUser(
                               email: widget.draft.email,
                               name: nameCtrl.text,
+                              provider: widget.draft.provider,
                               phone: phoneCtrl.text.isEmpty
                                   ? null
                                   : normalizePhoneNumber(phoneCtrl.text),

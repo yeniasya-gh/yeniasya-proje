@@ -30,7 +30,9 @@ class _AdminReviewsPageState extends State<AdminReviewsPage> {
     } catch (e) {
       final parsed = ErrorManager.parseGraphQLError(e.toString());
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(parsed)));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(parsed)));
       }
     }
     setState(() => _loading = false);
@@ -43,7 +45,9 @@ class _AdminReviewsPageState extends State<AdminReviewsPage> {
     } catch (e) {
       final parsed = ErrorManager.parseGraphQLError(e.toString());
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(parsed)));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(parsed)));
       }
     }
   }
@@ -53,12 +57,16 @@ class _AdminReviewsPageState extends State<AdminReviewsPage> {
       await _service.deleteReview(id);
       await _load();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Yorum silindi")));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text("Yorum silindi")));
       }
     } catch (e) {
       final parsed = ErrorManager.parseGraphQLError(e.toString());
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(parsed)));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(parsed)));
       }
     }
   }
@@ -71,7 +79,10 @@ class _AdminReviewsPageState extends State<AdminReviewsPage> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text("Yorumlar", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+            const Text(
+              "Yorumlar",
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+            ),
             IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
           ],
         ),
@@ -80,8 +91,8 @@ class _AdminReviewsPageState extends State<AdminReviewsPage> {
           child: _loading
               ? const AdminLoadingIndicator()
               : _reviews.isEmpty
-                  ? const Center(child: Text("Yorum bulunamadı."))
-                  : _table(),
+              ? const Center(child: Text("Yorum bulunamadı."))
+              : _table(),
         ),
       ],
     );
@@ -95,7 +106,11 @@ class _AdminReviewsPageState extends State<AdminReviewsPage> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8, offset: const Offset(0, 4)),
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
         ],
       ),
       child: LayoutBuilder(
@@ -105,7 +120,9 @@ class _AdminReviewsPageState extends State<AdminReviewsPage> {
             child: ConstrainedBox(
               constraints: BoxConstraints(minWidth: constraints.maxWidth),
               child: DataTable(
-                headingRowColor: MaterialStateProperty.all(Colors.grey.shade100),
+                headingRowColor: MaterialStateProperty.all(
+                  Colors.grey.shade100,
+                ),
                 columnSpacing: 18,
                 dataRowHeight: 64,
                 columns: const [
@@ -121,12 +138,36 @@ class _AdminReviewsPageState extends State<AdminReviewsPage> {
                 rows: _reviews.map((r) {
                   final status = (r["status"] ?? "").toString();
                   return DataRow(
+                    onSelectChanged: (_) => _openReviewDetail(r),
                     cells: [
                       DataCell(Text(_productTypeLabel(r["product_type"]))),
                       DataCell(Text(_productName(r))),
-                      DataCell(Text((r["user_name"] ?? r["user_email"] ?? "Kullanıcı #${r["user_id"] ?? "-"}").toString())),
+                      DataCell(
+                        Text(
+                          (r["user_name"] ??
+                                  r["user_email"] ??
+                                  "Kullanıcı #${r["user_id"] ?? "-"}")
+                              .toString(),
+                        ),
+                      ),
                       DataCell(Text("⭐ ${r["rating"] ?? "-"}")),
-                      DataCell(SizedBox(width: 240, child: Text(r["comment"]?.toString() ?? "-", maxLines: 2, overflow: TextOverflow.ellipsis))),
+                      DataCell(
+                        SizedBox(
+                          width: 240,
+                          child: InkWell(
+                            onTap: () => _openReviewDetail(r),
+                            borderRadius: BorderRadius.circular(8),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 6),
+                              child: Text(
+                                r["comment"]?.toString() ?? "-",
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
                       DataCell(_statusChip(status)),
                       DataCell(Text(_formatDate(r["created_at"]))),
                       DataCell(
@@ -134,17 +175,41 @@ class _AdminReviewsPageState extends State<AdminReviewsPage> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             IconButton(
-                              icon: const Icon(Icons.check_circle, color: Colors.green),
+                              icon: const Icon(
+                                Icons.visibility_outlined,
+                                color: Colors.blueGrey,
+                              ),
+                              tooltip: "Detay",
+                              onPressed: () => _openReviewDetail(r),
+                            ),
+                            IconButton(
+                              icon: const Icon(
+                                Icons.check_circle,
+                                color: Colors.green,
+                              ),
                               tooltip: "Onayla",
-                              onPressed: status == "published" ? null : () => _updateStatus(r["id"] as int, "published"),
+                              onPressed: status == "published"
+                                  ? null
+                                  : () => _updateStatus(
+                                      r["id"] as int,
+                                      "published",
+                                    ),
                             ),
                             IconButton(
                               icon: const Icon(Icons.block, color: Colors.red),
                               tooltip: "Reddet",
-                              onPressed: status == "rejected" ? null : () => _updateStatus(r["id"] as int, "rejected"),
+                              onPressed: status == "rejected"
+                                  ? null
+                                  : () => _updateStatus(
+                                      r["id"] as int,
+                                      "rejected",
+                                    ),
                             ),
                             IconButton(
-                              icon: const Icon(Icons.delete_outline, color: Colors.black54),
+                              icon: const Icon(
+                                Icons.delete_outline,
+                                color: Colors.black54,
+                              ),
                               tooltip: "Sil",
                               onPressed: () => _confirmDelete(r["id"] as int),
                             ),
@@ -180,8 +245,14 @@ class _AdminReviewsPageState extends State<AdminReviewsPage> {
     }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-      child: Text(label, style: TextStyle(color: color, fontWeight: FontWeight.w600)),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(color: color, fontWeight: FontWeight.w600),
+      ),
     );
   }
 
@@ -208,7 +279,97 @@ class _AdminReviewsPageState extends State<AdminReviewsPage> {
   }
 
   String _productName(Map<String, dynamic> r) {
-    return r["product_title"]?.toString() ?? "ID ${r["product_id"]?.toString() ?? "-"}";
+    return r["product_title"]?.toString() ??
+        "ID ${r["product_id"]?.toString() ?? "-"}";
+  }
+
+  void _openReviewDetail(Map<String, dynamic> review) {
+    final userLabel =
+        (review["user_name"] ??
+                review["user_email"] ??
+                "Kullanıcı #${review["user_id"] ?? "-"}")
+            .toString();
+    final comment = review["comment"]?.toString().trim() ?? "-";
+    final rating = review["rating"]?.toString() ?? "-";
+    final status = (review["status"] ?? "").toString();
+
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text("Yorum Detayı"),
+        content: SizedBox(
+          width: 640,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _detailRow(
+                  "Ürün Tipi",
+                  _productTypeLabel(review["product_type"]),
+                ),
+                _detailRow("Ürün", _productName(review)),
+                _detailRow("Kullanıcı", userLabel),
+                _detailRow("Puan", "⭐ $rating"),
+                _detailRow("Durum", _statusLabel(status)),
+                _detailRow("Tarih", _formatDate(review["created_at"])),
+                const SizedBox(height: 12),
+                const Text(
+                  "Yorum",
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade50,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.grey.shade200),
+                  ),
+                  child: SelectableText(comment.isEmpty ? "-" : comment),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Kapat"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _detailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: RichText(
+        text: TextSpan(
+          style: const TextStyle(color: Colors.black87, fontSize: 14),
+          children: [
+            TextSpan(
+              text: "$label: ",
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+            TextSpan(text: value),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _statusLabel(String status) {
+    switch (status) {
+      case "published":
+        return "Onaylandı";
+      case "rejected":
+        return "Reddedildi";
+      default:
+        return "Beklemede";
+    }
   }
 
   void _confirmDelete(int id) {
@@ -218,7 +379,10 @@ class _AdminReviewsPageState extends State<AdminReviewsPage> {
         title: const Text("Yorumu sil"),
         content: const Text("Bu yorumu silmek istiyor musunuz?"),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("İptal")),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("İptal"),
+          ),
           TextButton(
             onPressed: () {
               Navigator.pop(context);

@@ -31,13 +31,14 @@ class PdfViewerScreen extends StatefulWidget {
 }
 
 class _PdfViewerScreenState extends State<PdfViewerScreen> {
-  static const double _minZoomLevel = 1.0;
+  static const double _defaultZoomLevel = 0.5;
+  static const double _minZoomLevel = _defaultZoomLevel;
   static const double _maxZoomLevel = 5.0;
 
   Uint8List? _bytes;
   bool _loading = true;
   String? _error;
-  double _zoom = 1.0;
+  double _zoom = _defaultZoomLevel;
   int? _lastSavedPage;
   bool _sidebarOpen = true;
   _PdfSidebarTab _sidebarTab = _PdfSidebarTab.bookmarks;
@@ -357,12 +358,14 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
         if (!mounted) return;
         final totalPages = details.document.pages.count;
         final targetPage = _clampPage(_lastSavedPage ?? 1, totalPages);
+        final initialZoom = _zoom.clamp(_minZoomLevel, _maxZoomLevel);
         setState(() {
-          _zoom = _controller.zoomLevel;
+          _zoom = initialZoom;
           _syncPageJumpField(targetPage);
         });
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted) return;
+          _controller.zoomLevel = initialZoom;
           if (targetPage > 1) {
             _controller.jumpToPage(targetPage);
           }
@@ -504,7 +507,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
                   ),
                   const SizedBox(width: 6),
                   TextButton(
-                    onPressed: () => _setZoom(1.0),
+                    onPressed: () => _setZoom(_defaultZoomLevel),
                     child: Text("${(_zoom * 100).round()}%"),
                   ),
                 ],
