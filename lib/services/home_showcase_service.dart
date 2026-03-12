@@ -42,6 +42,7 @@ class HomeShowcaseService {
     final data = await _hasura.graphQLRequest(
       query: onlyActive ? activeQuery : baseQuery,
       variables: {"type": type},
+      timeout: HasuraManager.homeTimeout,
     );
     return List<Map<String, dynamic>>.from(data["home_showcase"] ?? []);
   }

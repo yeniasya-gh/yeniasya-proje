@@ -18,6 +18,7 @@ class HasuraService {
     required String query,
     Map<String, dynamic>? variables,
     String? operationName,
+    Duration? timeoutOverride,
   }) {
     final token = AuthTokenStore.token?.trim();
     if (token == null || token.isEmpty) {
@@ -39,6 +40,6 @@ class HasuraService {
             if (operationName != null) "operationName": operationName,
           }),
         )
-        .timeout(timeout);
+        .timeout(timeoutOverride ?? timeout);
   }
 }

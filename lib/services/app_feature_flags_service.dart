@@ -60,7 +60,10 @@ class AppFeatureFlagsService {
       }
     ''';
 
-    final data = await _hasura.graphQLRequest(query: query);
+    final data = await _hasura.graphQLRequest(
+      query: query,
+      timeout: HasuraManager.homeTimeout,
+    );
     final rawItems = data["app_feature_flags"];
     if (rawItems is! List || rawItems.isEmpty) {
       return AppFeatureVisibility(

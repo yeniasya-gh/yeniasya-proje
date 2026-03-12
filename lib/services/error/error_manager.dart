@@ -35,6 +35,12 @@ class ErrorManager {
       return "Sunucuya bağlanılamadı. İnternet bağlantınızı kontrol edin.";
     }
 
+    if (msg.contains("timeoutexception") ||
+        msg.contains("future not completed") ||
+        msg.contains("zaman aşımı")) {
+      return "Sunucu yanıt vermedi. Lütfen tekrar deneyin.";
+    }
+
     // 📌 Default fallback
     return "Bir hata oluştu. Lütfen tekrar deneyin.";
   }

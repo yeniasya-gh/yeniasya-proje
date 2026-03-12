@@ -9,6 +9,7 @@ import 'hasura_service.dart';
 class HasuraManager {
   HasuraManager._internal();
   static final HasuraManager instance = HasuraManager._internal();
+  static const Duration homeTimeout = Duration(seconds: 30);
   final LoggingService _logger = LoggingService();
 
   final HasuraService _service = HasuraService();
@@ -16,6 +17,7 @@ class HasuraManager {
   Future<Map<String, dynamic>> graphQLRequest({
     required String query,
     Map<String, dynamic>? variables,
+    Duration? timeout,
   }) async {
     LoadingManager.instance.show();
     var logged = false;
@@ -34,6 +36,7 @@ class HasuraManager {
       final response = await _service.post(
         query: query,
         variables: variables,
+        timeoutOverride: timeout,
       );
 
       if (kDebugMode) {

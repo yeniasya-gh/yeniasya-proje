@@ -41,7 +41,10 @@ class AdminSliderService {
       }
     ''';
 
-    final data = await _hasura.graphQLRequest(query: onlyActive ? activeQuery : baseQuery);
+    final data = await _hasura.graphQLRequest(
+      query: onlyActive ? activeQuery : baseQuery,
+      timeout: onlyActive ? HasuraManager.homeTimeout : null,
+    );
     return List<Map<String, dynamic>>.from(data["slider"] ?? []);
   }
 

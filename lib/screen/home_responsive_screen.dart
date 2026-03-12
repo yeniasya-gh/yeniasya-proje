@@ -26,7 +26,9 @@ import '../services/revenuecat_service.dart';
 import '../services/app_feature_flags_service.dart';
 import '../services/upload_service.dart';
 import '../services/home_showcase_service.dart';
+import '../services/home_bootstrap_service.dart';
 import '../services/newspaper_subscription_type_service.dart';
+import '../services/logging_service.dart';
 import '../screen/profile/pdf_viewer_screen.dart';
 import '../utils/cart_feedback.dart';
 import '../utils/price_utils.dart';
@@ -44,6 +46,28 @@ import 'login/password_reset_screen.dart';
 import 'checkout/payment_web_return_screen.dart';
 
 enum HomeSection { home, magazines, books, newspapers, attachments }
+
+class _HomeLoadBundle {
+  final List<Map<String, dynamic>> sliders;
+  final List<Map<String, dynamic>> magazines;
+  final List<Map<String, dynamic>> books;
+  final List<Map<String, dynamic>> newspapers;
+  final List<Map<String, dynamic>> attachments;
+  final List<Map<String, dynamic>> homeBookEntries;
+  final List<Map<String, dynamic>> homeMagazineEntries;
+  final Map<String, String> failedSources;
+
+  const _HomeLoadBundle({
+    required this.sliders,
+    required this.magazines,
+    required this.books,
+    required this.newspapers,
+    required this.attachments,
+    required this.homeBookEntries,
+    required this.homeMagazineEntries,
+    required this.failedSources,
+  });
+}
 
 class HomeResponsiveScreen extends StatefulWidget {
   final Uri? initialUri;
@@ -66,10 +90,12 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
   final OrderService _orderService = OrderService();
   final UserContentAccessService _accessService = UserContentAccessService();
   final HomeShowcaseService _homeShowcaseService = HomeShowcaseService();
+  final HomeBootstrapService _homeBootstrapService = HomeBootstrapService();
   final NewspaperSubscriptionTypeService _newspaperTypePriceService =
       NewspaperSubscriptionTypeService();
   final AppFeatureFlagsService _appFeatureFlagsService =
       AppFeatureFlagsService();
+  final LoggingService _loggingService = LoggingService();
 
   final PageController _sliderController = PageController();
   Timer? _sliderTimer;
@@ -95,6 +121,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
   bool _standaloneRouteHandled = false;
   bool _hideMagazines = false;
   bool _hideNewspapers = false;
+  bool _homeLoadFailed = false;
   AuthProvider? _authListener;
   DateTime? _newsSelectedDate;
 
@@ -129,57 +156,279 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     if (showLoading && mounted) {
       setState(() => loading = true);
     }
-    try {
-      final visibilityFuture = _appFeatureFlagsService
-          .getVisibilityForCurrentApp()
-          .catchError((error) {
-            debugPrint("App feature flags load error: $error");
-            return const AppFeatureVisibility();
-          });
-      final results = await Future.wait([
-        _magService.getMagazines(),
-        _bookService.getPublicBooks(),
-        _newsService.getPublicList(),
-        _ekService.getEkler(),
-        _sliderService.getAll(onlyActive: true),
-        _homeShowcaseService.getByType("book", onlyActive: true),
-        _homeShowcaseService.getByType("magazine", onlyActive: true),
-        visibilityFuture,
-      ]);
 
-      final mag = results[0] as List<Map<String, dynamic>>;
-      final book = results[1] as List<Map<String, dynamic>>;
-      final news = results[2] as List<Map<String, dynamic>>;
-      final eks = results[3] as List<Map<String, dynamic>>;
-      final sliderItems = results[4] as List<Map<String, dynamic>>;
-      final homeBooks = results[5] as List<Map<String, dynamic>>;
-      final homeMags = results[6] as List<Map<String, dynamic>>;
-      final visibility = results[7] as AppFeatureVisibility;
+    final visibility = await _loadVisibilitySafely();
+
+    try {
+      final bootstrap = await _homeBootstrapService.fetch();
       if (!mounted) return;
-      setState(() {
-        sliders = sliderItems;
-        _sliderIndex = 0;
-        magazines = mag;
-        books = book;
-        newspapers = news;
-        attachments = eks;
-        homeBookEntries = homeBooks;
-        homeMagazineEntries = homeMags;
-        _hideMagazines = visibility.hideMagazines;
-        _hideNewspapers = visibility.hideNewspapers;
-        if ((_hideMagazines && _section == HomeSection.magazines) ||
-            (_hideNewspapers && _section == HomeSection.newspapers)) {
-          _section = HomeSection.home;
-        }
-      });
+      _applyHomeData(
+        slidersData: bootstrap.sliders,
+        magazinesData: bootstrap.magazines,
+        booksData: bootstrap.books,
+        newspapersData: bootstrap.newspapers,
+        attachmentsData: bootstrap.attachments,
+        homeBooksData: bootstrap.homeBookEntries,
+        homeMagazinesData: bootstrap.homeMagazineEntries,
+        visibility: visibility,
+        homeLoadFailed: false,
+      );
       _startSliderAuto();
       await _handleInitialDeepLink();
-    } catch (e) {
-      debugPrint("Home load error: $e");
+    } catch (bootstrapError, bootstrapStack) {
+      debugPrint("Home bootstrap error: $bootstrapError");
+      _logHomeLoadFailure(
+        operation: "loadData.bootstrap",
+        error: bootstrapError,
+        stackTrace: bootstrapStack,
+      );
+
+      final fallback = await _loadLegacyHomeData();
+      if (!mounted) return;
+
+      final resolvedSliders = _selectResolvedSectionData(
+        fresh: fallback.sliders,
+        current: sliders,
+        failedSources: fallback.failedSources,
+        key: "sliders",
+      );
+      final resolvedMagazines = _selectResolvedSectionData(
+        fresh: fallback.magazines,
+        current: magazines,
+        failedSources: fallback.failedSources,
+        key: "magazines",
+      );
+      final resolvedBooks = _selectResolvedSectionData(
+        fresh: fallback.books,
+        current: books,
+        failedSources: fallback.failedSources,
+        key: "books",
+      );
+      final resolvedNewspapers = _selectResolvedSectionData(
+        fresh: fallback.newspapers,
+        current: newspapers,
+        failedSources: fallback.failedSources,
+        key: "newspapers",
+      );
+      final resolvedAttachments = _selectResolvedSectionData(
+        fresh: fallback.attachments,
+        current: attachments,
+        failedSources: fallback.failedSources,
+        key: "attachments",
+      );
+      final resolvedHomeBooks = _selectResolvedSectionData(
+        fresh: fallback.homeBookEntries,
+        current: homeBookEntries,
+        failedSources: fallback.failedSources,
+        key: "homeBookEntries",
+      );
+      final resolvedHomeMagazines = _selectResolvedSectionData(
+        fresh: fallback.homeMagazineEntries,
+        current: homeMagazineEntries,
+        failedSources: fallback.failedSources,
+        key: "homeMagazineEntries",
+      );
+
+      final hasAnyContent = _hasAnyHomeContent(
+        slidersData: resolvedSliders,
+        magazinesData: resolvedMagazines,
+        booksData: resolvedBooks,
+        newspapersData: resolvedNewspapers,
+        attachmentsData: resolvedAttachments,
+        homeBooksData: resolvedHomeBooks,
+        homeMagazinesData: resolvedHomeMagazines,
+        hideMagazines: visibility.hideMagazines,
+        hideNewspapers: visibility.hideNewspapers,
+      );
+
+      _applyHomeData(
+        slidersData: resolvedSliders,
+        magazinesData: resolvedMagazines,
+        booksData: resolvedBooks,
+        newspapersData: resolvedNewspapers,
+        attachmentsData: resolvedAttachments,
+        homeBooksData: resolvedHomeBooks,
+        homeMagazinesData: resolvedHomeMagazines,
+        visibility: visibility,
+        homeLoadFailed: fallback.failedSources.isNotEmpty && !hasAnyContent,
+      );
+
+      if (fallback.failedSources.isNotEmpty) {
+        _logHomeLoadFailure(
+          operation: "loadData.fallback",
+          error: Exception("HOME_FALLBACK_PARTIAL_FAILURE"),
+          payload: {
+            "failedSources": fallback.failedSources,
+            "hasAnyContent": hasAnyContent,
+          },
+        );
+      }
+
+      _startSliderAuto();
+      await _handleInitialDeepLink();
     }
-    if (showLoading && mounted) {
+    if (mounted) {
       setState(() => loading = false);
     }
+  }
+
+  Future<AppFeatureVisibility> _loadVisibilitySafely() async {
+    try {
+      return await _appFeatureFlagsService.getVisibilityForCurrentApp();
+    } catch (error, stackTrace) {
+      debugPrint("App feature flags load error: $error");
+      _logHomeLoadFailure(
+        operation: "loadData.featureFlags",
+        error: error,
+        stackTrace: stackTrace,
+      );
+      return const AppFeatureVisibility();
+    }
+  }
+
+  Future<_HomeLoadBundle> _loadLegacyHomeData() async {
+    final failedSources = <String, String>{};
+
+    Future<List<Map<String, dynamic>>> guardedList(
+      String key,
+      Future<List<Map<String, dynamic>>> Function() loader,
+    ) async {
+      try {
+        return await loader();
+      } catch (error, stackTrace) {
+        debugPrint("Legacy home load error [$key]: $error");
+        failedSources[key] = error.toString();
+        _logHomeLoadFailure(
+          operation: "loadData.legacy.$key",
+          error: error,
+          stackTrace: stackTrace,
+        );
+        return const <Map<String, dynamic>>[];
+      }
+    }
+
+    final results = await Future.wait([
+      guardedList("magazines", _magService.getMagazines),
+      guardedList("books", _bookService.getPublicBooks),
+      guardedList("newspapers", _newsService.getPublicList),
+      guardedList("attachments", _ekService.getEkler),
+      guardedList("sliders", () => _sliderService.getAll(onlyActive: true)),
+      guardedList(
+        "homeBookEntries",
+        () => _homeShowcaseService.getByType("book", onlyActive: true),
+      ),
+      guardedList(
+        "homeMagazineEntries",
+        () => _homeShowcaseService.getByType("magazine", onlyActive: true),
+      ),
+    ]);
+
+    return _HomeLoadBundle(
+      magazines: results[0],
+      books: results[1],
+      newspapers: results[2],
+      attachments: results[3],
+      sliders: results[4],
+      homeBookEntries: results[5],
+      homeMagazineEntries: results[6],
+      failedSources: failedSources,
+    );
+  }
+
+  void _applyHomeData({
+    required List<Map<String, dynamic>> slidersData,
+    required List<Map<String, dynamic>> magazinesData,
+    required List<Map<String, dynamic>> booksData,
+    required List<Map<String, dynamic>> newspapersData,
+    required List<Map<String, dynamic>> attachmentsData,
+    required List<Map<String, dynamic>> homeBooksData,
+    required List<Map<String, dynamic>> homeMagazinesData,
+    required AppFeatureVisibility visibility,
+    required bool homeLoadFailed,
+  }) {
+    if (!mounted) return;
+    setState(() {
+      sliders = slidersData;
+      _sliderIndex = 0;
+      magazines = magazinesData;
+      books = booksData;
+      newspapers = newspapersData;
+      attachments = attachmentsData;
+      homeBookEntries = homeBooksData;
+      homeMagazineEntries = homeMagazinesData;
+      _hideMagazines = visibility.hideMagazines;
+      _hideNewspapers = visibility.hideNewspapers;
+      _homeLoadFailed = homeLoadFailed;
+      if ((_hideMagazines && _section == HomeSection.magazines) ||
+          (_hideNewspapers && _section == HomeSection.newspapers)) {
+        _section = HomeSection.home;
+      }
+    });
+  }
+
+  List<Map<String, dynamic>> _selectResolvedSectionData({
+    required String key,
+    required List<Map<String, dynamic>> fresh,
+    required List<Map<String, dynamic>> current,
+    required Map<String, String> failedSources,
+  }) {
+    if (failedSources.containsKey(key) && current.isNotEmpty) {
+      return current;
+    }
+    return fresh;
+  }
+
+  bool _hasAnyHomeContent({
+    required List<Map<String, dynamic>> slidersData,
+    required List<Map<String, dynamic>> magazinesData,
+    required List<Map<String, dynamic>> booksData,
+    required List<Map<String, dynamic>> newspapersData,
+    required List<Map<String, dynamic>> attachmentsData,
+    required List<Map<String, dynamic>> homeBooksData,
+    required List<Map<String, dynamic>> homeMagazinesData,
+    required bool hideMagazines,
+    required bool hideNewspapers,
+  }) {
+    final hasNewspaperShowcase = !hideNewspapers && newspapersData.isNotEmpty;
+    final hasMagazineShowcase = !hideMagazines
+        ? _buildHomeShowcaseList(
+            baseItems: magazinesData,
+            selectedEntries: homeMagazinesData,
+            maxItems: 10,
+            idKey: "id",
+            selectedIdKey: "product_id",
+          ).isNotEmpty
+        : false;
+    final hasBookShowcase = _buildHomeShowcaseList(
+      baseItems: booksData,
+      selectedEntries: homeBooksData,
+      maxItems: 10,
+      idKey: "id",
+      selectedIdKey: "product_id",
+    ).isNotEmpty;
+
+    return slidersData.isNotEmpty ||
+        hasNewspaperShowcase ||
+        hasMagazineShowcase ||
+        hasBookShowcase ||
+        attachmentsData.isNotEmpty;
+  }
+
+  void _logHomeLoadFailure({
+    required String operation,
+    required Object error,
+    StackTrace? stackTrace,
+    Map<String, dynamic>? payload,
+  }) {
+    unawaited(
+      _loggingService.logError(
+        service: "HomeResponsiveScreen",
+        operation: operation,
+        message: error.toString(),
+        stackTrace: stackTrace?.toString(),
+        payload: payload,
+      ),
+    );
   }
 
   Future<void> _refreshHome() async {
@@ -2103,6 +2352,41 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
             hasEkSection;
 
         if (!hasAnyContent) {
+          if (_homeLoadFailed) {
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 64),
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      "İçerikler yüklenemedi.",
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.black87,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      "Bağlantı yavaş veya geçici olarak servis yanıt vermiyor olabilir.",
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.black54,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    ElevatedButton(
+                      onPressed: _refreshHome,
+                      child: const Text("Tekrar Dene"),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }
+
           return const Padding(
             padding: EdgeInsets.symmetric(vertical: 64),
             child: Center(

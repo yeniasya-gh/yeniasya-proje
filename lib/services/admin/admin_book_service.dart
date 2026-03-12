@@ -23,7 +23,10 @@ query GetPublicBooks {
 }
   ''';
 
-    final data = await _hasura.graphQLRequest(query: query);
+    final data = await _hasura.graphQLRequest(
+      query: query,
+      timeout: HasuraManager.homeTimeout,
+    );
     return List<Map<String, dynamic>>.from(data["books"]);
   }
 
