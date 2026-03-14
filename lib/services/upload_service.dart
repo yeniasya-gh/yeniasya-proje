@@ -27,6 +27,15 @@ class UploadService {
   };
 
   static const int _maxBytes = 20 * 1024 * 1024; // 20MB
+  static const _managedPublicTypes = {
+    "kitap",
+    "gazete",
+    "dergi",
+    "ek",
+    "slider",
+    "profil",
+  };
+  static const _managedPrivateTypes = {"kitap", "gazete", "dergi", "ek"};
 
   String _mapType(UploadFileType type) {
     switch (type) {
@@ -192,6 +201,40 @@ class UploadService {
     }
   }
 
+  Future<bool> deleteUploadedFile(String url) async {
+    final managedPath = _managedStoragePath(url);
+    if (managedPath == null) return false;
+    return _deleteManagedPath(managedPath);
+  }
+
+  Future<void> cleanupReplacedFile({
+    String? previousUrl,
+    String? nextUrl,
+  }) async {
+    final previousPath = _managedStoragePath(previousUrl);
+    if (previousPath == null) return;
+
+    final nextPath = _managedStoragePath(nextUrl);
+    if (previousPath == nextPath) return;
+
+    try {
+      await _deleteManagedPath(previousPath);
+    } catch (_) {
+      // Main edit flow should not fail if stale CDN cleanup fails.
+    }
+  }
+
+  Future<void> cleanupRemovedFile(String? url) async {
+    final managedPath = _managedStoragePath(url);
+    if (managedPath == null) return;
+
+    try {
+      await _deleteManagedPath(managedPath);
+    } catch (_) {
+      // Main remove flow should not fail if stale CDN cleanup fails.
+    }
+  }
+
   void _validate(Uint8List bytes, String filename) {
     if (bytes.length > _maxBytes) {
       throw Exception("Dosya 20MB sınırını aşıyor.");
@@ -215,12 +258,6 @@ class UploadService {
 
   String _parseUrl(http.Response resp) {
     if (resp.statusCode < 200 || resp.statusCode >= 300) {
-      _logError(
-        "parseUrl",
-        Exception("Yükleme başarısız (${resp.statusCode})"),
-        null,
-        {"status": resp.statusCode, "body": resp.body},
-      );
       throw Exception("Yükleme başarısız (${resp.statusCode}): ${resp.body}");
     }
     try {
@@ -229,10 +266,6 @@ class UploadService {
       if (url == null) throw Exception("Sunucudan URL alınamadı.");
       return url.toString();
     } catch (e) {
-      _logError("parseUrl", e, null, {
-        "body": resp.body,
-        "status": resp.statusCode,
-      });
       throw Exception("Sunucu yanıtı çözülemedi: ${resp.body}");
     }
   }
@@ -241,6 +274,115 @@ class UploadService {
     final dot = filename.lastIndexOf(".");
     if (dot == -1 || dot == filename.length - 1) return "";
     return filename.substring(dot + 1).toLowerCase();
+  }
+
+  Set<String> _managedHosts() {
+    final hosts = <String>{"yeniasya.b-cdn.net", "cdn.yeniasyadigital.com"};
+    final parsedBase = Uri.tryParse(_baseUrl);
+    final baseHost = parsedBase?.host.trim().toLowerCase() ?? "";
+    if (baseHost.isNotEmpty) {
+      hosts.add(baseHost);
+    }
+    return hosts;
+  }
+
+  String? _managedStoragePath(String? url) {
+    final raw = url?.trim() ?? "";
+    if (raw.isEmpty) return null;
+
+    final normalized = normalizeUrl(raw, baseUrl: _baseUrl);
+    Uri uri;
+    try {
+      uri = Uri.parse(normalized);
+    } catch (_) {
+      return null;
+    }
+
+    if (uri.host.isNotEmpty &&
+        !_managedHosts().contains(uri.host.toLowerCase())) {
+      return null;
+    }
+
+    final path = uri.path.replaceAll(RegExp(r"/{2,}"), "/");
+    final direct = RegExp(
+      r"^/(kitap|gazete|dergi|ek|slider|profil)/(public|private)/([^/]+)$",
+      caseSensitive: false,
+    ).firstMatch(path);
+    final routed = RegExp(
+      r"^/(public|private)/(kitap|gazete|dergi|ek|slider|profil)/([^/]+)$",
+      caseSensitive: false,
+    ).firstMatch(path);
+    final privateAlias = RegExp(
+      r"^/private/(kitap|gazete|dergi|ek)/([^/]+)$",
+      caseSensitive: false,
+    ).firstMatch(path);
+
+    String type;
+    String scope;
+    String filename;
+
+    if (direct != null) {
+      type = direct.group(1)!.toLowerCase();
+      scope = direct.group(2)!.toLowerCase();
+      filename = Uri.decodeComponent(direct.group(3)!);
+    } else if (routed != null) {
+      scope = routed.group(1)!.toLowerCase();
+      type = routed.group(2)!.toLowerCase();
+      filename = Uri.decodeComponent(routed.group(3)!);
+    } else if (privateAlias != null) {
+      scope = "private";
+      type = privateAlias.group(1)!.toLowerCase();
+      filename = Uri.decodeComponent(privateAlias.group(2)!);
+    } else {
+      return null;
+    }
+
+    final publicAllowed =
+        scope == "public" && _managedPublicTypes.contains(type);
+    final privateAllowed =
+        scope == "private" && _managedPrivateTypes.contains(type);
+    if (!publicAllowed && !privateAllowed) return null;
+    if (filename.isEmpty || filename.contains("/") || filename.contains("?")) {
+      return null;
+    }
+
+    return "/$type/$scope/$filename";
+  }
+
+  Map<String, String> _authorizedJsonHeaders() {
+    final headers = <String, String>{"content-type": "application/json"};
+    final token = AuthTokenStore.token;
+    if (token != null && token.isNotEmpty) {
+      headers["Authorization"] = "Bearer $token";
+    }
+    return headers;
+  }
+
+  Future<bool> _deleteManagedPath(String managedPath) async {
+    final uri = Uri.parse("$_baseUrl/upload/delete");
+
+    try {
+      final resp = await http.post(
+        uri,
+        headers: _authorizedJsonHeaders(),
+        body: jsonEncode({"path": managedPath}),
+      );
+
+      if (resp.statusCode < 200 || resp.statusCode >= 300) {
+        throw Exception(
+          "CDN delete başarısız (${resp.statusCode}): ${resp.body}",
+        );
+      }
+
+      final data = jsonDecode(resp.body) as Map<String, dynamic>;
+      if (data["ok"] != true) {
+        throw Exception(data["error"]?.toString() ?? "CDN delete başarısız.");
+      }
+      return data["deleted"] != false;
+    } catch (e, s) {
+      await _logError("deleteUploadedFile", e, s, {"path": managedPath});
+      rethrow;
+    }
   }
 
   Future<void> _logError(

@@ -616,6 +616,14 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
                               : descCtrl.text.trim(),
                           addedAt: _yearToAddedAt(selectedYear),
                         );
+                        await _uploadService.cleanupReplacedFile(
+                          previousUrl: issue["file_url"]?.toString(),
+                          nextUrl: fileUrl,
+                        );
+                        await _uploadService.cleanupReplacedFile(
+                          previousUrl: issue["photo_url"]?.toString(),
+                          nextUrl: photoUrl,
+                        );
                         if (!mounted) return;
                         Navigator.pop(context);
                         await _loadIssues();

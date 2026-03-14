@@ -41,6 +41,7 @@ import 'contact/contact_form.dart';
 import 'login/email_verification_screen.dart';
 import 'login/password_reset_screen.dart';
 import 'checkout/payment_web_return_screen.dart';
+import 'splash/splash_screen.dart';
 
 enum HomeSection { home, magazines, books, newspapers, attachments }
 
@@ -152,14 +153,15 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
   @override
   void initState() {
     super.initState();
+    _loadData();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
       _authListener = context.read<AuthProvider>();
       _authListener?.addListener(_onAuthChange);
+      _loadAccessIfNeeded();
+      _loadLibraryOrders();
+      _loadLibraryAccess();
     });
-    _loadData();
-    _loadAccessIfNeeded();
-    _loadLibraryOrders();
-    _loadLibraryAccess();
   }
 
   Future<void> _loadData({bool showLoading = true}) async {
@@ -167,10 +169,15 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
       setState(() => loading = true);
     }
 
-    final visibility = await _loadVisibilitySafely();
+    final visibilityFuture = _loadVisibilitySafely();
 
     try {
-      final bootstrap = await _homeBootstrapService.fetch();
+      final results = await Future.wait<Object>([
+        _homeBootstrapService.fetch(),
+        visibilityFuture,
+      ]);
+      final bootstrap = results[0] as HomeBootstrapPayload;
+      final visibility = results[1] as AppFeatureVisibility;
       if (!mounted) return;
       _applyHomeData(
         slidersData: bootstrap.sliders,
@@ -193,6 +200,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         stackTrace: bootstrapStack,
       );
 
+      final visibility = await visibilityFuture;
       final fallback = await _loadLegacyHomeData();
       if (!mounted) return;
 
@@ -1961,10 +1969,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     final hasSlider = sliders.isNotEmpty;
 
     if (loading) {
-      return const Scaffold(
-        backgroundColor: Colors.white,
-        body: Center(child: CircularProgressIndicator()),
-      );
+      return const AppBootstrapScreen(status: "İçerikler hazırlanıyor");
     }
     _scheduleInitialStandaloneRedirect();
 

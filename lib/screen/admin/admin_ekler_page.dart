@@ -100,7 +100,8 @@ class _AdminEklerPageState extends State<AdminEklerPage> {
                   TextFormField(
                     controller: adCtrl,
                     decoration: const InputDecoration(labelText: "Ek adı"),
-                    validator: (v) => v == null || v.trim().isEmpty ? "Zorunlu" : null,
+                    validator: (v) =>
+                        v == null || v.trim().isEmpty ? "Zorunlu" : null,
                   ),
                   TextFormField(
                     controller: aciklamaCtrl,
@@ -110,10 +111,14 @@ class _AdminEklerPageState extends State<AdminEklerPage> {
                   TextFormField(
                     controller: fiyatCtrl,
                     keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(labelText: "Fiyat (0 = ücretsiz)"),
+                    decoration: const InputDecoration(
+                      labelText: "Fiyat (0 = ücretsiz)",
+                    ),
                     validator: (v) {
                       if (v == null || v.isEmpty) return "Zorunlu";
-                      return double.tryParse(v.replaceAll(",", ".")) == null ? "Geçerli sayı girin" : null;
+                      return double.tryParse(v.replaceAll(",", ".")) == null
+                          ? "Geçerli sayı girin"
+                          : null;
                     },
                   ),
                   TextFormField(
@@ -139,7 +144,8 @@ class _AdminEklerPageState extends State<AdminEklerPage> {
                         },
                       ),
                     ),
-                    validator: (v) => v == null || v.isEmpty ? "PDF seçin" : null,
+                    validator: (v) =>
+                        v == null || v.isEmpty ? "PDF seçin" : null,
                   ),
                   TextFormField(
                     controller: imageCtrl,
@@ -164,14 +170,18 @@ class _AdminEklerPageState extends State<AdminEklerPage> {
                         },
                       ),
                     ),
-                    validator: (v) => v == null || v.isEmpty ? "Fotoğraf seçin" : null,
+                    validator: (v) =>
+                        v == null || v.isEmpty ? "Fotoğraf seçin" : null,
                   ),
                 ],
               ),
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Vazgeç")),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text("Vazgeç"),
+            ),
             ElevatedButton(
               onPressed: _saving
                   ? null
@@ -205,7 +215,11 @@ class _AdminEklerPageState extends State<AdminEklerPage> {
                 animation: LoadingManager.instance,
                 builder: (_, __) {
                   if (_saving && !LoadingManager.instance.loading) {
-                    return const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2));
+                    return const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    );
                   }
                   return const Text("Kaydet");
                 },
@@ -219,7 +233,9 @@ class _AdminEklerPageState extends State<AdminEklerPage> {
     if (result == null) return;
     final ad = (result["ad"] ?? "").toString();
     final aciklama = (result["aciklama"] ?? "").toString();
-    final fiyat = result["fiyat"] is num ? (result["fiyat"] as num).toDouble() : double.tryParse("${result["fiyat"]}") ?? 0;
+    final fiyat = result["fiyat"] is num
+        ? (result["fiyat"] as num).toDouble()
+        : double.tryParse("${result["fiyat"]}") ?? 0;
     final bytes = result["pdfBytes"] as Uint8List?;
     final name = result["pdfName"]?.toString();
     final imageBytes = result["imageBytes"] as Uint8List?;
@@ -235,7 +251,6 @@ class _AdminEklerPageState extends State<AdminEklerPage> {
 
     setState(() => _saving = true);
     try {
-      final isFree = fiyat == 0;
       final photoUrl = await _uploadService.uploadPublic(
         type: UploadFileType.supplement,
         bytes: imageBytes,
@@ -267,10 +282,18 @@ class _AdminEklerPageState extends State<AdminEklerPage> {
   Future<void> _showEditDialog(Map<String, dynamic> ek) async {
     final formKey = GlobalKey<FormState>();
     final adCtrl = TextEditingController(text: ek["ad"]?.toString() ?? "");
-    final aciklamaCtrl = TextEditingController(text: ek["aciklama"]?.toString() ?? "");
-    final fiyatCtrl = TextEditingController(text: (ek["fiyat"] ?? 0).toString());
-    final pdfCtrl = TextEditingController(text: _basename(ek["pdf_url"]?.toString() ?? ""));
-    final imageCtrl = TextEditingController(text: _basename(ek["photo_url"]?.toString() ?? ""));
+    final aciklamaCtrl = TextEditingController(
+      text: ek["aciklama"]?.toString() ?? "",
+    );
+    final fiyatCtrl = TextEditingController(
+      text: (ek["fiyat"] ?? 0).toString(),
+    );
+    final pdfCtrl = TextEditingController(
+      text: _basename(ek["pdf_url"]?.toString() ?? ""),
+    );
+    final imageCtrl = TextEditingController(
+      text: _basename(ek["photo_url"]?.toString() ?? ""),
+    );
 
     Uint8List? pickedPdfBytes;
     String? pickedPdfName;
@@ -292,7 +315,8 @@ class _AdminEklerPageState extends State<AdminEklerPage> {
                   TextFormField(
                     controller: adCtrl,
                     decoration: const InputDecoration(labelText: "Ek adı"),
-                    validator: (v) => v == null || v.trim().isEmpty ? "Zorunlu" : null,
+                    validator: (v) =>
+                        v == null || v.trim().isEmpty ? "Zorunlu" : null,
                   ),
                   TextFormField(
                     controller: aciklamaCtrl,
@@ -302,10 +326,14 @@ class _AdminEklerPageState extends State<AdminEklerPage> {
                   TextFormField(
                     controller: fiyatCtrl,
                     keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(labelText: "Fiyat (0 = ücretsiz)"),
+                    decoration: const InputDecoration(
+                      labelText: "Fiyat (0 = ücretsiz)",
+                    ),
                     validator: (v) {
                       if (v == null || v.isEmpty) return "Zorunlu";
-                      return double.tryParse(v.replaceAll(",", ".")) == null ? "Geçerli sayı girin" : null;
+                      return double.tryParse(v.replaceAll(",", ".")) == null
+                          ? "Geçerli sayı girin"
+                          : null;
                     },
                   ),
                   TextFormField(
@@ -331,7 +359,8 @@ class _AdminEklerPageState extends State<AdminEklerPage> {
                         },
                       ),
                     ),
-                    validator: (v) => v == null || v.isEmpty ? "PDF seçin" : null,
+                    validator: (v) =>
+                        v == null || v.isEmpty ? "PDF seçin" : null,
                   ),
                   TextFormField(
                     controller: imageCtrl,
@@ -356,14 +385,18 @@ class _AdminEklerPageState extends State<AdminEklerPage> {
                         },
                       ),
                     ),
-                    validator: (v) => v == null || v.isEmpty ? "Fotoğraf seçin" : null,
+                    validator: (v) =>
+                        v == null || v.isEmpty ? "Fotoğraf seçin" : null,
                   ),
                 ],
               ),
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Vazgeç")),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text("Vazgeç"),
+            ),
             ElevatedButton(
               onPressed: _saving
                   ? null
@@ -392,7 +425,11 @@ class _AdminEklerPageState extends State<AdminEklerPage> {
                 animation: LoadingManager.instance,
                 builder: (_, __) {
                   if (_saving && !LoadingManager.instance.loading) {
-                    return const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2));
+                    return const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    );
                   }
                   return const Text("Güncelle");
                 },
@@ -406,7 +443,9 @@ class _AdminEklerPageState extends State<AdminEklerPage> {
     if (result == null) return;
     final ad = (result["ad"] ?? "").toString();
     final aciklama = (result["aciklama"] ?? "").toString();
-    final fiyat = result["fiyat"] is num ? (result["fiyat"] as num).toDouble() : double.tryParse("${result["fiyat"]}") ?? 0;
+    final fiyat = result["fiyat"] is num
+        ? (result["fiyat"] as num).toDouble()
+        : double.tryParse("${result["fiyat"]}") ?? 0;
     final bytes = result["pdfBytes"] as Uint8List?;
     final name = result["pdfName"]?.toString();
     final imageBytes = result["imageBytes"] as Uint8List?;
@@ -446,6 +485,14 @@ class _AdminEklerPageState extends State<AdminEklerPage> {
         pdfUrl: UploadService.normalizeUrl(pdfUrl),
         photoUrl: UploadService.normalizeUrl(photoUrl),
       );
+      await _uploadService.cleanupReplacedFile(
+        previousUrl: result["pdfUrl"]?.toString(),
+        nextUrl: pdfUrl,
+      );
+      await _uploadService.cleanupReplacedFile(
+        previousUrl: result["photoUrl"]?.toString(),
+        nextUrl: photoUrl,
+      );
       await _load();
       _showSnack("Ek güncellendi");
     } catch (e) {
@@ -462,7 +509,10 @@ class _AdminEklerPageState extends State<AdminEklerPage> {
         title: const Text("Ek Sil"),
         content: const Text("Bu eki silmek istiyor musunuz?"),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("Vazgeç")),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text("Vazgeç"),
+          ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(context, true),
@@ -495,7 +545,10 @@ class _AdminEklerPageState extends State<AdminEklerPage> {
           title: const Text("İşlem başarısız"),
           content: Text(e.toString()),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text("Tamam")),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Tamam"),
+            ),
           ],
         ),
       );
@@ -505,7 +558,9 @@ class _AdminEklerPageState extends State<AdminEklerPage> {
 
   Future<PickedImageFile?> _pickImage() async {
     try {
-      return await AssetImagePicker.pickFile(allowedExtensions: const ["png", "jpg", "jpeg", "webp"]);
+      return await AssetImagePicker.pickFile(
+        allowedExtensions: const ["png", "jpg", "jpeg", "webp"],
+      );
     } catch (e) {
       await showDialog(
         context: context,
@@ -513,7 +568,10 @@ class _AdminEklerPageState extends State<AdminEklerPage> {
           title: const Text("İşlem başarısız"),
           content: Text(e.toString()),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text("Tamam")),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Tamam"),
+            ),
           ],
         ),
       );
@@ -545,7 +603,11 @@ class _AdminEklerPageState extends State<AdminEklerPage> {
             color: Colors.white,
             borderRadius: BorderRadius.circular(12),
             boxShadow: [
-              BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8, offset: const Offset(0, 4)),
+              BoxShadow(
+                color: Colors.black.withOpacity(0.04),
+                blurRadius: 8,
+                offset: const Offset(0, 4),
+              ),
             ],
           ),
           child: Row(
@@ -558,27 +620,42 @@ class _AdminEklerPageState extends State<AdminEklerPage> {
                   children: [
                     Text(
                       (ek["ad"] ?? "-").toString(),
-                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 16,
+                      ),
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      (ek["aciklama"] ?? "").toString().isEmpty ? "Açıklama yok" : (ek["aciklama"] ?? "").toString(),
+                      (ek["aciklama"] ?? "").toString().isEmpty
+                          ? "Açıklama yok"
+                          : (ek["aciklama"] ?? "").toString(),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(color: Colors.black54),
                     ),
                     const SizedBox(height: 6),
-                    Text("PDF: ${ek["pdf_url"] ?? "-"}",
-                        maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12)),
+                    Text(
+                      "PDF: ${ek["pdf_url"] ?? "-"}",
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 12),
+                    ),
                   ],
                 ),
               ),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  _chip(isPublic ? "Public" : "Private", isPublic ? Colors.green : Colors.red),
+                  _chip(
+                    isPublic ? "Public" : "Private",
+                    isPublic ? Colors.green : Colors.red,
+                  ),
                   const SizedBox(height: 6),
-                  Text(_formatPrice(ek["fiyat"]), style: const TextStyle(fontWeight: FontWeight.bold)),
+                  Text(
+                    _formatPrice(ek["fiyat"]),
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
                   const SizedBox(height: 10),
                   Row(
                     children: [
@@ -588,12 +665,18 @@ class _AdminEklerPageState extends State<AdminEklerPage> {
                         onPressed: _saving ? null : () => _showEditDialog(ek),
                       ),
                       IconButton(
-                        icon: const Icon(Icons.delete, size: 20, color: Colors.red),
+                        icon: const Icon(
+                          Icons.delete,
+                          size: 20,
+                          color: Colors.red,
+                        ),
                         tooltip: "Sil",
                         onPressed: _saving
                             ? null
                             : () {
-                                final id = ek["id"] is int ? ek["id"] as int : int.tryParse(ek["id"]?.toString() ?? "");
+                                final id = ek["id"] is int
+                                    ? ek["id"] as int
+                                    : int.tryParse(ek["id"]?.toString() ?? "");
                                 if (id == null) {
                                   _showSnack("Geçersiz ek ID");
                                   return;
@@ -613,15 +696,23 @@ class _AdminEklerPageState extends State<AdminEklerPage> {
   }
 
   String _formatPrice(dynamic price) {
-    final p = price is num ? price.toDouble() : double.tryParse(price?.toString() ?? "") ?? 0;
+    final p = price is num
+        ? price.toDouble()
+        : double.tryParse(price?.toString() ?? "") ?? 0;
     return p == 0 ? "Ücretsiz" : "₺${p.toStringAsFixed(2)}";
   }
 
   Widget _chip(String label, Color color) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(color: color.withOpacity(0.12), borderRadius: BorderRadius.circular(12)),
-      child: Text(label, style: TextStyle(color: color, fontWeight: FontWeight.w600)),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(color: color, fontWeight: FontWeight.w600),
+      ),
     );
   }
 
@@ -635,17 +726,23 @@ class _AdminEklerPageState extends State<AdminEklerPage> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text("Ekler", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                const Text(
+                  "Ekler",
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                ),
                 Row(
                   children: [
-                    IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
-                ElevatedButton.icon(
-                  onPressed: _saving ? null : _showAddDialog,
-                  icon: const Icon(Icons.add),
-                  label: const Text("Yeni Ek"),
+                    IconButton(
+                      onPressed: _load,
+                      icon: const Icon(Icons.refresh),
+                    ),
+                    ElevatedButton.icon(
+                      onPressed: _saving ? null : _showAddDialog,
+                      icon: const Icon(Icons.add),
+                      label: const Text("Yeni Ek"),
+                    ),
+                  ],
                 ),
-              ],
-            ),
               ],
             ),
             const SizedBox(height: 12),

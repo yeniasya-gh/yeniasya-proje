@@ -21,7 +21,8 @@ class AdminMagazinesPage extends StatefulWidget {
 class _AdminMagazinesPageState extends State<AdminMagazinesPage> {
   final AdminMagazineService _service = AdminMagazineService();
   final AdminMagazineTypeService _typeService = AdminMagazineTypeService();
-  final AdminMagazineTypePriceService _priceService = AdminMagazineTypePriceService();
+  final AdminMagazineTypePriceService _priceService =
+      AdminMagazineTypePriceService();
   final TextEditingController _searchCtrl = TextEditingController();
   final UploadService _uploadService = UploadService();
 
@@ -84,9 +85,9 @@ class _AdminMagazinesPageState extends State<AdminMagazinesPage> {
       onPicked(picked.bytes, picked.name);
       controller.text = picked.name;
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Seçildi: ${picked.name}")),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text("Seçildi: ${picked.name}")));
       }
     } catch (e) {
       await showDialog(
@@ -145,7 +146,9 @@ class _AdminMagazinesPageState extends State<AdminMagazinesPage> {
     try {
       types = await _typeService.getAll();
       if (types.isEmpty) {
-        await _showError("Dergi tipi bulunamadı. Önce dergi tipleri oluşturun.");
+        await _showError(
+          "Dergi tipi bulunamadı. Önce dergi tipleri oluşturun.",
+        );
         return;
       }
       if (isEdit && magazineId != null) {
@@ -162,17 +165,22 @@ class _AdminMagazinesPageState extends State<AdminMagazinesPage> {
     }
 
     final nameCtrl = TextEditingController(text: magazine?["name"] ?? "");
-    final categoryCtrl =
-        TextEditingController(text: magazine?["category"] ?? "");
-    final coverCtrl =
-        TextEditingController(text: magazine?["cover_image_url"] ?? "");
-    final descCtrl =
-        TextEditingController(text: magazine?["description"] ?? "");
+    final categoryCtrl = TextEditingController(
+      text: magazine?["category"] ?? "",
+    );
+    final coverCtrl = TextEditingController(
+      text: magazine?["cover_image_url"] ?? "",
+    );
+    final descCtrl = TextEditingController(
+      text: magazine?["description"] ?? "",
+    );
     final priceControllers = <int, TextEditingController>{};
     for (final type in types) {
       final typeId = type["id"] as int?;
       if (typeId == null) continue;
-      priceControllers[typeId] = TextEditingController(text: priceByType[typeId] ?? "");
+      priceControllers[typeId] = TextEditingController(
+        text: priceByType[typeId] ?? "",
+      );
     }
     String period = _normalizePeriod(magazine?["period"]) ?? "1m";
 
@@ -268,10 +276,14 @@ class _AdminMagazinesPageState extends State<AdminMagazinesPage> {
                       final formatted = formatAsMoney(value);
                       ctrl.value = TextEditingValue(
                         text: formatted,
-                        selection: TextSelection.collapsed(offset: formatted.length),
+                        selection: TextSelection.collapsed(
+                          offset: formatted.length,
+                        ),
                       );
                     },
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
                     decoration: InputDecoration(
                       labelText: title.isNotEmpty ? title : "$months ay",
                       helperText: "$months ay",
@@ -303,14 +315,17 @@ class _AdminMagazinesPageState extends State<AdminMagazinesPage> {
               final typePrices = <Map<String, dynamic>>[];
               for (final type in types) {
                 final typeId = type["id"] as int?;
-                if (typeId == null || !priceControllers.containsKey(typeId)) continue;
+                if (typeId == null || !priceControllers.containsKey(typeId))
+                  continue;
                 final rawPrice = priceControllers[typeId]!.text.trim();
                 if (rawPrice.isEmpty) {
                   continue;
                 }
                 final price = _parsePrice(rawPrice);
                 if (price == null) {
-                  await _showError("Girilen dergi tipi fiyatlarından biri geçersiz.");
+                  await _showError(
+                    "Girilen dergi tipi fiyatlarından biri geçersiz.",
+                  );
                   return;
                 }
                 if (price < 0) {
@@ -361,6 +376,10 @@ class _AdminMagazinesPageState extends State<AdminMagazinesPage> {
                         ? null
                         : payload["description"] as String,
                   );
+                  await _uploadService.cleanupReplacedFile(
+                    previousUrl: magazine?["cover_image_url"]?.toString(),
+                    nextUrl: coverUrl,
+                  );
                 } else {
                   savedId = await _service.addMagazine(
                     name: payload["name"] as String,
@@ -374,12 +393,12 @@ class _AdminMagazinesPageState extends State<AdminMagazinesPage> {
                 }
 
                 final items = typePrices
-                    .map((p) => {
-                          "magazine_id": savedId,
-                          ...p,
-                        })
+                    .map((p) => {"magazine_id": savedId, ...p})
                     .toList();
-                await _priceService.replacePrices(magazineId: savedId, prices: items);
+                await _priceService.replacePrices(
+                  magazineId: savedId,
+                  prices: items,
+                );
 
                 await _loadMagazines();
               } catch (e) {
@@ -397,8 +416,10 @@ class _AdminMagazinesPageState extends State<AdminMagazinesPage> {
                 await _loadMagazines();
               }
             },
-            child: Text(isEdit ? "Kaydet" : "Oluştur",
-                style: const TextStyle(color: Colors.white)),
+            child: Text(
+              isEdit ? "Kaydet" : "Oluştur",
+              style: const TextStyle(color: Colors.white),
+            ),
           ),
         ],
       ),
@@ -449,8 +470,10 @@ class _AdminMagazinesPageState extends State<AdminMagazinesPage> {
             ),
             ElevatedButton.icon(
               icon: const Icon(Icons.add, color: Colors.white),
-              label: const Text("Dergi Oluştur",
-                  style: TextStyle(color: Colors.white)),
+              label: const Text(
+                "Dergi Oluştur",
+                style: TextStyle(color: Colors.white),
+              ),
               style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
               onPressed: _showAddOrEditDialog,
             ),
@@ -484,81 +507,83 @@ class _AdminMagazinesPageState extends State<AdminMagazinesPage> {
               ],
             ),
             child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      return SingleChildScrollView(
-                        child: ConstrainedBox(
-                          constraints:
-                              BoxConstraints(minWidth: constraints.maxWidth),
-                          child: DataTable(
-                            headingRowColor: MaterialStateProperty.all(
-                              Colors.grey.shade100,
-                            ),
-                            columns: const [
-                              DataColumn(label: Text("#")),
-                              DataColumn(label: Text("Kapak")),
-                              DataColumn(label: Text("Ad")),
-                              DataColumn(label: Text("Kategori")),
-                              DataColumn(label: Text("Periyot")),
-                              DataColumn(label: Text("Oluşturma")),
-                              DataColumn(label: Text("İşlem")),
-                            ],
-                            rows: _filtered.asMap().entries.map((entry) {
-                              final index = entry.key + 1;
-                              final m = entry.value;
-                              return DataRow(
-                                cells: [
-                                  DataCell(Text(index.toString())),
-                                  DataCell(_buildCoverCell(m["cover_image_url"])),
-                                  DataCell(Text(m["name"] ?? "")),
-                                  DataCell(Text(m["category"] ?? "")),
-                                  DataCell(_buildPeriodChip(m["period"])),
-                                  DataCell(
-                                    Text(_formatDateTime(m["created_at"])),
-                                  ),
-                                  DataCell(
-                                    Row(
-                                      children: [
-                                        IconButton(
-                                          icon: const Icon(Icons.folder_open,
-                                              color: Colors.blue),
-                                          tooltip: "Detay / Sayılar",
-                                          onPressed: () async {
-                                            await Navigator.push(
-                                              context,
-                                              MaterialPageRoute(
-                                                builder: (_) =>
-                                                    AdminMagazineDetailPage(
-                                                  magazine: m,
-                                                ),
-                                              ),
-                                            );
-                                            await _loadMagazines();
-                                          },
-                                        ),
-                                        IconButton(
-                                          icon: const Icon(Icons.edit,
-                                              color: Colors.orange),
-                                          onPressed: () =>
-                                              _showAddOrEditDialog(
-                                                  magazine: m),
-                                        ),
-                                        IconButton(
-                                          icon: const Icon(Icons.delete,
-                                              color: Colors.red),
-                                          onPressed: () =>
-                                              _deleteMagazine(m["id"] as int),
-                                        ),
-                                      ],
+              builder: (context, constraints) {
+                return SingleChildScrollView(
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(minWidth: constraints.maxWidth),
+                    child: DataTable(
+                      headingRowColor: MaterialStateProperty.all(
+                        Colors.grey.shade100,
+                      ),
+                      columns: const [
+                        DataColumn(label: Text("#")),
+                        DataColumn(label: Text("Kapak")),
+                        DataColumn(label: Text("Ad")),
+                        DataColumn(label: Text("Kategori")),
+                        DataColumn(label: Text("Periyot")),
+                        DataColumn(label: Text("Oluşturma")),
+                        DataColumn(label: Text("İşlem")),
+                      ],
+                      rows: _filtered.asMap().entries.map((entry) {
+                        final index = entry.key + 1;
+                        final m = entry.value;
+                        return DataRow(
+                          cells: [
+                            DataCell(Text(index.toString())),
+                            DataCell(_buildCoverCell(m["cover_image_url"])),
+                            DataCell(Text(m["name"] ?? "")),
+                            DataCell(Text(m["category"] ?? "")),
+                            DataCell(_buildPeriodChip(m["period"])),
+                            DataCell(Text(_formatDateTime(m["created_at"]))),
+                            DataCell(
+                              Row(
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(
+                                      Icons.folder_open,
+                                      color: Colors.blue,
                                     ),
+                                    tooltip: "Detay / Sayılar",
+                                    onPressed: () async {
+                                      await Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) =>
+                                              AdminMagazineDetailPage(
+                                                magazine: m,
+                                              ),
+                                        ),
+                                      );
+                                      await _loadMagazines();
+                                    },
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(
+                                      Icons.edit,
+                                      color: Colors.orange,
+                                    ),
+                                    onPressed: () =>
+                                        _showAddOrEditDialog(magazine: m),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(
+                                      Icons.delete,
+                                      color: Colors.red,
+                                    ),
+                                    onPressed: () =>
+                                        _deleteMagazine(m["id"] as int),
                                   ),
                                 ],
-                              );
-                            }).toList(),
-                          ),
-                        ),
-                      );
-                    },
+                              ),
+                            ),
+                          ],
+                        );
+                      }).toList(),
+                    ),
                   ),
+                );
+              },
+            ),
           ),
         ),
       ],
@@ -625,7 +650,10 @@ class _AdminMagazinesPageState extends State<AdminMagazinesPage> {
     return Chip(
       label: Text(label),
       backgroundColor: const Color(0xFFFFEBEE),
-      labelStyle: const TextStyle(color: Colors.red, fontWeight: FontWeight.w600),
+      labelStyle: const TextStyle(
+        color: Colors.red,
+        fontWeight: FontWeight.w600,
+      ),
       padding: EdgeInsets.zero,
     );
   }

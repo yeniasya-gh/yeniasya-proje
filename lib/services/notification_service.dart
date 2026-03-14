@@ -119,7 +119,7 @@ class NotificationService {
 
   Future<Map<String, dynamic>?> getNotificationDetail(int id) async {
     const query = r'''
-      query GetNotificationDetail($id: bigint!) {
+      query GetNotificationDetail($id: Int!) {
         notifications_by_pk(id: $id) {
           id
           title

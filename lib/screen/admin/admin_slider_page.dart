@@ -89,10 +89,14 @@ class _AdminSliderPageState extends State<AdminSliderPage> {
 
     final titleCtrl = TextEditingController(text: slider?["title"] ?? "");
     final subtitleCtrl = TextEditingController(text: slider?["subtitle"] ?? "");
-    final descriptionCtrl = TextEditingController(text: slider?["description"] ?? "");
+    final descriptionCtrl = TextEditingController(
+      text: slider?["description"] ?? "",
+    );
     final linkCtrl = TextEditingController(text: slider?["link_url"] ?? "");
     final imageCtrl = TextEditingController(text: slider?["image_url"] ?? "");
-    final sortCtrl = TextEditingController(text: (slider?["sort_order"] ?? 0).toString());
+    final sortCtrl = TextEditingController(
+      text: (slider?["sort_order"] ?? 0).toString(),
+    );
     bool isActive = slider?["is_active"] ?? true;
 
     Uint8List? pickedImageBytes;
@@ -140,7 +144,8 @@ class _AdminSliderPageState extends State<AdminSliderPage> {
                   TextFormField(
                     controller: titleCtrl,
                     decoration: const InputDecoration(labelText: "Başlık"),
-                    validator: (v) => v == null || v.trim().isEmpty ? "Zorunlu" : null,
+                    validator: (v) =>
+                        v == null || v.trim().isEmpty ? "Zorunlu" : null,
                   ),
                   TextFormField(
                     controller: subtitleCtrl,
@@ -166,7 +171,9 @@ class _AdminSliderPageState extends State<AdminSliderPage> {
                     decoration: const InputDecoration(labelText: "Sıra"),
                     validator: (v) {
                       if (v == null || v.trim().isEmpty) return "Zorunlu";
-                      return int.tryParse(v.trim()) == null ? "Sayı girin" : null;
+                      return int.tryParse(v.trim()) == null
+                          ? "Sayı girin"
+                          : null;
                     },
                   ),
                   SwitchListTile(
@@ -190,7 +197,9 @@ class _AdminSliderPageState extends State<AdminSliderPage> {
                 if (!formKey.currentState!.validate()) return;
                 Navigator.pop(ctx);
                 try {
-                  String imageUrl = (slider?["image_url"] ?? imageCtrl.text).toString().trim();
+                  String imageUrl = (slider?["image_url"] ?? imageCtrl.text)
+                      .toString()
+                      .trim();
                   if (pickedImageBytes != null && pickedImageName != null) {
                     imageUrl = await _uploadService.uploadPublic(
                       type: UploadFileType.slider,
@@ -207,7 +216,7 @@ class _AdminSliderPageState extends State<AdminSliderPage> {
 
                   if (isEdit) {
                     await _service.update(
-                      id: slider?["id"] as int,
+                      id: slider["id"] as int,
                       title: title,
                       subtitle: subtitle.isEmpty ? null : subtitle,
                       description: description.isEmpty ? null : description,
@@ -215,6 +224,10 @@ class _AdminSliderPageState extends State<AdminSliderPage> {
                       linkUrl: linkUrl.isEmpty ? null : linkUrl,
                       sortOrder: sortOrder,
                       isActive: isActive,
+                    );
+                    await _uploadService.cleanupReplacedFile(
+                      previousUrl: slider["image_url"]?.toString(),
+                      nextUrl: imageUrl,
                     );
                   } else {
                     await _service.add(
@@ -230,14 +243,21 @@ class _AdminSliderPageState extends State<AdminSliderPage> {
                   await _loadData();
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text(isEdit ? "Slider güncellendi" : "Slider oluşturuldu")),
+                      SnackBar(
+                        content: Text(
+                          isEdit ? "Slider güncellendi" : "Slider oluşturuldu",
+                        ),
+                      ),
                     );
                   }
                 } catch (e) {
                   await _showError(e.toString());
                 }
               },
-              child: Text(isEdit ? "Kaydet" : "Oluştur", style: const TextStyle(color: Colors.white)),
+              child: Text(
+                isEdit ? "Kaydet" : "Oluştur",
+                style: const TextStyle(color: Colors.white),
+              ),
             ),
           ],
         ),
@@ -271,7 +291,9 @@ class _AdminSliderPageState extends State<AdminSliderPage> {
       await _service.delete(id);
       await _loadData();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Slider silindi")));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text("Slider silindi")));
       }
     } catch (e) {
       await _showError(e.toString());
@@ -283,10 +305,16 @@ class _AdminSliderPageState extends State<AdminSliderPage> {
       await _service.update(
         id: slider["id"] as int,
         title: (slider["title"] ?? "").toString(),
-        subtitle: (slider["subtitle"] ?? "").toString().isEmpty ? null : slider["subtitle"].toString(),
-        description: (slider["description"] ?? "").toString().isEmpty ? null : slider["description"].toString(),
+        subtitle: (slider["subtitle"] ?? "").toString().isEmpty
+            ? null
+            : slider["subtitle"].toString(),
+        description: (slider["description"] ?? "").toString().isEmpty
+            ? null
+            : slider["description"].toString(),
         imageUrl: (slider["image_url"] ?? "").toString(),
-        linkUrl: (slider["link_url"] ?? "").toString().isEmpty ? null : slider["link_url"].toString(),
+        linkUrl: (slider["link_url"] ?? "").toString().isEmpty
+            ? null
+            : slider["link_url"].toString(),
         sortOrder: _parseSort(slider["sort_order"]),
         isActive: value,
       );
@@ -326,9 +354,9 @@ class _AdminSliderPageState extends State<AdminSliderPage> {
       controller.text = picked.name;
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Seçildi: ${picked.name}")),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text("Seçildi: ${picked.name}")));
       }
     } catch (e) {
       await showDialog(
@@ -361,7 +389,10 @@ class _AdminSliderPageState extends State<AdminSliderPage> {
             ),
             ElevatedButton.icon(
               icon: const Icon(Icons.add, color: Colors.white),
-              label: const Text("Slider Ekle", style: TextStyle(color: Colors.white)),
+              label: const Text(
+                "Slider Ekle",
+                style: TextStyle(color: Colors.white),
+              ),
               style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
               onPressed: _showAddOrEditDialog,
             ),
@@ -403,9 +434,13 @@ class _AdminSliderPageState extends State<AdminSliderPage> {
                       }
                       return SingleChildScrollView(
                         child: ConstrainedBox(
-                          constraints: BoxConstraints(minWidth: constraints.maxWidth),
+                          constraints: BoxConstraints(
+                            minWidth: constraints.maxWidth,
+                          ),
                           child: DataTable(
-                            headingRowColor: MaterialStateProperty.all(Colors.grey.shade100),
+                            headingRowColor: MaterialStateProperty.all(
+                              Colors.grey.shade100,
+                            ),
                             columns: const [
                               DataColumn(label: Text("Görsel")),
                               DataColumn(label: Text("Başlık")),
@@ -427,7 +462,11 @@ class _AdminSliderPageState extends State<AdminSliderPage> {
                                       onChanged: (val) => _toggleActive(s, val),
                                     ),
                                   ),
-                                  DataCell(Text(_parseSort(s["sort_order"]).toString())),
+                                  DataCell(
+                                    Text(
+                                      _parseSort(s["sort_order"]).toString(),
+                                    ),
+                                  ),
                                   DataCell(
                                     SizedBox(
                                       width: 220,
@@ -437,17 +476,27 @@ class _AdminSliderPageState extends State<AdminSliderPage> {
                                       ),
                                     ),
                                   ),
-                                  DataCell(Text(_formatDateTime(s["created_at"]))),
+                                  DataCell(
+                                    Text(_formatDateTime(s["created_at"])),
+                                  ),
                                   DataCell(
                                     Row(
                                       children: [
                                         IconButton(
-                                          icon: const Icon(Icons.edit, color: Colors.blue),
-                                          onPressed: () => _showAddOrEditDialog(slider: s),
+                                          icon: const Icon(
+                                            Icons.edit,
+                                            color: Colors.blue,
+                                          ),
+                                          onPressed: () =>
+                                              _showAddOrEditDialog(slider: s),
                                         ),
                                         IconButton(
-                                          icon: const Icon(Icons.delete, color: Colors.red),
-                                          onPressed: () => _deleteItem(s["id"] as int),
+                                          icon: const Icon(
+                                            Icons.delete,
+                                            color: Colors.red,
+                                          ),
+                                          onPressed: () =>
+                                              _deleteItem(s["id"] as int),
                                         ),
                                       ],
                                     ),

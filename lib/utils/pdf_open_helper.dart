@@ -32,6 +32,7 @@ class PdfOpenHelper {
 
     if (isPrivate) {
       final cached = await SecureFileService.instance.hasCached(normalized);
+      if (!context.mounted) return;
       if (cached) {
         Navigator.push(
           context,
@@ -48,6 +49,7 @@ class PdfOpenHelper {
     }
 
     double progress = 0;
+    var dialogActive = false;
     bool report(double value) {
       final clamped = value.clamp(0, 1).toDouble();
       if (clamped < progress) return false; // keep progress monotonic on retry
@@ -59,6 +61,8 @@ class PdfOpenHelper {
     StateSetter? dialogSetState;
 
     if (showDialogProgress) {
+      if (!context.mounted) return;
+      dialogActive = true;
       showDialog<void>(
         context: context,
         barrierDismissible: false,
@@ -82,7 +86,10 @@ class PdfOpenHelper {
             );
           },
         ),
-      );
+      ).whenComplete(() {
+        dialogActive = false;
+        dialogSetState = null;
+      });
     }
 
     try {
@@ -92,11 +99,15 @@ class PdfOpenHelper {
         isPrivate: isPrivate,
         onProgress: (p) {
           final updated = report(p);
-          if (updated) dialogSetState?.call(() {});
+          if (updated && dialogActive) {
+            dialogSetState?.call(() {});
+          }
         },
       );
       report(1);
       if (showDialogProgress && context.mounted) {
+        dialogActive = false;
+        dialogSetState = null;
         Navigator.of(context, rootNavigator: true).pop();
       }
       if (!context.mounted) return;
@@ -112,6 +123,8 @@ class PdfOpenHelper {
       );
     } catch (e) {
       if (showDialogProgress && context.mounted) {
+        dialogActive = false;
+        dialogSetState = null;
         Navigator.of(context, rootNavigator: true).pop();
       }
       rethrow;

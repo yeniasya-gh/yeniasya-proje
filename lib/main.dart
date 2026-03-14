@@ -6,6 +6,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_web_plugins/url_strategy.dart';
 import 'package:provider/provider.dart';
 import '/screen/home_responsive_screen.dart';
+import '/screen/splash/splash_screen.dart';
 import '/services/auth/auth_provider.dart';
 import '/services/cart/cart_provider.dart';
 import '/services/access_provider.dart';
@@ -15,12 +16,11 @@ import 'firebase_options.dart';
 
 final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 
-void main() async {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
   if (kIsWeb) {
     usePathUrlStrategy();
   }
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   final authProvider = AuthProvider();
   final cartProvider = CartProvider();
@@ -39,23 +39,6 @@ void main() async {
     );
   };
 
-  await authProvider.loadSession();
-  await revenueCatService.syncWithAuthUser(authProvider.user);
-
-  String? lastRevenueCatIdentity =
-      authProvider.isLoggedIn && authProvider.user != null
-      ? "user:${authProvider.user!.id}"
-      : "guest";
-  authProvider.addListener(() {
-    final user = authProvider.user;
-    final nextIdentity = authProvider.isLoggedIn && user != null
-        ? "user:${user.id}"
-        : "guest";
-    if (nextIdentity == lastRevenueCatIdentity) return;
-    lastRevenueCatIdentity = nextIdentity;
-    unawaited(revenueCatService.syncWithAuthUser(user));
-  });
-
   runApp(
     MultiProvider(
       providers: [
@@ -64,15 +47,107 @@ void main() async {
         ChangeNotifierProvider.value(value: accessProvider),
         ChangeNotifierProvider.value(value: revenueCatService),
       ],
-      child: const AppWrapper(),
+      child: const AppBootstrap(),
     ),
   );
 }
 
-class MyApp extends StatelessWidget {
-  final Uri? initialUri;
+class AppBootstrap extends StatefulWidget {
+  const AppBootstrap({super.key});
 
-  const MyApp({super.key, this.initialUri});
+  @override
+  State<AppBootstrap> createState() => _AppBootstrapState();
+}
+
+class _AppBootstrapState extends State<AppBootstrap> {
+  bool _ready = false;
+  String _status = "Uygulama hazırlanıyor";
+  String? _lastRevenueCatIdentity;
+  AuthProvider? _authProvider;
+
+  @override
+  void initState() {
+    super.initState();
+    _authProvider = context.read<AuthProvider>();
+    unawaited(_bootstrap());
+  }
+
+  @override
+  void dispose() {
+    _authProvider?.removeListener(_handleAuthChanged);
+    super.dispose();
+  }
+
+  Future<void> _bootstrap() async {
+    final authProvider = context.read<AuthProvider>();
+    final revenueCatService = context.read<RevenueCatService>();
+
+    setState(() => _status = "Oturum hazırlanıyor");
+
+    await Future.wait<void>([
+      _initializeFirebaseSafely(),
+      authProvider.loadSession(),
+    ]);
+
+    final user = authProvider.user;
+    _lastRevenueCatIdentity = authProvider.isLoggedIn && user != null
+        ? "user:${user.id}"
+        : "guest";
+    _authProvider?.removeListener(_handleAuthChanged);
+    _authProvider?.addListener(_handleAuthChanged);
+
+    if (mounted) {
+      setState(() => _ready = true);
+    }
+
+    unawaited(revenueCatService.syncWithAuthUser(user));
+  }
+
+  Future<void> _initializeFirebaseSafely() async {
+    try {
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+    } catch (error, stackTrace) {
+      debugPrint("Firebase initialize failed: $error");
+      debugPrintStack(stackTrace: stackTrace);
+    }
+  }
+
+  void _handleAuthChanged() {
+    final authProvider = _authProvider;
+    if (authProvider == null) return;
+
+    final user = authProvider.user;
+    final nextIdentity = authProvider.isLoggedIn && user != null
+        ? "user:${user.id}"
+        : "guest";
+    if (nextIdentity == _lastRevenueCatIdentity) return;
+
+    _lastRevenueCatIdentity = nextIdentity;
+    unawaited(context.read<RevenueCatService>().syncWithAuthUser(user));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onTap: () {
+        FocusManager.instance.primaryFocus?.unfocus();
+      },
+      child: MyApp(
+        home: _ready
+            ? HomeResponsiveScreen(initialUri: Uri.base)
+            : AppBootstrapScreen(status: _status),
+      ),
+    );
+  }
+}
+
+class MyApp extends StatelessWidget {
+  final Widget home;
+
+  const MyApp({super.key, required this.home});
 
   @override
   Widget build(BuildContext context) {
@@ -112,23 +187,8 @@ class MyApp extends StatelessWidget {
           child: child ?? const SizedBox.shrink(),
         ),
       ),
-      home: HomeResponsiveScreen(initialUri: initialUri),
+      home: home,
       navigatorKey: rootNavigatorKey,
-    );
-  }
-}
-
-class AppWrapper extends StatelessWidget {
-  const AppWrapper({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.translucent,
-      onTap: () {
-        FocusManager.instance.primaryFocus?.unfocus();
-      },
-      child: MyApp(initialUri: Uri.base),
     );
   }
 }

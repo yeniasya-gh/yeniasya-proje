@@ -1,71 +1,141 @@
-import 'dart:async';
-import 'package:flutter/material.dart';
-import 'package:YeniAsya/screen/home_responsive_screen.dart';
+import "package:flutter/foundation.dart";
+import "package:flutter/material.dart";
 
-class SplashScreen extends StatefulWidget {
-  const SplashScreen({super.key});
+class AppLaunchScreen extends StatelessWidget {
+  final String status;
+  final bool showProgress;
 
-  @override
-  State<SplashScreen> createState() => _SplashScreenState();
-}
-
-class _SplashScreenState extends State<SplashScreen>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _fadeAnimation;
-
-  @override
-  void initState() {
-    super.initState();
-
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 2),
-    );
-
-    _fadeAnimation = CurvedAnimation(
-      parent: _controller,
-      curve: Curves.easeInOut,
-    );
-
-    _controller.forward();
-
-    Future.delayed(const Duration(milliseconds: 300), _checkSession);
-  }
-
-  Future<void> _checkSession() async {
-    await Future.delayed(const Duration(milliseconds: 300));
-
-    await Future.delayed(const Duration(seconds: 2));
-
-    if (!mounted) return;
-
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (_) => const HomeResponsiveScreen()),
-    );
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
+  const AppLaunchScreen({
+    super.key,
+    this.status = "Uygulama hazırlanıyor",
+    this.showProgress = true,
+  });
 
   @override
   Widget build(BuildContext context) {
+    const accent = Color(0xFFB71C1C);
     return Scaffold(
       backgroundColor: Colors.white,
-      body: FadeTransition(
-        opacity: _fadeAnimation,
+      body: SafeArea(
         child: Center(
-          child: Image.asset(
-            'assets/images/logo.png',
-            width: 200,
-            fit: BoxFit.contain,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 28),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 112,
+                  height: 112,
+                  padding: const EdgeInsets.all(18),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFBEAEA),
+                    borderRadius: BorderRadius.circular(28),
+                    border: Border.all(color: const Color(0xFFECC0C0)),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x12000000),
+                        blurRadius: 18,
+                        offset: Offset(0, 10),
+                      ),
+                    ],
+                  ),
+                  child: Image.asset(
+                    "assets/images/logo.png",
+                    fit: BoxFit.contain,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                const Text(
+                  "Yeni Asya Dijital",
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.4,
+                    color: Color(0xFF111111),
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  status,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: Color(0xFF6D6D6D),
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                if (showProgress) ...[
+                  const SizedBox(height: 22),
+                  const SizedBox(
+                    width: 26,
+                    height: 26,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.4,
+                      valueColor: AlwaysStoppedAnimation<Color>(accent),
+                    ),
+                  ),
+                ],
+              ],
+            ),
           ),
         ),
       ),
     );
+  }
+}
+
+class AppBootstrapScreen extends StatelessWidget {
+  final String status;
+  final bool showProgress;
+
+  const AppBootstrapScreen({
+    super.key,
+    this.status = "Uygulama hazırlanıyor",
+    this.showProgress = true,
+  });
+
+  static bool get _showBrandedLayout {
+    if (kIsWeb) return true;
+    switch (defaultTargetPlatform) {
+      case TargetPlatform.android:
+      case TargetPlatform.iOS:
+        return false;
+      case TargetPlatform.macOS:
+      case TargetPlatform.windows:
+      case TargetPlatform.linux:
+      case TargetPlatform.fuchsia:
+        return true;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_showBrandedLayout) {
+      return AppLaunchScreen(status: status, showProgress: showProgress);
+    }
+
+    return const Scaffold(
+      backgroundColor: Colors.white,
+      body: Center(
+        child: SizedBox(
+          width: 26,
+          height: 26,
+          child: CircularProgressIndicator(
+            strokeWidth: 2.4,
+            valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFB71C1C)),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class SplashScreen extends StatelessWidget {
+  const SplashScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const AppBootstrapScreen();
   }
 }

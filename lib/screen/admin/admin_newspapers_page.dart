@@ -77,7 +77,9 @@ class _AdminNewspapersPageState extends State<AdminNewspapersPage> {
     final isEdit = newspaper != null;
     final formKey = GlobalKey<FormState>();
 
-    final dateCtrl = TextEditingController(text: newspaper?["publish_date"] ?? "");
+    final dateCtrl = TextEditingController(
+      text: newspaper?["publish_date"] ?? "",
+    );
     final fileCtrl = TextEditingController(text: newspaper?["file_url"] ?? "");
 
     Uint8List? pickedImageBytes;
@@ -167,7 +169,8 @@ class _AdminNewspapersPageState extends State<AdminNewspapersPage> {
                                     );
                                   },
                                 );
-                                if (ctx.mounted) setSt(() => isProcessing = false);
+                                if (ctx.mounted)
+                                  setSt(() => isProcessing = false);
                               },
                       ),
                     ),
@@ -202,8 +205,11 @@ class _AdminNewspapersPageState extends State<AdminNewspapersPage> {
                       Navigator.pop(context);
 
                       try {
-                        String imageUrl = (newspaper?["image_url"] ?? "").toString().trim();
-                        if (pickedImageBytes != null && pickedImageName != null) {
+                        String imageUrl = (newspaper?["image_url"] ?? "")
+                            .toString()
+                            .trim();
+                        if (pickedImageBytes != null &&
+                            pickedImageName != null) {
                           imageUrl = await _uploadService.uploadPublic(
                             type: UploadFileType.newspaper,
                             bytes: pickedImageBytes!,
@@ -211,7 +217,9 @@ class _AdminNewspapersPageState extends State<AdminNewspapersPage> {
                           );
                         }
                         if (imageUrl.isEmpty) {
-                          await _showError("Kapak görseli oluşturulamadı. Lütfen PDF'i yeniden seçin.");
+                          await _showError(
+                            "Kapak görseli oluşturulamadı. Lütfen PDF'i yeniden seçin.",
+                          );
                           if (mounted) {
                             await Future.microtask(
                               () => _showAddOrEditDialog(newspaper: newspaper),
@@ -236,6 +244,14 @@ class _AdminNewspapersPageState extends State<AdminNewspapersPage> {
                             fileUrl: fileUrl,
                             publishDate: payload["publish_date"] as String,
                           );
+                          await _uploadService.cleanupReplacedFile(
+                            previousUrl: newspaper["image_url"]?.toString(),
+                            nextUrl: imageUrl,
+                          );
+                          await _uploadService.cleanupReplacedFile(
+                            previousUrl: newspaper["file_url"]?.toString(),
+                            nextUrl: fileUrl,
+                          );
                         } else {
                           await _service.add(
                             imageUrl: imageUrl,
@@ -253,8 +269,10 @@ class _AdminNewspapersPageState extends State<AdminNewspapersPage> {
                         }
                       }
                     },
-              child: Text(isEdit ? "Kaydet" : "Oluştur",
-                  style: const TextStyle(color: Colors.white)),
+              child: Text(
+                isEdit ? "Kaydet" : "Oluştur",
+                style: const TextStyle(color: Colors.white),
+              ),
             ),
           ],
         ),
@@ -304,15 +322,17 @@ class _AdminNewspapersPageState extends State<AdminNewspapersPage> {
     required Future<void> Function(Uint8List bytes, String name) onPicked,
   }) async {
     try {
-      final picked = await AssetImagePicker.pickFile(allowedExtensions: const ["pdf"]);
+      final picked = await AssetImagePicker.pickFile(
+        allowedExtensions: const ["pdf"],
+      );
       if (picked == null) return;
       controller.text = picked.name;
       await onPicked(picked.bytes, picked.name);
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Seçildi: ${picked.name}")),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text("Seçildi: ${picked.name}")));
       }
     } catch (e) {
       await showDialog(
@@ -411,7 +431,10 @@ class _AdminNewspapersPageState extends State<AdminNewspapersPage> {
             ),
             ElevatedButton.icon(
               icon: const Icon(Icons.add, color: Colors.white),
-              label: const Text("Gazete Ekle", style: TextStyle(color: Colors.white)),
+              label: const Text(
+                "Gazete Ekle",
+                style: TextStyle(color: Colors.white),
+              ),
               style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
               onPressed: _showAddOrEditDialog,
             ),
@@ -445,49 +468,58 @@ class _AdminNewspapersPageState extends State<AdminNewspapersPage> {
               ],
             ),
             child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      return SingleChildScrollView(
-                        child: ConstrainedBox(
-                          constraints: BoxConstraints(minWidth: constraints.maxWidth),
-                          child: DataTable(
-                            headingRowColor:
-                                MaterialStateProperty.all(Colors.grey.shade100),
-                            columns: const [
-                              DataColumn(label: Text("Kapak")),
-                              DataColumn(label: Text("Tarih")),
-                              DataColumn(label: Text("Dosya")),
-                              DataColumn(label: Text("Oluşturma")),
-                              DataColumn(label: Text("İşlem")),
-                            ],
-                            rows: _filtered.map((n) {
-                              return DataRow(
-                                cells: [
-                                  DataCell(_buildCover(n["image_url"] ?? "")),
-                                  DataCell(Text(n["publish_date"] ?? "")),
-                                  DataCell(Text(n["file_url"] ?? "")),
-                                  DataCell(Text(_formatDateTime(n["created_at"]))),
-                                  DataCell(
-                                    Row(
-                                      children: [
-                                        IconButton(
-                                          icon: const Icon(Icons.edit, color: Colors.blue),
-                                          onPressed: () => _showAddOrEditDialog(newspaper: n),
-                                        ),
-                                        IconButton(
-                                          icon: const Icon(Icons.delete, color: Colors.red),
-                                          onPressed: () => _deleteItem(n["id"] as int),
-                                        ),
-                                      ],
+              builder: (context, constraints) {
+                return SingleChildScrollView(
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(minWidth: constraints.maxWidth),
+                    child: DataTable(
+                      headingRowColor: MaterialStateProperty.all(
+                        Colors.grey.shade100,
+                      ),
+                      columns: const [
+                        DataColumn(label: Text("Kapak")),
+                        DataColumn(label: Text("Tarih")),
+                        DataColumn(label: Text("Dosya")),
+                        DataColumn(label: Text("Oluşturma")),
+                        DataColumn(label: Text("İşlem")),
+                      ],
+                      rows: _filtered.map((n) {
+                        return DataRow(
+                          cells: [
+                            DataCell(_buildCover(n["image_url"] ?? "")),
+                            DataCell(Text(n["publish_date"] ?? "")),
+                            DataCell(Text(n["file_url"] ?? "")),
+                            DataCell(Text(_formatDateTime(n["created_at"]))),
+                            DataCell(
+                              Row(
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(
+                                      Icons.edit,
+                                      color: Colors.blue,
                                     ),
+                                    onPressed: () =>
+                                        _showAddOrEditDialog(newspaper: n),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(
+                                      Icons.delete,
+                                      color: Colors.red,
+                                    ),
+                                    onPressed: () =>
+                                        _deleteItem(n["id"] as int),
                                   ),
                                 ],
-                              );
-                            }).toList(),
-                          ),
-                        ),
-                      );
-                    },
+                              ),
+                            ),
+                          ],
+                        );
+                      }).toList(),
+                    ),
                   ),
+                );
+              },
+            ),
           ),
         ),
       ],
@@ -505,5 +537,6 @@ class _AdminNewspapersPageState extends State<AdminNewspapersPage> {
     return "${two(dt.hour)}:${two(dt.minute)} ${two(dt.day)}.${two(dt.month)}.${dt.year}";
   }
 }
-    Uint8List? pickedImageBytes;
-    String? pickedImageName;
+
+Uint8List? pickedImageBytes;
+String? pickedImageName;

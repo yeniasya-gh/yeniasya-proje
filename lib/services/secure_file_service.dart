@@ -23,6 +23,10 @@ class SecureFileService {
   SecureFileService._internal();
   static final SecureFileService instance = SecureFileService._internal();
   final LoggingService _logger = LoggingService();
+  static const Duration _defaultConnectTimeout = Duration(seconds: 10);
+  static const Duration _defaultInactivityTimeout = Duration(seconds: 10);
+  static const Duration _privateConnectTimeout = Duration(seconds: 15);
+  static const Duration _privateInactivityTimeout = Duration(seconds: 20);
 
   static const _keyStorage = FlutterSecureStorage();
   static const _keyName = "secure_file_aes_key";
@@ -147,8 +151,8 @@ class SecureFileService {
       }
       final resp = await _sendAndCollect(
         req,
-        connectTimeout: const Duration(seconds: 10),
-        inactivityTimeout: const Duration(seconds: 10),
+        connectTimeout: _defaultConnectTimeout,
+        inactivityTimeout: _defaultInactivityTimeout,
         overallTimeout: const Duration(minutes: 2),
         onProgress: onProgress,
       );
@@ -185,8 +189,8 @@ class SecureFileService {
         ..body = jsonEncode(payload);
       resp = await _sendAndCollect(
         req,
-        connectTimeout: const Duration(seconds: 10),
-        inactivityTimeout: const Duration(seconds: 10),
+        connectTimeout: _privateConnectTimeout,
+        inactivityTimeout: _privateInactivityTimeout,
         overallTimeout: const Duration(minutes: 3),
         onProgress: onProgress,
       );
@@ -245,8 +249,8 @@ class SecureFileService {
           ..headers["accept"] = "application/pdf";
         final redirected = await _sendAndCollect(
           req,
-          connectTimeout: const Duration(seconds: 10),
-          inactivityTimeout: const Duration(seconds: 10),
+          connectTimeout: _privateConnectTimeout,
+          inactivityTimeout: _privateInactivityTimeout,
           overallTimeout: const Duration(minutes: 2),
           onProgress: onProgress,
         );
@@ -407,8 +411,8 @@ class SecureFileService {
       }
       final resp = await _sendAndCollect(
         req,
-        connectTimeout: const Duration(seconds: 10),
-        inactivityTimeout: const Duration(seconds: 10),
+        connectTimeout: _privateConnectTimeout,
+        inactivityTimeout: _privateInactivityTimeout,
         overallTimeout: const Duration(minutes: 2),
         onProgress: onProgress,
       );
@@ -439,8 +443,8 @@ class SecureFileService {
         ..body = jsonEncode({"path": path});
       final resp = await _sendAndCollect(
         req,
-        connectTimeout: const Duration(seconds: 10),
-        inactivityTimeout: const Duration(seconds: 10),
+        connectTimeout: _privateConnectTimeout,
+        inactivityTimeout: _privateInactivityTimeout,
         overallTimeout: const Duration(minutes: 2),
         onProgress: onProgress,
       );
@@ -468,8 +472,8 @@ class SecureFileService {
     }
     final resp = await _sendAndCollect(
       req,
-      connectTimeout: const Duration(seconds: 10),
-      inactivityTimeout: const Duration(seconds: 10),
+      connectTimeout: _privateConnectTimeout,
+      inactivityTimeout: _privateInactivityTimeout,
       overallTimeout: const Duration(minutes: 3),
       onProgress: onProgress,
     );
@@ -541,37 +545,46 @@ class SecureFileService {
         })().timeout(overallTimeout);
       } on TimeoutException catch (e, s) {
         final dur = e.duration;
-        final isShortTimeout =
-            dur == null || dur <= const Duration(seconds: 10);
+        final retryableTimeout =
+            connectTimeout.compareTo(inactivityTimeout) >= 0
+            ? connectTimeout
+            : inactivityTimeout;
+        final isShortTimeout = dur == null || dur <= retryableTimeout;
         if (!isShortTimeout) rethrow;
-        if (attempt >= maxTimeoutRetries) rethrow;
-        await _logger.logError(
-          service: "SecureFileService",
-          operation: "downloadRetry",
-          message: e.toString(),
-          stackTrace: s.toString(),
-          payload: {
-            "attempt": attempt + 1,
-            "method": request.method,
-            "url": request.url.toString(),
-            "platform": defaultTargetPlatform.toString(),
-          },
-        );
+        if (attempt >= maxTimeoutRetries) {
+          await _logger.logError(
+            service: "SecureFileService",
+            operation: "downloadRetry",
+            message: e.toString(),
+            stackTrace: s.toString(),
+            payload: {
+              "attempt": attempt + 1,
+              "method": request.method,
+              "url": request.url.toString(),
+              "platform": defaultTargetPlatform.toString(),
+              "exhausted": true,
+            },
+          );
+          rethrow;
+        }
         await Future<void>.delayed(Duration(milliseconds: 450 * (attempt + 1)));
       } on SocketException catch (e, s) {
-        if (attempt >= maxSocketRetries) rethrow;
-        await _logger.logError(
-          service: "SecureFileService",
-          operation: "downloadRetry",
-          message: e.toString(),
-          stackTrace: s.toString(),
-          payload: {
-            "attempt": attempt + 1,
-            "method": request.method,
-            "url": request.url.toString(),
-            "platform": defaultTargetPlatform.toString(),
-          },
-        );
+        if (attempt >= maxSocketRetries) {
+          await _logger.logError(
+            service: "SecureFileService",
+            operation: "downloadRetry",
+            message: e.toString(),
+            stackTrace: s.toString(),
+            payload: {
+              "attempt": attempt + 1,
+              "method": request.method,
+              "url": request.url.toString(),
+              "platform": defaultTargetPlatform.toString(),
+              "exhausted": true,
+            },
+          );
+          rethrow;
+        }
         await Future<void>.delayed(Duration(milliseconds: 450 * (attempt + 1)));
       } finally {
         client.close();

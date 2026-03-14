@@ -195,7 +195,7 @@ class AdminUserService {
   /// Kullanıcı sil
   Future<bool> deleteUser(int id) async {
     const String mutation = r'''
-      mutation DeleteUser($id: Int!) {
+      mutation DeleteUser($id: bigint!) {
         delete_users_by_pk(id: $id) { id }
       }
     ''';
@@ -538,7 +538,6 @@ class AdminUserService {
       query GetMagazineIssuesByIds($ids: [Int!]!) {
         magazine_issue(where: {id: {_in: $ids}}) {
           id
-          title
           issue_number
           publish_date
           magazine {

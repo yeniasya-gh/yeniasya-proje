@@ -830,6 +830,14 @@ class _AdminBooksPageState extends State<AdminBooksPage> {
                         ? null
                         : payload["min_description"] as String,
                   );
+                  await _uploadService.cleanupReplacedFile(
+                    previousUrl: book["cover_url"]?.toString(),
+                    nextUrl: coverUrl,
+                  );
+                  await _uploadService.cleanupReplacedFile(
+                    previousUrl: book["book_url"]?.toString(),
+                    nextUrl: bookUrl,
+                  );
 
                   await _loadBooks();
 
