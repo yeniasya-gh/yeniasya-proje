@@ -3,7 +3,7 @@ const MANIFEST = 'flutter-app-manifest';
 const TEMP = 'flutter-temp-cache';
 const CACHE_NAME = 'flutter-app-cache';
 
-const RESOURCES = {"flutter_bootstrap.js": "59f1152ed96a0b11370a6b595573a113",
+const RESOURCES = {"flutter_bootstrap.js": "c5422cb015157852e9e63bdab97eac31",
 "cerez-politikasi/index.html": "01022d2695fc5a1b3e39b36af87a7d53",
 "version.json": "b2aea8978d97a247439a4b162c702c00",
 "splash/img/light-2x.png": "78988e7c4d052997e515d27c8d747e08",
@@ -14,8 +14,8 @@ const RESOURCES = {"flutter_bootstrap.js": "59f1152ed96a0b11370a6b595573a113",
 "splash/img/dark-2x.png": "78988e7c4d052997e515d27c8d747e08",
 "splash/img/dark-1x.png": "171e3851bc5d4e8cbef9293f789bff53",
 "splash/img/light-1x.png": "171e3851bc5d4e8cbef9293f789bff53",
-"index.html": "42df8fb6b493ec5ee1f8abeeeadcdc00",
-"/": "42df8fb6b493ec5ee1f8abeeeadcdc00",
+"index.html": "41a09eee670bcfa7c86f234a032a5e4b",
+"/": "41a09eee670bcfa7c86f234a032a5e4b",
 "kvvk/index.html": "01022d2695fc5a1b3e39b36af87a7d53",
 "privacy/index.html": "5094e494a7c7f2df20eab300365d608a",
 "iletisim/index.html": "01022d2695fc5a1b3e39b36af87a7d53",

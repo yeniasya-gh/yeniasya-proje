@@ -115,7 +115,14 @@
     <div id="bootstrap-loader" aria-live="polite" aria-busy="true">
         <div class="bootstrap-shell">
           <div class="bootstrap-logo">
-            <img src="assets/images/logo.png" alt="Yeni Asya Dijital" />
+            <img
+              src="assets/assets/images/logo.png"
+              alt="Yeni Asya Dijital"
+              width="64"
+              height="64"
+              loading="eager"
+              onerror="if (!this.dataset.fallbackTried) { this.dataset.fallbackTried = '1'; this.src = 'assets/images/logo.png'; }"
+            />
           </div>
         <div class="bootstrap-title">Yeni Asya Dijital</div>
         <div class="bootstrap-status">Uygulama hazırlanıyor</div>
