@@ -96,7 +96,7 @@ class AppBootstrapScreen extends StatelessWidget {
   });
 
   static bool get _showBrandedLayout {
-    if (kIsWeb) return true;
+    if (kIsWeb) return false;
     switch (defaultTargetPlatform) {
       case TargetPlatform.android:
       case TargetPlatform.iOS:
@@ -111,6 +111,10 @@ class AppBootstrapScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (kIsWeb) {
+      return const Scaffold(backgroundColor: Colors.white, body: SizedBox.expand());
+    }
+
     if (_showBrandedLayout) {
       return AppLaunchScreen(status: status, showProgress: showProgress);
     }
