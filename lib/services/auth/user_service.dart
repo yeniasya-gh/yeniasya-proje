@@ -30,6 +30,7 @@ class UserService {
           name
           phone
           email
+          avatar_url
           payUniqe
           role_id
           role { id name }
@@ -73,6 +74,7 @@ class UserService {
       name
       phone
       email
+      avatar_url
       payUniqe
       role_id
       role {
@@ -102,6 +104,7 @@ class UserService {
           name
           phone
           email
+          avatar_url
           payUniqe
           role_id
           role { id name }
@@ -127,6 +130,7 @@ class UserService {
         name
         phone
         email
+        avatar_url
         payUniqe
         role_id
         role { id name }
@@ -163,6 +167,7 @@ class UserService {
           name
           phone
           email
+          avatar_url
           payUniqe
           role_id
           role { id name }

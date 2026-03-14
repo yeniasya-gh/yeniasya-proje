@@ -6,7 +6,10 @@ class AdminBookService {
   Future<List<Map<String, dynamic>>> getPublicBooks() async {
     const query = r'''
 query GetPublicBooks {
-  books(order_by: {id: desc}) {
+  books(
+    where: {is_published: {_eq: true}},
+    order_by: {id: desc}
+  ) {
     id
     title
     cover_url
@@ -14,6 +17,10 @@ query GetPublicBooks {
     discount_price
     description
     min_description
+    category_rel: categoryByCategoryId {
+      id
+      name
+    }
 
     author_rel: authorByAuthorId {
       id
@@ -39,6 +46,7 @@ query GetAllBooks {
     isbn
     cover_url
     book_url
+    is_published
     price
     discount_price
     description
@@ -199,6 +207,30 @@ query GetAllBooks {
     ''';
 
     await _hasura.graphQLRequest(query: mutation, variables: {"id": id});
+
+    return true;
+  }
+
+  Future<bool> setPublicationStatus({
+    required int id,
+    required bool isPublished,
+  }) async {
+    const mutation = r'''
+      mutation SetBookPublicationStatus($id: Int!, $is_published: Boolean!) {
+        update_books_by_pk(
+          pk_columns: {id: $id},
+          _set: {is_published: $is_published}
+        ) {
+          id
+          is_published
+        }
+      }
+    ''';
+
+    await _hasura.graphQLRequest(
+      query: mutation,
+      variables: {"id": id, "is_published": isPublished},
+    );
 
     return true;
   }

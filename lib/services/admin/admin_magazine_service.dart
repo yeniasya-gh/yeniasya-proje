@@ -174,11 +174,42 @@ class AdminMagazineService {
     return List<Map<String, dynamic>>.from(data["magazine_issue"]);
   }
 
+  Future<List<Map<String, dynamic>>> getAdminIssues(int magazineId) async {
+    const query = r'''
+      query GetAdminIssues($magazine_id: Int!) {
+        magazine_issue(
+          where: {magazine_id: {_eq: $magazine_id}},
+          order_by: {issue_number: desc}
+        ) {
+          id
+          magazine_id
+          issue_number
+          is_published
+          file_url
+          photo_url
+          price
+          description
+          added_at
+        }
+      }
+    ''';
+
+    final data = await _hasura.graphQLRequest(
+      query: query,
+      variables: {"magazine_id": magazineId},
+    );
+
+    return List<Map<String, dynamic>>.from(data["magazine_issue"]);
+  }
+
   Future<List<Map<String, dynamic>>> getPublicIssues(int magazineId) async {
     const query = r'''
       query GetPublicIssues($magazine_id: Int!) {
         magazine_issue(
-          where: {magazine_id: {_eq: $magazine_id}},
+          where: {
+            magazine_id: {_eq: $magazine_id},
+            is_published: {_eq: true}
+          },
           order_by: {issue_number: desc}
         ) {
           id
@@ -304,6 +335,30 @@ class AdminMagazineService {
     ''';
 
     await _hasura.graphQLRequest(query: mutation, variables: {"id": id});
+    return true;
+  }
+
+  Future<bool> setIssuePublicationStatus({
+    required int id,
+    required bool isPublished,
+  }) async {
+    const mutation = r'''
+      mutation SetIssuePublicationStatus($id: Int!, $is_published: Boolean!) {
+        update_magazine_issue_by_pk(
+          pk_columns: {id: $id},
+          _set: {is_published: $is_published}
+        ) {
+          id
+          is_published
+        }
+      }
+    ''';
+
+    await _hasura.graphQLRequest(
+      query: mutation,
+      variables: {"id": id, "is_published": isPublished},
+    );
+
     return true;
   }
 

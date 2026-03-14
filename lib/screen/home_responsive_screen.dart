@@ -15,8 +15,6 @@ import '/screen/cart/cart_screen.dart';
 import '/screen/order/order_detail_screen.dart';
 import '../services/admin/admin_magazine_service.dart';
 import '../services/admin/admin_book_service.dart';
-import '../services/admin/admin_newspaper_service.dart';
-import '../services/admin/admin_slider_service.dart';
 import '../services/ek_service.dart';
 import '../services/cart/cart_provider.dart';
 import '../models/cart_item.dart';
@@ -25,7 +23,6 @@ import '../services/user_content_access_service.dart';
 import '../services/revenuecat_service.dart';
 import '../services/app_feature_flags_service.dart';
 import '../services/upload_service.dart';
-import '../services/home_showcase_service.dart';
 import '../services/home_bootstrap_service.dart';
 import '../services/newspaper_subscription_type_service.dart';
 import '../services/logging_service.dart';
@@ -83,13 +80,10 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
 
   final AdminMagazineService _magService = AdminMagazineService();
   final AdminBookService _bookService = AdminBookService();
-  final AdminNewspaperService _newsService = AdminNewspaperService();
-  final AdminSliderService _sliderService = AdminSliderService();
   final EkService _ekService = EkService();
   final AuthApiService _authApi = AuthApiService();
   final OrderService _orderService = OrderService();
   final UserContentAccessService _accessService = UserContentAccessService();
-  final HomeShowcaseService _homeShowcaseService = HomeShowcaseService();
   final HomeBootstrapService _homeBootstrapService = HomeBootstrapService();
   final NewspaperSubscriptionTypeService _newspaperTypePriceService =
       NewspaperSubscriptionTypeService();
@@ -124,6 +118,22 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
   bool _homeLoadFailed = false;
   AuthProvider? _authListener;
   DateTime? _newsSelectedDate;
+
+  DateTime get _newspaperPickerInitialDate =>
+      _normalizeDate(_newsSelectedDate ?? DateTime.now());
+
+  String get _newspaperSelectedDateLabel => _newsSelectedDate == null
+      ? "Tarih Seç"
+      : _formatDateShort(_newsSelectedDate!);
+
+  void _setNewspaperSelectedDate(DateTime? date) {
+    final normalized = date == null ? null : _normalizeDate(date);
+    if (!mounted) {
+      _newsSelectedDate = normalized;
+      return;
+    }
+    setState(() => _newsSelectedDate = normalized);
+  }
 
   void _openSectionFromFooter(String label) {
     final section = switch (label) {
@@ -308,18 +318,18 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     }
 
     final results = await Future.wait([
-      guardedList("magazines", _magService.getMagazines),
-      guardedList("books", _bookService.getPublicBooks),
-      guardedList("newspapers", _newsService.getPublicList),
-      guardedList("attachments", _ekService.getEkler),
-      guardedList("sliders", () => _sliderService.getAll(onlyActive: true)),
+      guardedList("magazines", _homeBootstrapService.fetchMagazines),
+      guardedList("books", _homeBootstrapService.fetchBooks),
+      guardedList("newspapers", _homeBootstrapService.fetchNewspapers),
+      guardedList("attachments", _homeBootstrapService.fetchAttachments),
+      guardedList("sliders", _homeBootstrapService.fetchSliders),
       guardedList(
         "homeBookEntries",
-        () => _homeShowcaseService.getByType("book", onlyActive: true),
+        _homeBootstrapService.fetchHomeBookEntries,
       ),
       guardedList(
         "homeMagazineEntries",
-        () => _homeShowcaseService.getByType("magazine", onlyActive: true),
+        _homeBootstrapService.fetchHomeMagazineEntries,
       ),
     ]);
 
@@ -677,29 +687,19 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
   }
 
   List<Map<String, dynamic>> _filteredNewspapers() {
-    final hasFilter = _newsSelectedDate != null;
-    if (!hasFilter) return newspapers;
+    final selectedDate = _newsSelectedDate;
+    if (selectedDate == null) return newspapers;
 
-    final cutoff = DateTime(2026, 1, 1);
-    final targets = <DateTime>[];
-    if (_newsSelectedDate != null) {
-      targets.add(_normalizeDate(_newsSelectedDate!));
-    }
-
-    final results = <Map<String, dynamic>>[];
-    for (final date in targets) {
-      if (!date.isBefore(cutoff)) {
-        final match = newspapers.firstWhere((n) {
+    final target = _normalizeDate(selectedDate);
+    return newspapers
+        .where((n) {
           final raw = n["publish_date"]?.toString();
           if (raw == null) return false;
           final parsed = DateTime.tryParse(raw);
           if (parsed == null) return false;
-          return _normalizeDate(parsed) == date;
-        }, orElse: () => {});
-        if (match.isNotEmpty) results.add(match);
-      }
-    }
-    return results;
+          return _normalizeDate(parsed) == target;
+        })
+        .toList(growable: false);
   }
 
   void _openProductDetail(ProductDetail detail) {
@@ -1649,11 +1649,13 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
                                             vertical: 4,
                                           ),
                                           decoration: BoxDecoration(
-                                            color: (data.statusColor ??
-                                                    Colors.grey)
-                                                .withValues(alpha: 0.12),
-                                            borderRadius:
-                                                BorderRadius.circular(999),
+                                            color:
+                                                (data.statusColor ??
+                                                        Colors.grey)
+                                                    .withValues(alpha: 0.12),
+                                            borderRadius: BorderRadius.circular(
+                                              999,
+                                            ),
                                           ),
                                           child: Text(
                                             data.statusLabel!,
@@ -1698,7 +1700,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
 
   Future<void> _openMagazineIssues(int magazineId) async {
     try {
-      final issues = await _magService.getIssues(magazineId);
+      final issues = await _magService.getPublicIssues(magazineId);
       if (!mounted) return;
       if (issues.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -2371,10 +2373,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
                     const Text(
                       "Bağlantı yavaş veya geçici olarak servis yanıt vermiyor olabilir.",
                       textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.black54,
-                      ),
+                      style: TextStyle(fontSize: 14, color: Colors.black54),
                     ),
                     const SizedBox(height: 16),
                     ElevatedButton(
@@ -2816,15 +2815,17 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
       return const SizedBox.shrink();
     }
     Future<void> pickSingleDate() async {
-      final now = DateTime.now();
       final picked = await showDatePicker(
         context: context,
-        initialDate: now,
+        initialDate: _newspaperPickerInitialDate,
         firstDate: DateTime(2000),
-        lastDate: now.add(const Duration(days: 365 * 2)),
+        lastDate: DateTime.now().add(const Duration(days: 365 * 2)),
         locale: const Locale('tr', 'TR'),
       );
       if (picked == null) return;
+      if (!mounted) return;
+      _setNewspaperSelectedDate(picked);
+      if (!context.mounted) return;
       await _openArchivedNewspaperForDate(context, picked);
     }
 
@@ -2838,8 +2839,15 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
             OutlinedButton.icon(
               onPressed: pickSingleDate,
               icon: const Icon(Icons.event),
-              label: const Text("Tarih Seç"),
+              label: Text(_newspaperSelectedDateLabel),
             ),
+            if (_newsSelectedDate != null)
+              TextButton.icon(
+                onPressed: () => _setNewspaperSelectedDate(null),
+                icon: const Icon(Icons.close, size: 18),
+                label: const Text("Temizle"),
+                style: TextButton.styleFrom(foregroundColor: Colors.red),
+              ),
           ],
         ),
       ],
@@ -3265,7 +3273,7 @@ Widget _sectionHeader(
 }) {
   final mobile = MediaQuery.of(context).size.width <= 800;
   final actionHeight = mobile ? 32.0 : 34.0;
-  final actionButtonHeight = mobile ? 28.0 : 30.0;
+  final actionButtonHeight = mobile ? 25.0 : 27.0;
   final actions = <Widget>[
     ...trailingActions,
     _viewAllChipButton(
@@ -3338,7 +3346,7 @@ Widget _viewAllChipButton(
   double? height,
 }) {
   final mobile = MediaQuery.of(context).size.width <= 800;
-  final buttonHeight = height ?? (mobile ? 28.0 : 30.0);
+  final buttonHeight = height ?? (mobile ? 25.0 : 27.0);
   return SizedBox(
     height: buttonHeight,
     child: TextButton(
@@ -3346,17 +3354,18 @@ Widget _viewAllChipButton(
       style: TextButton.styleFrom(
         backgroundColor: Colors.white,
         foregroundColor: Colors.red,
-        padding: EdgeInsets.symmetric(horizontal: mobile ? 10 : 12),
+        padding: EdgeInsets.symmetric(horizontal: mobile ? 8 : 10),
         minimumSize: Size(0, buttonHeight),
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        visualDensity: const VisualDensity(horizontal: -2, vertical: -4),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(7)),
       ),
       child: Text(
         label,
         style: TextStyle(
           color: Colors.red,
           fontWeight: FontWeight.w700,
-          fontSize: mobile ? 11.5 : 12.5,
+          fontSize: mobile ? 11 : 12,
         ),
       ),
     ),
@@ -4411,15 +4420,17 @@ class _NewspaperListScreenState extends State<_NewspaperListScreen> {
       }
       return;
     }
-    final now = DateTime.now();
     final picked = await showDatePicker(
       context: context,
-      initialDate: now,
+      initialDate: widget.homeState._newspaperPickerInitialDate,
       firstDate: DateTime(2000),
-      lastDate: now.add(const Duration(days: 365 * 2)),
+      lastDate: DateTime.now().add(const Duration(days: 365 * 2)),
       locale: const Locale('tr', 'TR'),
     );
     if (picked == null) return;
+    if (!mounted) return;
+    widget.homeState._setNewspaperSelectedDate(picked);
+    setState(() {});
     await widget.homeState._openArchivedNewspaperForDate(context, picked);
   }
 
@@ -4444,6 +4455,7 @@ class _NewspaperListScreenState extends State<_NewspaperListScreen> {
       listen: true,
     );
     final canPickDate = auth.isLoggedIn && hasSubscription;
+    final hasSelectedDate = widget.homeState._newsSelectedDate != null;
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.white,
@@ -4455,17 +4467,26 @@ class _NewspaperListScreenState extends State<_NewspaperListScreen> {
             TextButton.icon(
               onPressed: _pickSingleDate,
               icon: const Icon(Icons.event, size: 20),
-              label: const Text("Tarih Seç"),
+              label: Text(widget.homeState._newspaperSelectedDateLabel),
               style: TextButton.styleFrom(foregroundColor: Colors.red),
+            ),
+          if (hasSelectedDate)
+            IconButton(
+              tooltip: "Tarihi Temizle",
+              onPressed: () {
+                widget.homeState._setNewspaperSelectedDate(null);
+                setState(() {});
+              },
+              icon: const Icon(Icons.close, color: Colors.red),
             ),
         ],
       ),
       body: SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(16),
           child: _NewspaperBrowseBody(
             homeState: widget.homeState,
-            items: widget.homeState.newspapers,
+            items: widget.homeState._filteredNewspapers(),
             isWeb: false,
           ),
         ),
@@ -4933,7 +4954,7 @@ class _MagazineBrowseScreenState extends State<_MagazineBrowseScreen> {
   Future<List<Map<String, dynamic>>> _issuesFor(int magazineId) {
     return _issuesFutures.putIfAbsent(
       magazineId,
-      () async => widget.homeState._magService.getIssues(magazineId),
+      () async => widget.homeState._magService.getPublicIssues(magazineId),
     );
   }
 

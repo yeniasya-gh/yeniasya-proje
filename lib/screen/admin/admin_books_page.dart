@@ -24,6 +24,7 @@ class _AdminBooksPageState extends State<AdminBooksPage> {
 
   List<Map<String, dynamic>> allBooks = [];
   List<Map<String, dynamic>> filteredBooks = [];
+  final Set<int> _publicationBusyIds = <int>{};
 
   bool isLoading = true;
 
@@ -54,10 +55,65 @@ class _AdminBooksPageState extends State<AdminBooksPage> {
       filteredBooks = allBooks.where((b) {
         final q = text.toLowerCase();
         return (b["title"] ?? "").toString().toLowerCase().contains(q) ||
-            (b["author"] ?? "").toString().toLowerCase().contains(q) ||
+            (b["author_rel"]?["name"] ?? "").toString().toLowerCase().contains(
+              q,
+            ) ||
             (b["isbn"] ?? "").toString().toLowerCase().contains(q);
       }).toList();
     });
+  }
+
+  bool _bookIsPublished(Map<String, dynamic> book) =>
+      book["is_published"] != false;
+
+  void _setBookPublicationLocally(int id, bool isPublished) {
+    allBooks = allBooks
+        .map((book) {
+          if (book["id"] != id) return book;
+          return {...book, "is_published": isPublished};
+        })
+        .toList(growable: false);
+    final query = searchCtrl.text.toLowerCase();
+    filteredBooks = allBooks
+        .where((b) {
+          return (b["title"] ?? "").toString().toLowerCase().contains(query) ||
+              (b["author_rel"]?["name"] ?? "")
+                  .toString()
+                  .toLowerCase()
+                  .contains(query) ||
+              (b["isbn"] ?? "").toString().toLowerCase().contains(query);
+        })
+        .toList(growable: false);
+  }
+
+  Future<void> _toggleBookPublication(
+    Map<String, dynamic> book,
+    bool isPublished,
+  ) async {
+    final id = book["id"] as int?;
+    if (id == null || _publicationBusyIds.contains(id)) return;
+
+    setState(() => _publicationBusyIds.add(id));
+    try {
+      await _bookService.setPublicationStatus(id: id, isPublished: isPublished);
+      if (!mounted) return;
+      setState(() => _setBookPublicationLocally(id, isPublished));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            isPublished ? "Kitap yayına alındı." : "Kitap yayından kaldırıldı.",
+          ),
+        ),
+      );
+    } catch (e) {
+      await _showError(e.toString());
+    } finally {
+      if (mounted) {
+        setState(() => _publicationBusyIds.remove(id));
+      } else {
+        _publicationBusyIds.remove(id);
+      }
+    }
   }
 
   String formatAsMoney(String raw) {
@@ -154,9 +210,9 @@ class _AdminBooksPageState extends State<AdminBooksPage> {
       onPicked(picked.bytes, picked.name);
       controller.text = picked.name;
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Seçildi: ${picked.name}")),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text("Seçildi: ${picked.name}")));
       }
     } catch (e) {
       await showDialog(
@@ -180,14 +236,16 @@ class _AdminBooksPageState extends State<AdminBooksPage> {
     required void Function(Uint8List bytes, String name) onPicked,
   }) async {
     try {
-      final picked = await AssetImagePicker.pickFile(allowedExtensions: const ["pdf"]);
+      final picked = await AssetImagePicker.pickFile(
+        allowedExtensions: const ["pdf"],
+      );
       if (picked == null) return;
       onPicked(picked.bytes, picked.name);
       controller.text = picked.name;
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Seçildi: ${picked.name}")),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text("Seçildi: ${picked.name}")));
       }
     } catch (e) {
       await showDialog(
@@ -213,11 +271,17 @@ class _AdminBooksPageState extends State<AdminBooksPage> {
     final titleCtrl = TextEditingController(text: initial?["title"] ?? "");
     final isbnCtrl = TextEditingController(text: initial?["isbn"] ?? "");
     final coverCtrl = TextEditingController(text: initial?["cover"] ?? "");
-    final bookFileCtrl = TextEditingController(text: initial?["book_url"] ?? "");
+    final bookFileCtrl = TextEditingController(
+      text: initial?["book_url"] ?? "",
+    );
     final priceCtrl = TextEditingController(text: initial?["price_text"] ?? "");
-    final discountCtrl = TextEditingController(text: initial?["discount_text"] ?? "");
+    final discountCtrl = TextEditingController(
+      text: initial?["discount_text"] ?? "",
+    );
     final descCtrl = TextEditingController(text: initial?["description"] ?? "");
-    final minDescCtrl = TextEditingController(text: initial?["min_description"] ?? "");
+    final minDescCtrl = TextEditingController(
+      text: initial?["min_description"] ?? "",
+    );
 
     // Fetch authors and categories
     final authors = await AdminAuthorService().getAllAuthors();
@@ -259,10 +323,12 @@ class _AdminBooksPageState extends State<AdminBooksPage> {
                       value: selectedAuthorId,
                       decoration: const InputDecoration(labelText: "Yazar"),
                       items: authors
-                          .map((a) => DropdownMenuItem(
-                                value: a["id"] as int,
-                                child: Text(a["name"]),
-                              ))
+                          .map(
+                            (a) => DropdownMenuItem(
+                              value: a["id"] as int,
+                              child: Text(a["name"]),
+                            ),
+                          )
                           .toList(),
                       onChanged: (v) => selectedAuthorId = v,
                     ),
@@ -270,10 +336,12 @@ class _AdminBooksPageState extends State<AdminBooksPage> {
                       value: selectedCategoryId,
                       decoration: const InputDecoration(labelText: "Kategori"),
                       items: categories
-                          .map((c) => DropdownMenuItem(
-                                value: c["id"] as int,
-                                child: Text(c["name"]),
-                              ))
+                          .map(
+                            (c) => DropdownMenuItem(
+                              value: c["id"] as int,
+                              child: Text(c["name"]),
+                            ),
+                          )
                           .toList(),
                       onChanged: (v) => selectedCategoryId = v,
                     ),
@@ -324,7 +392,8 @@ class _AdminBooksPageState extends State<AdminBooksPage> {
                           ),
                         ),
                       ),
-                      validator: (v) => v == null || v.isEmpty ? "PDF zorunlu" : null,
+                      validator: (v) =>
+                          v == null || v.isEmpty ? "PDF zorunlu" : null,
                     ),
                     TextFormField(
                       controller: priceCtrl,
@@ -372,24 +441,24 @@ class _AdminBooksPageState extends State<AdminBooksPage> {
                         prefixText: "₺ ",
                       ),
                     ),
-                TextFormField(
-                  controller: descCtrl,
-                  decoration: const InputDecoration(
-                    labelText: "Açıklama (opsiyonel)",
-                  ),
-                  maxLines: 3,
+                    TextFormField(
+                      controller: descCtrl,
+                      decoration: const InputDecoration(
+                        labelText: "Açıklama (opsiyonel)",
+                      ),
+                      maxLines: 3,
+                    ),
+                    TextFormField(
+                      controller: minDescCtrl,
+                      decoration: const InputDecoration(
+                        labelText: "Kısa Açıklama (opsiyonel)",
+                      ),
+                      maxLines: 2,
+                    ),
+                  ],
                 ),
-                TextFormField(
-                  controller: minDescCtrl,
-                  decoration: const InputDecoration(
-                    labelText: "Kısa Açıklama (opsiyonel)",
-                  ),
-                  maxLines: 2,
-                ),
-              ],
+              ),
             ),
-          ),
-        ),
           ),
           actions: [
             TextButton(
@@ -402,93 +471,96 @@ class _AdminBooksPageState extends State<AdminBooksPage> {
                 "Kaydet",
                 style: TextStyle(color: Colors.white),
               ),
-            onPressed: () async {
-              if (!formKey.currentState!.validate()) return;
+              onPressed: () async {
+                if (!formKey.currentState!.validate()) return;
 
-              final payload = {
-                "title": titleCtrl.text.trim(),
-                "isbn": isbnCtrl.text.trim(),
-                "cover": coverCtrl.text.trim(),
-                "book_url": bookFileCtrl.text.trim(),
-                "price_text": priceCtrl.text,
-                "discount_text": discountCtrl.text,
-                "description": descCtrl.text.trim(),
-                "min_description": minDescCtrl.text.trim(),
-                "author_id": selectedAuthorId,
-                "category_id": selectedCategoryId,
-              };
+                final payload = {
+                  "title": titleCtrl.text.trim(),
+                  "isbn": isbnCtrl.text.trim(),
+                  "cover": coverCtrl.text.trim(),
+                  "book_url": bookFileCtrl.text.trim(),
+                  "price_text": priceCtrl.text,
+                  "discount_text": discountCtrl.text,
+                  "description": descCtrl.text.trim(),
+                  "min_description": minDescCtrl.text.trim(),
+                  "author_id": selectedAuthorId,
+                  "category_id": selectedCategoryId,
+                };
 
-              final price =
-                  _parsePrice((payload["price_text"] as String?) ?? "")!;
-              final discount =
-                  _parsePrice((payload["discount_text"] as String?) ?? "");
-
-              Navigator.pop(context);
-
-              try {
-                String? coverUrl;
-                if (pickedCoverBytes != null && pickedCoverName != null) {
-                  coverUrl = await _uploadService.uploadPublic(
-                    type: UploadFileType.book,
-                    bytes: pickedCoverBytes!,
-                    filename: pickedCoverName!,
-                  );
-                } else if ((payload["cover"] as String).isNotEmpty) {
-                  coverUrl = payload["cover"] as String;
-                }
-
-                String? bookUrl = (payload["book_url"] as String).isNotEmpty
-                    ? payload["book_url"] as String
-                    : null;
-                if (pickedPdfBytes != null && pickedPdfName != null) {
-                  final isFree = price <= 0;
-                  bookUrl = isFree
-                      ? await _uploadService.uploadPublic(
-                          type: UploadFileType.book,
-                          bytes: pickedPdfBytes!,
-                          filename: pickedPdfName!,
-                        )
-                      : await _uploadService.uploadPrivate(
-                          type: UploadFileType.book,
-                          bytes: pickedPdfBytes!,
-                          filename: pickedPdfName!,
-                        );
-                }
-
-                await _bookService.addBook(
-                  title: payload["title"] as String,
-                  isbn: payload["isbn"] as String,
-                  price: price,
-                  coverUrl: coverUrl,
-                  bookUrl: bookUrl,
-                  discountPrice: discount,
-                  categoryId: payload["category_id"] as int?,
-                  authorId: payload["author_id"] as int?,
-                  description: (payload["description"] as String).isEmpty
-                      ? null
-                      : payload["description"] as String,
-                  minDescription: (payload["min_description"] as String).isEmpty
-                      ? null
-                      : payload["min_description"] as String,
+                final price = _parsePrice(
+                  (payload["price_text"] as String?) ?? "",
+                )!;
+                final discount = _parsePrice(
+                  (payload["discount_text"] as String?) ?? "",
                 );
 
-                await _loadBooks();
+                Navigator.pop(context);
 
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text("Kitap eklendi")),
+                try {
+                  String? coverUrl;
+                  if (pickedCoverBytes != null && pickedCoverName != null) {
+                    coverUrl = await _uploadService.uploadPublic(
+                      type: UploadFileType.book,
+                      bytes: pickedCoverBytes!,
+                      filename: pickedCoverName!,
+                    );
+                  } else if ((payload["cover"] as String).isNotEmpty) {
+                    coverUrl = payload["cover"] as String;
+                  }
+
+                  String? bookUrl = (payload["book_url"] as String).isNotEmpty
+                      ? payload["book_url"] as String
+                      : null;
+                  if (pickedPdfBytes != null && pickedPdfName != null) {
+                    final isFree = price <= 0;
+                    bookUrl = isFree
+                        ? await _uploadService.uploadPublic(
+                            type: UploadFileType.book,
+                            bytes: pickedPdfBytes!,
+                            filename: pickedPdfName!,
+                          )
+                        : await _uploadService.uploadPrivate(
+                            type: UploadFileType.book,
+                            bytes: pickedPdfBytes!,
+                            filename: pickedPdfName!,
+                          );
+                  }
+
+                  await _bookService.addBook(
+                    title: payload["title"] as String,
+                    isbn: payload["isbn"] as String,
+                    price: price,
+                    coverUrl: coverUrl,
+                    bookUrl: bookUrl,
+                    discountPrice: discount,
+                    categoryId: payload["category_id"] as int?,
+                    authorId: payload["author_id"] as int?,
+                    description: (payload["description"] as String).isEmpty
+                        ? null
+                        : payload["description"] as String,
+                    minDescription:
+                        (payload["min_description"] as String).isEmpty
+                        ? null
+                        : payload["min_description"] as String,
                   );
+
+                  await _loadBooks();
+
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text("Kitap eklendi")),
+                    );
+                  }
+                } catch (e) {
+                  await _showError(e.toString());
+                  if (mounted) {
+                    await Future.microtask(
+                      () => _showAddBookDialog(initial: payload),
+                    );
+                  }
                 }
-              } catch (e) {
-                await _showError(e.toString());
-                if (mounted) {
-                  await Future.microtask(
-                    () => _showAddBookDialog(initial: payload),
-                  );
-                }
-              }
-            },
-          ),
+              },
+            ),
           ],
         );
       },
@@ -556,10 +628,12 @@ class _AdminBooksPageState extends State<AdminBooksPage> {
                       value: selectedAuthorId,
                       decoration: const InputDecoration(labelText: "Yazar"),
                       items: authors
-                          .map((a) => DropdownMenuItem(
-                                value: a["id"] as int,
-                                child: Text(a["name"]),
-                              ))
+                          .map(
+                            (a) => DropdownMenuItem(
+                              value: a["id"] as int,
+                              child: Text(a["name"]),
+                            ),
+                          )
                           .toList(),
                       onChanged: (v) => selectedAuthorId = v,
                     ),
@@ -567,10 +641,12 @@ class _AdminBooksPageState extends State<AdminBooksPage> {
                       value: selectedCategoryId,
                       decoration: const InputDecoration(labelText: "Kategori"),
                       items: categories
-                          .map((c) => DropdownMenuItem(
-                                value: c["id"] as int,
-                                child: Text(c["name"]),
-                              ))
+                          .map(
+                            (c) => DropdownMenuItem(
+                              value: c["id"] as int,
+                              child: Text(c["name"]),
+                            ),
+                          )
                           .toList(),
                       onChanged: (v) => selectedCategoryId = v,
                     ),
@@ -621,7 +697,8 @@ class _AdminBooksPageState extends State<AdminBooksPage> {
                           ),
                         ),
                       ),
-                      validator: (v) => v == null || v.isEmpty ? "PDF zorunlu" : null,
+                      validator: (v) =>
+                          v == null || v.isEmpty ? "PDF zorunlu" : null,
                     ),
                     TextFormField(
                       controller: priceCtrl,
@@ -649,24 +726,24 @@ class _AdminBooksPageState extends State<AdminBooksPage> {
                         prefixText: "₺ ",
                       ),
                     ),
-                TextFormField(
-                  controller: descCtrl,
-                  decoration: const InputDecoration(
-                    labelText: "Açıklama (opsiyonel)",
-                  ),
-                  maxLines: 3,
+                    TextFormField(
+                      controller: descCtrl,
+                      decoration: const InputDecoration(
+                        labelText: "Açıklama (opsiyonel)",
+                      ),
+                      maxLines: 3,
+                    ),
+                    TextFormField(
+                      controller: minDescCtrl,
+                      decoration: const InputDecoration(
+                        labelText: "Kısa Açıklama (opsiyonel)",
+                      ),
+                      maxLines: 2,
+                    ),
+                  ],
                 ),
-                TextFormField(
-                  controller: minDescCtrl,
-                  decoration: const InputDecoration(
-                    labelText: "Kısa Açıklama (opsiyonel)",
-                  ),
-                  maxLines: 2,
-                ),
-              ],
+              ),
             ),
-          ),
-        ),
           ),
           actions: [
             TextButton(
@@ -675,96 +752,100 @@ class _AdminBooksPageState extends State<AdminBooksPage> {
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-              child: const Text("Kaydet", style: TextStyle(color: Colors.white)),
-            onPressed: () async {
-              if (!formKey.currentState!.validate()) return;
+              child: const Text(
+                "Kaydet",
+                style: TextStyle(color: Colors.white),
+              ),
+              onPressed: () async {
+                if (!formKey.currentState!.validate()) return;
 
-              final payload = {
-                "id": book["id"],
-                "title": titleCtrl.text.trim(),
-                "isbn": isbnCtrl.text.trim(),
-                "cover": coverCtrl.text.trim(),
-                "book_url": bookFileCtrl.text.trim(),
-                "price_text": priceCtrl.text,
-                "discount_text": discountCtrl.text,
-                "description": descCtrl.text.trim(),
-                "min_description": minDescCtrl.text.trim(),
-                "author_id": selectedAuthorId,
-                "category_id": selectedCategoryId,
-              };
+                final payload = {
+                  "id": book["id"],
+                  "title": titleCtrl.text.trim(),
+                  "isbn": isbnCtrl.text.trim(),
+                  "cover": coverCtrl.text.trim(),
+                  "book_url": bookFileCtrl.text.trim(),
+                  "price_text": priceCtrl.text,
+                  "discount_text": discountCtrl.text,
+                  "description": descCtrl.text.trim(),
+                  "min_description": minDescCtrl.text.trim(),
+                  "author_id": selectedAuthorId,
+                  "category_id": selectedCategoryId,
+                };
 
-              final price =
-                  _parsePrice((payload["price_text"] as String?) ?? "")!;
-              final discount =
-                  _parsePrice((payload["discount_text"] as String?) ?? "");
-
-              Navigator.pop(context);
-
-              try {
-                String? coverUrl;
-                if (pickedCoverBytes != null && pickedCoverName != null) {
-                  coverUrl = await _uploadService.uploadPublic(
-                    type: UploadFileType.book,
-                    bytes: pickedCoverBytes!,
-                    filename: pickedCoverName!,
-                  );
-                } else if ((payload["cover"] as String).isNotEmpty) {
-                  coverUrl = payload["cover"] as String;
-                }
-
-                String? bookUrl = (payload["book_url"] as String).isNotEmpty
-                    ? payload["book_url"] as String
-                    : null;
-                if (pickedPdfBytes != null && pickedPdfName != null) {
-                  final isFree = price <= 0;
-                  bookUrl = isFree
-                      ? await _uploadService.uploadPublic(
-                          type: UploadFileType.book,
-                          bytes: pickedPdfBytes!,
-                          filename: pickedPdfName!,
-                        )
-                      : await _uploadService.uploadPrivate(
-                          type: UploadFileType.book,
-                          bytes: pickedPdfBytes!,
-                          filename: pickedPdfName!,
-                        );
-                }
-
-                await _bookService.updateBook(
-                  id: payload["id"] as int,
-                  title: payload["title"] as String,
-                  isbn: payload["isbn"] as String,
-                  price: price,
-                  coverUrl: coverUrl,
-                  bookUrl: bookUrl,
-                  discountPrice: discount,
-                  categoryId: payload["category_id"] as int?,
-                  authorId: payload["author_id"] as int?,
-                  description: (payload["description"] as String).isEmpty
-                      ? null
-                      : payload["description"] as String,
-                  minDescription: (payload["min_description"] as String).isEmpty
-                      ? null
-                      : payload["min_description"] as String,
+                final price = _parsePrice(
+                  (payload["price_text"] as String?) ?? "",
+                )!;
+                final discount = _parsePrice(
+                  (payload["discount_text"] as String?) ?? "",
                 );
 
-                await _loadBooks();
+                Navigator.pop(context);
 
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text("Kitap güncellendi")),
+                try {
+                  String? coverUrl;
+                  if (pickedCoverBytes != null && pickedCoverName != null) {
+                    coverUrl = await _uploadService.uploadPublic(
+                      type: UploadFileType.book,
+                      bytes: pickedCoverBytes!,
+                      filename: pickedCoverName!,
+                    );
+                  } else if ((payload["cover"] as String).isNotEmpty) {
+                    coverUrl = payload["cover"] as String;
+                  }
+
+                  String? bookUrl = (payload["book_url"] as String).isNotEmpty
+                      ? payload["book_url"] as String
+                      : null;
+                  if (pickedPdfBytes != null && pickedPdfName != null) {
+                    final isFree = price <= 0;
+                    bookUrl = isFree
+                        ? await _uploadService.uploadPublic(
+                            type: UploadFileType.book,
+                            bytes: pickedPdfBytes!,
+                            filename: pickedPdfName!,
+                          )
+                        : await _uploadService.uploadPrivate(
+                            type: UploadFileType.book,
+                            bytes: pickedPdfBytes!,
+                            filename: pickedPdfName!,
+                          );
+                  }
+
+                  await _bookService.updateBook(
+                    id: payload["id"] as int,
+                    title: payload["title"] as String,
+                    isbn: payload["isbn"] as String,
+                    price: price,
+                    coverUrl: coverUrl,
+                    bookUrl: bookUrl,
+                    discountPrice: discount,
+                    categoryId: payload["category_id"] as int?,
+                    authorId: payload["author_id"] as int?,
+                    description: (payload["description"] as String).isEmpty
+                        ? null
+                        : payload["description"] as String,
+                    minDescription:
+                        (payload["min_description"] as String).isEmpty
+                        ? null
+                        : payload["min_description"] as String,
                   );
+
+                  await _loadBooks();
+
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text("Kitap güncellendi")),
+                    );
+                  }
+                } catch (e) {
+                  await _showError(e.toString());
+                  if (mounted) {
+                    await Future.microtask(() => _showEditBookDialog(payload));
+                  }
                 }
-              } catch (e) {
-                await _showError(e.toString());
-                if (mounted) {
-                  await Future.microtask(
-                    () => _showEditBookDialog(payload),
-                  );
-                }
-              }
-            },
-          ),
+              },
+            ),
           ],
         );
       },
@@ -897,56 +978,81 @@ class _AdminBooksPageState extends State<AdminBooksPage> {
                             minWidth: constraints.maxWidth,
                           ),
                           child: DataTable(
-                                headingRowColor: MaterialStateProperty.all(
-                                  Colors.grey.shade100,
-                                ),
-                                columnSpacing: 24,
-                                columns: const [
-                                  DataColumn(label: Text("Kapak")),
-                                  DataColumn(label: Text("Başlık")),
-                                  DataColumn(label: Text("Yazar")),
-                                  DataColumn(label: Text("Kategori")),
-                                  DataColumn(label: Text("Fiyat")),
-                                  DataColumn(label: Text("Kampanya Fiyatı")),
-                                  DataColumn(label: Text("ISBN")),
-                                  DataColumn(label: Text("İşlem")),
-                                ],
-                                rows: filteredBooks.map((b) {
-                                  return DataRow(
-                                    cells: [
-                                      DataCell(_buildCoverCell(b["cover_url"])),
-                                      DataCell(Text(b["title"] ?? "")),
-                                      DataCell(
-                                          Text(b["author_rel"]?["name"] ?? "-")),
-                                      DataCell(
-                                          Text(b["category_rel"]?["name"] ?? "-")),
-                                      DataCell(Text(_formatPrice(b["price"]))),
-                                      DataCell(
-                                        Text(_formatPrice(b["discount_price"])),
-                                      ),
-                                      DataCell(Text(b["isbn"] ?? "-")),
-                                      DataCell(
-                                        Row(
-                                          children: [
-                                            IconButton(
-                                              icon: const Icon(
-                                                Icons.edit,
-                                                color: Colors.blue,
-                                              ),
-                                              onPressed: () =>
-                                                  _showEditBookDialog(b),
-                                            ),
-                                            IconButton(
-                                              icon: const Icon(
-                                                Icons.delete,
-                                                color: Colors.red,
-                                              ),
-                                              onPressed: () =>
-                                                  _deleteBook(b["id"]),
-                                            ),
-                                          ],
+                            headingRowColor: MaterialStateProperty.all(
+                              Colors.grey.shade100,
+                            ),
+                            columnSpacing: 24,
+                            columns: const [
+                              DataColumn(label: Text("Kapak")),
+                              DataColumn(label: Text("Başlık")),
+                              DataColumn(label: Text("Yazar")),
+                              DataColumn(label: Text("Kategori")),
+                              DataColumn(label: Text("Fiyat")),
+                              DataColumn(label: Text("Kampanya Fiyatı")),
+                              DataColumn(label: Text("ISBN")),
+                              DataColumn(label: Text("Yayın")),
+                              DataColumn(label: Text("İşlem")),
+                            ],
+                            rows: filteredBooks.map((b) {
+                              final id = b["id"] as int?;
+                              final isPublished = _bookIsPublished(b);
+                              final busy =
+                                  id != null &&
+                                  _publicationBusyIds.contains(id);
+                              return DataRow(
+                                cells: [
+                                  DataCell(_buildCoverCell(b["cover_url"])),
+                                  DataCell(Text(b["title"] ?? "")),
+                                  DataCell(
+                                    Text(b["author_rel"]?["name"] ?? "-"),
+                                  ),
+                                  DataCell(
+                                    Text(b["category_rel"]?["name"] ?? "-"),
+                                  ),
+                                  DataCell(Text(_formatPrice(b["price"]))),
+                                  DataCell(
+                                    Text(_formatPrice(b["discount_price"])),
+                                  ),
+                                  DataCell(Text(b["isbn"] ?? "-")),
+                                  DataCell(
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Switch.adaptive(
+                                          value: isPublished,
+                                          onChanged: busy
+                                              ? null
+                                              : (value) =>
+                                                    _toggleBookPublication(
+                                                      b,
+                                                      value,
+                                                    ),
                                         ),
-                                      ),
+                                        Text(isPublished ? "Açık" : "Kapalı"),
+                                      ],
+                                    ),
+                                  ),
+                                  DataCell(
+                                    Row(
+                                      children: [
+                                        IconButton(
+                                          icon: const Icon(
+                                            Icons.edit,
+                                            color: Colors.blue,
+                                          ),
+                                          onPressed: () =>
+                                              _showEditBookDialog(b),
+                                        ),
+                                        IconButton(
+                                          icon: const Icon(
+                                            Icons.delete,
+                                            color: Colors.red,
+                                          ),
+                                          onPressed: () => _deleteBook(b["id"]),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
                                 ],
                               );
                             }).toList(),

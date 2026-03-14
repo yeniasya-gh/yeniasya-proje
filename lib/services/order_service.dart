@@ -1,9 +1,25 @@
 import 'hasura_manager.dart';
+import 'cdn_authenticated_client.dart';
 
 class OrderService {
   final _hasura = HasuraManager.instance;
+  final _cdn = CdnAuthenticatedClient();
 
   Future<List<Map<String, dynamic>>> getOrders(int userId) async {
+    if (_cdn.canReadUserScopedData(userId)) {
+      try {
+        return await _getOrdersFromCdn();
+      } catch (error) {
+        if (!_cdn.shouldFallbackToHasura(error)) {
+          rethrow;
+        }
+      }
+    }
+
+    return _getOrdersFromHasura(userId);
+  }
+
+  Future<List<Map<String, dynamic>>> _getOrdersFromHasura(int userId) async {
     const query = r'''
       query GetOrders($user_id: bigint!) {
         orders(where: {user_id: {_eq: $user_id}}, order_by: {created_at: desc}) {
@@ -28,7 +44,17 @@ class OrderService {
   }
 
   Future<List<Map<String, dynamic>>> getOrdersWithItems(int userId) async {
-    final orders = await getOrders(userId);
+    if (_cdn.canReadUserScopedData(userId)) {
+      try {
+        return await _getOrdersFromCdn(includeItems: true);
+      } catch (error) {
+        if (!_cdn.shouldFallbackToHasura(error)) {
+          rethrow;
+        }
+      }
+    }
+
+    final orders = await _getOrdersFromHasura(userId);
     if (orders.isEmpty) return [];
 
     final ids = orders.map((o) => o["id"]).whereType<int>().toList();
@@ -54,7 +80,9 @@ class OrderService {
       variables: {"order_ids": ids},
     );
 
-    final items = List<Map<String, dynamic>>.from(itemsData["order_items"] ?? []);
+    final items = List<Map<String, dynamic>>.from(
+      itemsData["order_items"] ?? [],
+    );
     final byOrder = <int, List<Map<String, dynamic>>>{};
     for (final item in items) {
       final oid = item["order_id"] as int?;
@@ -63,14 +91,30 @@ class OrderService {
     }
 
     return orders
-        .map((o) => {
-              ...o,
-              "order_items": byOrder[o["id"]] ?? <Map<String, dynamic>>[],
-            })
+        .map(
+          (o) => {
+            ...o,
+            "order_items": byOrder[o["id"]] ?? <Map<String, dynamic>>[],
+          },
+        )
         .toList();
   }
 
   Future<Map<String, dynamic>?> getOrderDetail(int id) async {
+    if (_cdn.hasToken) {
+      try {
+        return await _getOrderDetailFromCdn(id);
+      } catch (error) {
+        if (!_cdn.shouldFallbackToHasura(error)) {
+          rethrow;
+        }
+      }
+    }
+
+    return _getOrderDetailFromHasura(id);
+  }
+
+  Future<Map<String, dynamic>?> _getOrderDetailFromHasura(int id) async {
     const query = r'''
       query GetOrderDetail($id: bigint!) {
         orders_by_pk(id: $id) {
@@ -106,10 +150,24 @@ class OrderService {
     if (order == null) return null;
 
     final items = List<Map<String, dynamic>>.from(data["order_items"] ?? []);
-    return {
-      ...order,
-      "order_items": items,
-    };
+    return {...order, "order_items": items};
+  }
+
+  Future<List<Map<String, dynamic>>> _getOrdersFromCdn({
+    bool includeItems = false,
+  }) async {
+    final data = await _cdn.getJson(
+      "/auth/me/orders",
+      queryParameters: {if (includeItems) "includeItems": "true"},
+    );
+    return List<Map<String, dynamic>>.from(data["data"] ?? const []);
+  }
+
+  Future<Map<String, dynamic>?> _getOrderDetailFromCdn(int id) async {
+    final data = await _cdn.getJson("/auth/me/orders/$id");
+    final order = data["order"];
+    if (order is! Map) return null;
+    return Map<String, dynamic>.from(order);
   }
 
   Future<Map<String, dynamic>> createOrder({
@@ -200,7 +258,9 @@ class OrderService {
       },
     );
 
-    final createdOrder = Map<String, dynamic>.from(orderData["insert_orders_one"] ?? {});
+    final createdOrder = Map<String, dynamic>.from(
+      orderData["insert_orders_one"] ?? {},
+    );
     final orderId = createdOrder["id"];
 
     if (orderId != null && items.isNotEmpty) {
@@ -211,10 +271,7 @@ class OrderService {
       ''';
 
       final itemsWithOrder = items
-          .map((i) => {
-                ...i,
-                "order_id": orderId,
-              })
+          .map((i) => {...i, "order_id": orderId})
           .toList();
 
       await _hasura.graphQLRequest(

@@ -1,7 +1,11 @@
 import '../hasura_manager.dart';
+import '../../utils/hash_helper.dart';
 
 class AdminUserService {
-  final _hasura = HasuraManager.instance;
+  AdminUserService({HasuraManager? hasura})
+    : _hasura = hasura ?? HasuraManager.instance;
+
+  final HasuraManager _hasura;
 
   Future<List<Map<String, dynamic>>> getAllRoles() async {
     const query = r'''
@@ -48,6 +52,48 @@ class AdminUserService {
     }).toList();
   }
 
+  Future<Map<String, dynamic>?> getUserDetail(int userId) async {
+    const query = r'''
+      query GetAdminUserDetail($id: bigint!) {
+        users_by_pk(id: $id) {
+          id
+          name
+          email
+          phone
+          role_id
+          role {
+            id
+            name
+          }
+          avatar_url
+          payUniqe
+          is_active
+          email_verified_at
+        }
+      }
+    ''';
+
+    final data = await _hasura.graphQLRequest(
+      query: query,
+      variables: {"id": userId.toString()},
+    );
+    final user = data["users_by_pk"] as Map<String, dynamic>?;
+    if (user == null) return null;
+
+    return {
+      "id": user["id"],
+      "name": user["name"],
+      "email": user["email"],
+      "phone": user["phone"],
+      "role_id": user["role_id"],
+      "role": user["role"]?["name"] ?? "User",
+      "avatar_url": user["avatar_url"],
+      "payUniqe": user["payUniqe"],
+      "is_active": user["is_active"],
+      "email_verified_at": user["email_verified_at"],
+    };
+  }
+
   Future<bool> addUser({
     required String name,
     required String email,
@@ -55,6 +101,11 @@ class AdminUserService {
     String? phone,
     int roleId = 1,
   }) async {
+    final normalizedName = name.trim();
+    final normalizedEmail = email.trim().toLowerCase();
+    final normalizedPhone = phone?.trim();
+    final hashedPassword = HashHelper.hashPassword(password);
+
     const String mutation = r'''
       mutation AddUser(
         $name: String!,
@@ -62,6 +113,7 @@ class AdminUserService {
         $password: String!,
         $phone: String,
         $role_id: bigint!,
+        $is_active: Boolean!,
         $email_verified_at: timestamptz!
       ) {
         insert_users_one(object: {
@@ -70,6 +122,7 @@ class AdminUserService {
           password: $password,
           phone: $phone,
           role_id: $role_id,
+          is_active: $is_active,
           email_verified_at: $email_verified_at
         }) {
           id
@@ -80,11 +133,14 @@ class AdminUserService {
     await _hasura.graphQLRequest(
       query: mutation,
       variables: {
-        "name": name,
-        "email": email,
-        "password": password,
-        "phone": phone,
+        "name": normalizedName,
+        "email": normalizedEmail,
+        "password": hashedPassword,
+        "phone": normalizedPhone == null || normalizedPhone.isEmpty
+            ? null
+            : normalizedPhone,
         "role_id": roleId,
+        "is_active": true,
         "email_verified_at": DateTime.now().toUtc().toIso8601String(),
       },
     );
@@ -144,10 +200,7 @@ class AdminUserService {
       }
     ''';
 
-    await _hasura.graphQLRequest(
-      query: mutation,
-      variables: {"id": id},
-    );
+    await _hasura.graphQLRequest(query: mutation, variables: {"id": id});
 
     return true;
   }
@@ -232,7 +285,9 @@ class AdminUserService {
     await _deactivateUserContentAccess(accessId);
   }
 
-  Future<List<Map<String, dynamic>>> _getManualNewspaperAccess(int userId) async {
+  Future<List<Map<String, dynamic>>> _getManualNewspaperAccess(
+    int userId,
+  ) async {
     const query = r'''
       query GetManualNewspaperAccess($user_id: bigint!) {
         manual_newspaper_users(
@@ -364,7 +419,8 @@ class AdminUserService {
                         ? "Sayı $issueNumber"
                         : "Dergi Sayısı");
               normalized["item_title"] = [
-                if (magazineName != null && magazineName.isNotEmpty) magazineName,
+                if (magazineName != null && magazineName.isNotEmpty)
+                  magazineName,
                 if (issueTitle.isNotEmpty) issueTitle,
               ].join(" • ");
               normalized["item_subtitle"] = issue?["publish_date"]?.toString();
@@ -396,15 +452,19 @@ class AdminUserService {
         .toList(growable: false);
 
     enriched.sort((a, b) {
-      final aStart = DateTime.tryParse(a["started_at"]?.toString() ?? "") ??
+      final aStart =
+          DateTime.tryParse(a["started_at"]?.toString() ?? "") ??
           DateTime.fromMillisecondsSinceEpoch(0);
-      final bStart = DateTime.tryParse(b["started_at"]?.toString() ?? "") ??
+      final bStart =
+          DateTime.tryParse(b["started_at"]?.toString() ?? "") ??
           DateTime.fromMillisecondsSinceEpoch(0);
       final cmp = bStart.compareTo(aStart);
       if (cmp != 0) return cmp;
-      final aExp = DateTime.tryParse(a["expires_at"]?.toString() ?? "") ??
+      final aExp =
+          DateTime.tryParse(a["expires_at"]?.toString() ?? "") ??
           DateTime.fromMillisecondsSinceEpoch(0);
-      final bExp = DateTime.tryParse(b["expires_at"]?.toString() ?? "") ??
+      final bExp =
+          DateTime.tryParse(b["expires_at"]?.toString() ?? "") ??
           DateTime.fromMillisecondsSinceEpoch(0);
       return bExp.compareTo(aExp);
     });
@@ -435,7 +495,10 @@ class AdminUserService {
         }
       }
     ''';
-    final data = await _hasura.graphQLRequest(query: query, variables: {"ids": ids});
+    final data = await _hasura.graphQLRequest(
+      query: query,
+      variables: {"ids": ids},
+    );
     final rows = List<Map<String, dynamic>>.from(data["books"] ?? []);
     return {
       for (final row in rows)
@@ -456,7 +519,10 @@ class AdminUserService {
         }
       }
     ''';
-    final data = await _hasura.graphQLRequest(query: query, variables: {"ids": ids});
+    final data = await _hasura.graphQLRequest(
+      query: query,
+      variables: {"ids": ids},
+    );
     final rows = List<Map<String, dynamic>>.from(data["magazine"] ?? []);
     return {
       for (final row in rows)
@@ -482,7 +548,10 @@ class AdminUserService {
         }
       }
     ''';
-    final data = await _hasura.graphQLRequest(query: query, variables: {"ids": ids});
+    final data = await _hasura.graphQLRequest(
+      query: query,
+      variables: {"ids": ids},
+    );
     final rows = List<Map<String, dynamic>>.from(data["magazine_issue"] ?? []);
     return {
       for (final row in rows)

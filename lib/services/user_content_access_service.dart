@@ -1,7 +1,9 @@
 import 'hasura_manager.dart';
+import 'cdn_authenticated_client.dart';
 
 class UserContentAccessService {
   final _hasura = HasuraManager.instance;
+  final _cdn = CdnAuthenticatedClient();
 
   Future<void> grantAccess({
     required String userId,
@@ -64,15 +66,41 @@ class UserContentAccessService {
       }
     ''';
 
-    await _hasura.graphQLRequest(
-      query: mutation,
-      variables: {
-        "items": items,
-      },
-    );
+    await _hasura.graphQLRequest(query: mutation, variables: {"items": items});
   }
 
   Future<List<Map<String, dynamic>>> getAccess({
+    required int userId,
+    required String itemType,
+  }) async {
+    if (_cdn.canReadUserScopedData(userId)) {
+      try {
+        return await _getAccessFromCdn(itemType: itemType);
+      } catch (error) {
+        if (!_cdn.shouldFallbackToHasura(error)) {
+          rethrow;
+        }
+      }
+    }
+
+    return _getAccessFromHasura(userId: userId, itemType: itemType);
+  }
+
+  Future<List<Map<String, dynamic>>> getAll({required int userId}) async {
+    if (_cdn.canReadUserScopedData(userId)) {
+      try {
+        return await _getAllFromCdn();
+      } catch (error) {
+        if (!_cdn.shouldFallbackToHasura(error)) {
+          rethrow;
+        }
+      }
+    }
+
+    return _getAllFromHasura(userId: userId);
+  }
+
+  Future<List<Map<String, dynamic>>> _getAccessFromHasura({
     required int userId,
     required String itemType,
   }) async {
@@ -111,7 +139,9 @@ class UserContentAccessService {
     return entries;
   }
 
-  Future<List<Map<String, dynamic>>> getAll({required int userId}) async {
+  Future<List<Map<String, dynamic>>> _getAllFromHasura({
+    required int userId,
+  }) async {
     const query = r'''
       query GetAccessAll($user_id: Int!) {
         user_content_access(
@@ -137,6 +167,27 @@ class UserContentAccessService {
     );
     final manualEntries = await _getManualNewspaperAccess(userId: userId);
     entries.addAll(manualEntries);
+    _sortByStartDesc(entries);
+    return entries;
+  }
+
+  Future<List<Map<String, dynamic>>> _getAccessFromCdn({
+    required String itemType,
+  }) async {
+    final data = await _cdn.getJson(
+      "/auth/me/access",
+      queryParameters: {"itemType": itemType},
+    );
+    return _readCdnEntries(data);
+  }
+
+  Future<List<Map<String, dynamic>>> _getAllFromCdn() async {
+    final data = await _cdn.getJson("/auth/me/access");
+    return _readCdnEntries(data);
+  }
+
+  List<Map<String, dynamic>> _readCdnEntries(Map<String, dynamic> data) {
+    final entries = List<Map<String, dynamic>>.from(data["data"] ?? const []);
     _sortByStartDesc(entries);
     return entries;
   }
@@ -203,7 +254,8 @@ class UserContentAccessService {
     final itemType = (item["item_type"] ?? "").toString();
     if (!_isExtendableSubscription(itemType)) return false;
 
-    final requestedStartedAt = _parseDateTime(item["started_at"]) ?? DateTime.now();
+    final requestedStartedAt =
+        _parseDateTime(item["started_at"]) ?? DateTime.now();
     final requestedExpiresAt = _parseDateTime(item["expires_at"]);
     if (requestedExpiresAt == null) return false;
 
@@ -318,13 +370,15 @@ class UserContentAccessService {
       "item_type": itemType,
       if (itemId != null) "item_id": itemId,
     };
-    final data = await _hasura.graphQLRequest(query: query, variables: variables);
-    final rows = List<Map<String, dynamic>>.from(data["user_content_access"] ?? []);
+    final data = await _hasura.graphQLRequest(
+      query: query,
+      variables: variables,
+    );
+    final rows = List<Map<String, dynamic>>.from(
+      data["user_content_access"] ?? [],
+    );
     if (rows.isEmpty) return null;
-    return {
-      ...rows.first,
-      "source": "user_content_access",
-    };
+    return {...rows.first, "source": "user_content_access"};
   }
 
   Future<Map<String, dynamic>?> _fetchLatestActiveManualNewspaperEntry({
@@ -494,10 +548,7 @@ class UserContentAccessService {
 
     await _hasura.graphQLRequest(
       query: mutation,
-      variables: {
-        "id": accessId,
-        "expires_at": expiresAt.toIso8601String(),
-      },
+      variables: {"id": accessId, "expires_at": expiresAt.toIso8601String()},
     );
   }
 

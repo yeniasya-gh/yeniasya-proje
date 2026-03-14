@@ -13,7 +13,10 @@ import '../../services/user_content_access_service.dart';
 import 'admin_user_detail_page.dart';
 
 class AdminUsersPage extends StatefulWidget {
-  const AdminUsersPage({super.key});
+  final AdminUserService? adminService;
+  final AdminUserAccessAuditService? auditService;
+
+  const AdminUsersPage({super.key, this.adminService, this.auditService});
 
   @override
   State<AdminUsersPage> createState() => _AdminUsersPageState();
@@ -21,8 +24,8 @@ class AdminUsersPage extends StatefulWidget {
 
 class _AdminUsersPageState extends State<AdminUsersPage> {
   final TextEditingController searchCtrl = TextEditingController();
-  final AdminUserService _adminService = AdminUserService();
-  final AdminUserAccessAuditService _auditService = AdminUserAccessAuditService();
+  late final AdminUserService _adminService;
+  late final AdminUserAccessAuditService _auditService;
 
   List<Map<String, dynamic>> allUsers = [];
   List<Map<String, dynamic>> filteredUsers = [];
@@ -33,38 +36,56 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
   @override
   void initState() {
     super.initState();
+    _adminService = widget.adminService ?? AdminUserService();
+    _auditService = widget.auditService ?? AdminUserAccessAuditService();
     _loadUsers();
   }
 
   Future<void> _loadUsers() async {
-    setState(() => isLoading = true);
+    if (mounted) {
+      setState(() => isLoading = true);
+    }
 
     try {
       final users = await _adminService.getAllUsers();
       final roles = await _adminService.getAllRoles();
 
+      if (!mounted) return;
       setState(() {
         allUsers = users;
-        filteredUsers = users;
+        filteredUsers = _filterUsers(users, searchCtrl.text);
         allRoles = roles;
       });
     } catch (e) {
-      _showError("Kullanıcılar yüklenirken hata oluştu:\n$e");
+      if (mounted) {
+        await _showError("Kullanıcılar yüklenirken hata oluştu:\n$e");
+      }
+    } finally {
+      if (mounted) {
+        setState(() => isLoading = false);
+      }
     }
-
-    setState(() => isLoading = false);
   }
 
   void _filter(String text) {
     setState(() {
-      filteredUsers = allUsers
-          .where(
-            (u) =>
-                u["name"].toLowerCase().contains(text.toLowerCase()) ||
-                u["email"].toLowerCase().contains(text.toLowerCase()),
-          )
-          .toList();
+      filteredUsers = _filterUsers(allUsers, text);
     });
+  }
+
+  List<Map<String, dynamic>> _filterUsers(
+    List<Map<String, dynamic>> users,
+    String text,
+  ) {
+    final query = text.trim().toLowerCase();
+    if (query.isEmpty) return List<Map<String, dynamic>>.from(users);
+    return users
+        .where((u) {
+          final name = (u["name"] ?? "").toString().toLowerCase();
+          final email = (u["email"] ?? "").toString().toLowerCase();
+          return name.contains(query) || email.contains(query);
+        })
+        .toList(growable: false);
   }
 
   // ❗ Hata göstermek için
@@ -80,7 +101,7 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
           TextButton(
             child: const Text("Tamam"),
             onPressed: () => Navigator.pop(context),
-          )
+          ),
         ],
       ),
     );
@@ -107,9 +128,7 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
   void _openUserDetail(Map<String, dynamic> user) {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => AdminUserDetailPage(user: user),
-      ),
+      MaterialPageRoute(builder: (_) => AdminUserDetailPage(user: user)),
     );
   }
 
@@ -117,100 +136,137 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
   void _showAddUserDialog({Map<String, String>? initialData}) {
     final nameCtrl = TextEditingController(text: initialData?["name"] ?? "");
     final emailCtrl = TextEditingController(text: initialData?["email"] ?? "");
-    final passCtrl = TextEditingController(text: initialData?["password"] ?? "");
+    final passCtrl = TextEditingController(
+      text: initialData?["password"] ?? "",
+    );
     final phoneCtrl = TextEditingController(text: initialData?["phone"] ?? "");
+    final pageMessenger = ScaffoldMessenger.of(context);
 
     final formKey = GlobalKey<FormState>();
 
     showDialog(
       context: context,
-      builder: (_) {
-        return AlertDialog(
-          title: const Text("Yeni Kullanıcı Ekle"),
-          content: SizedBox(
-            width: 400,
-            child: Form(
-              key: formKey,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextFormField(
-                    controller: nameCtrl,
-                    decoration: const InputDecoration(labelText: "Ad Soyad"),
-                    validator: (v) =>
-                        v == null || v.isEmpty ? "Bu alan zorunlu" : null,
-                  ),
-                  TextFormField(
-                    controller: emailCtrl,
-                    decoration: const InputDecoration(labelText: "E-posta"),
-                    validator: (v) {
-                      if (v == null || v.isEmpty) return "E-posta gerekli";
-                      if (!v.contains("@")) return "Geçerli mail girin";
-                      return null;
-                    },
-                  ),
-                  TextFormField(
-                    controller: phoneCtrl,
-                    decoration: const InputDecoration(labelText: "Telefon"),
-                    validator: (v) =>
-                        v == null || v.isEmpty ? "Telefon gerekli" : null,
-                  ),
-                  TextFormField(
-                    controller: passCtrl,
-                    obscureText: true,
-                    decoration: const InputDecoration(labelText: "Şifre"),
-                    validator: (v) {
-                      if (v == null || v.isEmpty) return "Şifre gerekli";
-                      if (v.length < 6) return "Min 6 karakter olmalı";
-                      return null;
-                    },
-                  ),
-                ],
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        var isSaving = false;
+        return StatefulBuilder(
+          builder: (context, setDialogState) => AlertDialog(
+            title: const Text("Yeni Kullanıcı Ekle"),
+            content: SizedBox(
+              width: 400,
+              child: Form(
+                key: formKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextFormField(
+                      controller: nameCtrl,
+                      decoration: const InputDecoration(labelText: "Ad Soyad"),
+                      validator: (v) =>
+                          v == null || v.isEmpty ? "Bu alan zorunlu" : null,
+                    ),
+                    TextFormField(
+                      controller: emailCtrl,
+                      decoration: const InputDecoration(labelText: "E-posta"),
+                      validator: (v) {
+                        if (v == null || v.isEmpty) return "E-posta gerekli";
+                        if (!v.contains("@")) return "Geçerli mail girin";
+                        return null;
+                      },
+                    ),
+                    TextFormField(
+                      controller: phoneCtrl,
+                      decoration: const InputDecoration(labelText: "Telefon"),
+                      validator: (v) =>
+                          v == null || v.isEmpty ? "Telefon gerekli" : null,
+                    ),
+                    TextFormField(
+                      controller: passCtrl,
+                      obscureText: true,
+                      decoration: const InputDecoration(labelText: "Şifre"),
+                      validator: (v) {
+                        if (v == null || v.isEmpty) return "Şifre gerekli";
+                        if (v.length < 6) return "Min 6 karakter olmalı";
+                        return null;
+                      },
+                    ),
+                    if (isSaving) ...[
+                      const SizedBox(height: 16),
+                      const Row(
+                        children: [
+                          SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                          SizedBox(width: 12),
+                          Expanded(child: Text("Kullanıcı kaydediliyor...")),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
               ),
             ),
+            actions: [
+              TextButton(
+                onPressed: isSaving ? null : () => Navigator.pop(dialogContext),
+                child: const Text("Kapat"),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                onPressed: isSaving
+                    ? null
+                    : () async {
+                        if (!formKey.currentState!.validate()) return;
+
+                        final payload = {
+                          "name": nameCtrl.text.trim(),
+                          "email": emailCtrl.text.trim(),
+                          "password": passCtrl.text,
+                          "phone": phoneCtrl.text.trim(),
+                        };
+
+                        setDialogState(() => isSaving = true);
+
+                        try {
+                          await _adminService.addUser(
+                            name: payload["name"] ?? "",
+                            email: payload["email"] ?? "",
+                            password: payload["password"] ?? "",
+                            phone: payload["phone"],
+                          );
+                          await _loadUsers();
+                          if (!mounted || !dialogContext.mounted) return;
+                          Navigator.pop(dialogContext);
+                          pageMessenger.showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                "Kullanıcı eklendi ve liste güncellendi.",
+                              ),
+                            ),
+                          );
+                        } catch (e) {
+                          if (dialogContext.mounted) {
+                            setDialogState(() => isSaving = false);
+                          }
+                          if (!mounted) return;
+                          pageMessenger.showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                ErrorManager.parseGraphQLError(e.toString()),
+                              ),
+                            ),
+                          );
+                        }
+                      },
+                child: const Text(
+                  "Kaydet",
+                  style: TextStyle(color: Colors.white),
+                ),
+              ),
+            ],
           ),
-          actions: [
-            TextButton(
-              child: const Text("Kapat"),
-              onPressed: () => Navigator.pop(context),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-              onPressed: () async {
-                if (!formKey.currentState!.validate()) return;
-
-                final payload = {
-                  "name": nameCtrl.text,
-                  "email": emailCtrl.text,
-                  "password": passCtrl.text,
-                  "phone": phoneCtrl.text,
-                };
-
-                Navigator.pop(context);
-
-                try {
-                  await _adminService.addUser(
-                    name: payload["name"] ?? "",
-                    email: payload["email"] ?? "",
-                    password: payload["password"] ?? "",
-                    phone: payload["phone"],
-                  );
-                  _loadUsers();
-                } catch (e) {
-                  await _showError(e.toString());
-                  if (mounted) {
-                    await Future.microtask(
-                      () => _showAddUserDialog(initialData: payload),
-                    );
-                  }
-                }
-              },
-              child: const Text(
-                "Kaydet",
-                style: TextStyle(color: Colors.white),
-              ),
-            ),
-          ],
         );
       },
     );
@@ -456,14 +512,19 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
                     children: [
                       DropdownButtonFormField<String>(
                         initialValue: selectedCategory,
-                        decoration: const InputDecoration(labelText: "Kategori"),
+                        decoration: const InputDecoration(
+                          labelText: "Kategori",
+                        ),
                         items: const [
                           DropdownMenuItem(value: "book", child: Text("Kitap")),
                           DropdownMenuItem(
-                              value: "magazine", child: Text("Dergi (Abonelik)")),
+                            value: "magazine",
+                            child: Text("Dergi (Abonelik)"),
+                          ),
                           DropdownMenuItem(
-                              value: "newspaper",
-                              child: Text("E-Gazete (Abonelik)")),
+                            value: "newspaper",
+                            child: Text("E-Gazete (Abonelik)"),
+                          ),
                           DropdownMenuItem(value: "ek", child: Text("Ek")),
                         ],
                         onChanged: (val) async {
@@ -512,10 +573,16 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
                         if (selectedCategory == "book")
                           DropdownButtonFormField<dynamic>(
                             initialValue: selectedItem,
-                            decoration: const InputDecoration(labelText: "Kitap Seçin"),
+                            decoration: const InputDecoration(
+                              labelText: "Kitap Seçin",
+                            ),
                             items: items
-                                .map((i) => DropdownMenuItem(
-                                    value: i, child: Text(i["title"] ?? "")))
+                                .map(
+                                  (i) => DropdownMenuItem(
+                                    value: i,
+                                    child: Text(i["title"] ?? ""),
+                                  ),
+                                )
                                 .toList(),
                             onChanged: (val) {
                               setSt(() => selectedItem = val);
@@ -524,11 +591,16 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
                         if (selectedCategory == "magazine") ...[
                           DropdownButtonFormField<dynamic>(
                             initialValue: selectedItem,
-                            decoration:
-                                const InputDecoration(labelText: "Dergi Seçin"),
+                            decoration: const InputDecoration(
+                              labelText: "Dergi Seçin",
+                            ),
                             items: items
-                                .map((i) => DropdownMenuItem(
-                                    value: i, child: Text(i["name"] ?? "")))
+                                .map(
+                                  (i) => DropdownMenuItem(
+                                    value: i,
+                                    child: Text(i["name"] ?? ""),
+                                  ),
+                                )
                                 .toList(),
                             onChanged: (val) async {
                               setSt(() => selectedItem = val);
@@ -538,11 +610,16 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
                           const SizedBox(height: 12),
                           DropdownButtonFormField<dynamic>(
                             initialValue: selectedSubType,
-                            decoration:
-                                const InputDecoration(labelText: "Abonelik Süresi"),
+                            decoration: const InputDecoration(
+                              labelText: "Abonelik Süresi",
+                            ),
                             items: subTypes
-                                .map((i) => DropdownMenuItem(
-                                    value: i, child: Text(i["title"] ?? "")))
+                                .map(
+                                  (i) => DropdownMenuItem(
+                                    value: i,
+                                    child: Text(i["title"] ?? ""),
+                                  ),
+                                )
                                 .toList(),
                             onChanged: (val) async {
                               setSt(() => selectedSubType = val);
@@ -553,11 +630,16 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
                         if (selectedCategory == "newspaper")
                           DropdownButtonFormField<dynamic>(
                             initialValue: selectedItem,
-                            decoration:
-                                const InputDecoration(labelText: "Abonelik Tipi"),
+                            decoration: const InputDecoration(
+                              labelText: "Abonelik Tipi",
+                            ),
                             items: items
-                                .map((i) => DropdownMenuItem(
-                                    value: i, child: Text(i["title"] ?? "")))
+                                .map(
+                                  (i) => DropdownMenuItem(
+                                    value: i,
+                                    child: Text(i["title"] ?? ""),
+                                  ),
+                                )
                                 .toList(),
                             onChanged: (val) async {
                               setSt(() => selectedItem = val);
@@ -567,10 +649,16 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
                         if (selectedCategory == "ek")
                           DropdownButtonFormField<dynamic>(
                             initialValue: selectedItem,
-                            decoration: const InputDecoration(labelText: "Ek Seçin"),
+                            decoration: const InputDecoration(
+                              labelText: "Ek Seçin",
+                            ),
                             items: items
-                                .map((i) => DropdownMenuItem(
-                                    value: i, child: Text(i["ad"] ?? "")))
+                                .map(
+                                  (i) => DropdownMenuItem(
+                                    value: i,
+                                    child: Text(i["ad"] ?? ""),
+                                  ),
+                                )
                                 .toList(),
                             onChanged: (val) {
                               setSt(() => selectedItem = val);
@@ -615,8 +703,7 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
                                         willExtendExistingSubscription
                                             ? "Mevcut aktif abonelik bulundu. Yeni tanımlama mevcut sürenin üzerine eklenecek."
                                             : (_parseDateTime(
-                                                        existingSubscription?[
-                                                            "expires_at"],
+                                                        existingSubscription?["expires_at"],
                                                       ) !=
                                                       null
                                                   ? "Önceki abonelik süresi dolmuş. Yeni tanımlama yeni bir dönem başlatacak."
@@ -624,8 +711,9 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
                                         style: const TextStyle(height: 1.4),
                                       ),
                                       const SizedBox(height: 8),
-                                      if (_parseDateTime(existingSubscription?[
-                                            "expires_at"]) !=
+                                      if (_parseDateTime(
+                                            existingSubscription?["expires_at"],
+                                          ) !=
                                           null)
                                         Text(
                                           "Mevcut bitiş: ${_formatDate(_parseDateTime(existingSubscription?["expires_at"]))}",
@@ -652,8 +740,9 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
               ? null
               : [
                   TextButton(
-                      onPressed: () => Navigator.pop(ctx),
-                      child: const Text("İptal")),
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text("İptal"),
+                  ),
                   ElevatedButton(
                     onPressed: selectedItem == null
                         ? null
@@ -668,23 +757,27 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
                               if (selectedCategory == "book") {
                                 itemType = "book";
                                 itemId = selectedItem["id"];
-                                price = double.tryParse(
-                                        selectedItem["price"]?.toString() ??
-                                            "0") ??
+                                price =
+                                    double.tryParse(
+                                      selectedItem["price"]?.toString() ?? "0",
+                                    ) ??
                                     0;
                               } else if (selectedCategory == "magazine") {
                                 if (selectedSubType == null) {
                                   ScaffoldMessenger.of(ctx).showSnackBar(
-                                      const SnackBar(
-                                          content:
-                                              Text("Lütfen abonelik tipi seçin")));
+                                    const SnackBar(
+                                      content: Text(
+                                        "Lütfen abonelik tipi seçin",
+                                      ),
+                                    ),
+                                  );
                                   setSt(() => isSaving = false);
                                   return;
                                 }
                                 itemType = "magazine";
                                 itemId = selectedItem["id"];
-                                final months = (selectedSubType["duration_months"]
-                                            as num?)
+                                final months =
+                                    (selectedSubType["duration_months"] as num?)
                                         ?.toInt() ??
                                     1;
                                 expiresAt = _addMonths(DateTime.now(), months);
@@ -694,16 +787,17 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
                                 itemId = null; // Genel abonelik
                                 final months =
                                     (selectedItem["duration_months"] as num?)
-                                            ?.toInt() ??
-                                        1;
+                                        ?.toInt() ??
+                                    1;
                                 expiresAt = _addMonths(DateTime.now(), months);
                                 price = 0;
                               } else if (selectedCategory == "ek") {
                                 itemType = "ek";
                                 itemId = selectedItem["id"];
-                                price = double.tryParse(
-                                        selectedItem["fiyat"]?.toString() ??
-                                            "0") ??
+                                price =
+                                    double.tryParse(
+                                      selectedItem["fiyat"]?.toString() ?? "0",
+                                    ) ??
                                     0;
                               }
 
@@ -713,10 +807,11 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
                                   {
                                     "item_type": itemType,
                                     "item_id": itemId,
-                                    "started_at": DateTime.now().toIso8601String(),
+                                    "started_at": DateTime.now()
+                                        .toIso8601String(),
                                     "expires_at": expiresAt?.toIso8601String(),
                                     "purchase_price": price,
-                                  }
+                                  },
                                 ],
                               );
 
@@ -779,7 +874,6 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
 
   @override
   Widget build(BuildContext context) {
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -793,8 +887,10 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
             ),
             ElevatedButton.icon(
               icon: const Icon(Icons.add, color: Colors.white),
-              label: const Text("Kullanıcı Ekle",
-                  style: TextStyle(color: Colors.white)),
+              label: const Text(
+                "Kullanıcı Ekle",
+                style: TextStyle(color: Colors.white),
+              ),
               style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
               onPressed: _showAddUserDialog,
             ),
@@ -838,8 +934,9 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(minWidth: double.infinity),
                   child: DataTable(
-                    headingRowColor:
-                        WidgetStateProperty.all(Colors.grey.shade100),
+                    headingRowColor: WidgetStateProperty.all(
+                      Colors.grey.shade100,
+                    ),
                     columns: const [
                       DataColumn(label: Text("#")),
                       DataColumn(label: Text("Ad Soyad")),
@@ -860,23 +957,32 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
                             Row(
                               children: [
                                 IconButton(
-                                  icon: const Icon(Icons.add_circle_outline, color: Colors.green),
+                                  icon: const Icon(
+                                    Icons.add_circle_outline,
+                                    color: Colors.green,
+                                  ),
                                   onPressed: () => _showGrantAccessDialog(u),
                                   tooltip: "Erişim Tanımla",
                                 ),
                                 IconButton(
-                                  icon: const Icon(Icons.info_outline, color: Colors.teal),
+                                  icon: const Icon(
+                                    Icons.info_outline,
+                                    color: Colors.teal,
+                                  ),
                                   onPressed: () => _openUserDetail(u),
                                 ),
                                 IconButton(
-                                  icon: const Icon(Icons.edit,
-                                      color: Colors.blue),
-                                  onPressed: () =>
-                                      _showEditUserDialog(u),
+                                  icon: const Icon(
+                                    Icons.edit,
+                                    color: Colors.blue,
+                                  ),
+                                  onPressed: () => _showEditUserDialog(u),
                                 ),
                                 IconButton(
-                                  icon: const Icon(Icons.delete,
-                                      color: Colors.red),
+                                  icon: const Icon(
+                                    Icons.delete,
+                                    color: Colors.red,
+                                  ),
                                   onPressed: () => _deleteUser(u["id"]),
                                 ),
                               ],

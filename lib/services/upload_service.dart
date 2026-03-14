@@ -1,12 +1,11 @@
 import 'dart:convert';
-import 'dart:typed_data';
-
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import 'logging_service.dart';
 import 'auth/auth_token_store.dart';
 
-enum UploadFileType { book, magazine, newspaper, supplement, slider }
+enum UploadFileType { book, magazine, newspaper, supplement, slider, profile }
 
 class UploadService {
   UploadService({String? baseUrl})
@@ -41,6 +40,8 @@ class UploadService {
         return "ek";
       case UploadFileType.slider:
         return "slider";
+      case UploadFileType.profile:
+        return "profil";
     }
   }
 
@@ -86,16 +87,16 @@ class UploadService {
     required Uint8List bytes,
     required String filename,
   }) async {
-    print("🟦 uploadPublic() çağrıldı");
-    print(" - type: ${_mapType(type)}");
-    print(" - filename: $filename");
-    print(" - byte size: ${bytes.length}");
+    debugPrint("🟦 uploadPublic() çağrıldı");
+    debugPrint(" - type: ${_mapType(type)}");
+    debugPrint(" - filename: $filename");
+    debugPrint(" - byte size: ${bytes.length}");
 
     _validate(bytes, filename);
-    print("🟩 Dosya validasyonu başarılı");
+    debugPrint("🟩 Dosya validasyonu başarılı");
 
     final uri = Uri.parse("$_baseUrl/upload/public");
-    print("➡️ İstek URL: $uri");
+    debugPrint("➡️ İstek URL: $uri");
 
     final request = http.MultipartRequest("POST", uri)
       ..fields["type"] = _mapType(type)
@@ -105,26 +106,26 @@ class UploadService {
       request.headers["Authorization"] = "Bearer $token";
     }
 
-    print("📤 Dosya istek paketine eklendi");
-    print("📬 İstek gönderiliyor...");
+    debugPrint("📤 Dosya istek paketine eklendi");
+    debugPrint("📬 İstek gönderiliyor...");
 
     try {
       final streamed = await request.send();
-      print("📥 Yanıt stream alındı (status: ${streamed.statusCode})");
+      debugPrint("📥 Yanıt stream alındı (status: ${streamed.statusCode})");
 
       final resp = await http.Response.fromStream(streamed);
 
-      print("📩 Tam yanıt alındı:");
-      print(resp.body);
+      debugPrint("📩 Tam yanıt alındı:");
+      debugPrint(resp.body);
 
       final url = _parseUrl(resp);
-      print("🟢 Yükleme başarılı → URL: $url");
+      debugPrint("🟢 Yükleme başarılı → URL: $url");
 
       return url;
     } catch (e, s) {
-      print("❌ uploadPublic hata:");
-      print(e);
-      print(s);
+      debugPrint("❌ uploadPublic hata:");
+      debugPrint(e.toString());
+      debugPrint(s.toString());
       await _logError("uploadPublic", e, s, {
         "type": _mapType(type),
         "filename": filename,

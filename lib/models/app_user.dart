@@ -6,6 +6,7 @@ class AppUser {
   final int roleId;
   final String roleName;
   final String? payUniqe;
+  final String? avatarUrl;
 
   AppUser({
     required this.id,
@@ -15,6 +16,7 @@ class AppUser {
     required this.roleId,
     required this.roleName,
     this.payUniqe,
+    this.avatarUrl,
   });
 
   factory AppUser.fromJson(Map<String, dynamic> json) {
@@ -28,6 +30,7 @@ class AppUser {
       roleId: roleId,
       roleName: _readRoleName(json, fallbackRoleId: roleId),
       payUniqe: payIdentity,
+      avatarUrl: _readAvatarUrl(json),
     );
   }
 
@@ -42,6 +45,7 @@ class AppUser {
       roleId: roleId,
       roleName: _readRoleName(json, fallbackRoleId: roleId),
       payUniqe: payIdentity,
+      avatarUrl: _readAvatarUrl(json),
     );
   }
 
@@ -53,6 +57,7 @@ class AppUser {
       "phone": phone,
       "role_id": roleId,
       "role_name": roleName,
+      if (avatarUrl != null) "avatar_url": avatarUrl,
       if (payUniqe != null) "payUniqe": payUniqe,
     };
   }
@@ -101,6 +106,15 @@ class AppUser {
 
     return _readString(json["role_name"]) ??
         (fallbackRoleId == 2 ? "admin" : "user");
+  }
+
+  static String? _readAvatarUrl(Map<String, dynamic> json) {
+    final keys = <String>["avatar_url", "avatarUrl"];
+    for (final key in keys) {
+      final value = _readString(json[key]);
+      if (value != null) return value;
+    }
+    return null;
   }
 
   static int _readRequiredInt(dynamic value, {required String fieldName}) {

@@ -254,6 +254,53 @@ class AuthApiService {
     throw Exception(_confirmPasswordResetError(resp));
   }
 
+  Future<Map<String, dynamic>> getMe() async {
+    final uri = Uri.parse("$_baseUrl/auth/me");
+    final resp = await _client.get(uri, headers: _authorizedJsonHeaders());
+    return _parseUserResponse(
+      resp,
+      fallbackMessage: "Kullanıcı bilgisi alınamadı.",
+    );
+  }
+
+  Future<Map<String, dynamic>> updateMe({
+    required String name,
+    String? phone,
+  }) async {
+    final uri = Uri.parse("$_baseUrl/auth/me");
+    final resp = await _client.patch(
+      uri,
+      headers: _authorizedJsonHeaders(),
+      body: jsonEncode({
+        "name": name.trim(),
+        "phone": phone?.trim().isEmpty == true ? null : phone?.trim(),
+      }),
+    );
+    return _parseUserResponse(resp, fallbackMessage: "Profil güncellenemedi.");
+  }
+
+  Future<Map<String, dynamic>> updateAvatar({required String avatarUrl}) async {
+    final uri = Uri.parse("$_baseUrl/auth/me/avatar");
+    final resp = await _client.put(
+      uri,
+      headers: _authorizedJsonHeaders(),
+      body: jsonEncode({"avatarUrl": avatarUrl.trim()}),
+    );
+    return _parseUserResponse(
+      resp,
+      fallbackMessage: "Profil fotoğrafı güncellenemedi.",
+    );
+  }
+
+  Future<Map<String, dynamic>> removeAvatar() async {
+    final uri = Uri.parse("$_baseUrl/auth/me/avatar");
+    final resp = await _client.delete(uri, headers: _authorizedJsonHeaders());
+    return _parseUserResponse(
+      resp,
+      fallbackMessage: "Profil fotoğrafı kaldırılamadı.",
+    );
+  }
+
   Future<Map<String, dynamic>> getNewspaperViewInfo({
     required DateTime date,
   }) async {
@@ -334,9 +381,7 @@ class AuthApiService {
       case 429:
         return "Çok fazla deneme yapıldı. Lütfen biraz sonra tekrar deneyin.";
       default:
-        return message.isNotEmpty
-            ? message
-            : "Aktivasyon maili gönderilemedi.";
+        return message.isNotEmpty ? message : "Aktivasyon maili gönderilemedi.";
     }
   }
 
@@ -424,5 +469,35 @@ class AuthApiService {
       // Ignore non-JSON bodies and fall back to a generic message.
     }
     return "";
+  }
+
+  Map<String, String> _authorizedJsonHeaders() {
+    final token = AuthTokenStore.token?.trim();
+    if (token == null || token.isEmpty) {
+      throw Exception("Yetkilendirme bulunamadı. Lütfen tekrar giriş yapın.");
+    }
+    return {
+      "content-type": "application/json",
+      "Authorization": "Bearer $token",
+    };
+  }
+
+  Map<String, dynamic> _parseUserResponse(
+    http.Response resp, {
+    required String fallbackMessage,
+  }) {
+    if (resp.statusCode < 200 || resp.statusCode >= 300) {
+      final message = _responseMessage(resp);
+      throw Exception(message.isNotEmpty ? message : fallbackMessage);
+    }
+    final data = jsonDecode(resp.body) as Map<String, dynamic>;
+    if (data["ok"] != true || data["user"] is! Map) {
+      throw Exception(
+        data["message"]?.toString() ??
+            data["error"]?.toString() ??
+            fallbackMessage,
+      );
+    }
+    return Map<String, dynamic>.from(data["user"] as Map);
   }
 }

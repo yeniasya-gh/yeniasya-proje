@@ -10,6 +10,7 @@ import '../../services/access_provider.dart';
 import '../../services/auth/auth_provider.dart';
 import '../../services/revenuecat_service.dart';
 import '../../services/user_content_access_service.dart';
+import '../../utils/app_user_avatar.dart';
 import '../../utils/route_guard.dart';
 import '../address/address_list_screen.dart';
 import '../admin/admin_panel_screen.dart';
@@ -35,6 +36,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _loadingAccess = false;
   bool _deletingAccount = false;
   bool _loggingOut = false;
+
+  Future<void> _openPersonalInfo() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const PersonalInfoScreen()),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -65,9 +73,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             Center(
               child: Column(
                 children: [
-                  const CircleAvatar(
+                  AppUserAvatar(
                     radius: 45,
-                    backgroundImage: AssetImage("assets/images/avatar.png"),
+                    imageUrl: auth.user?.avatarUrl,
+                    onEditTap: _openPersonalInfo,
                   ),
                   const SizedBox(height: 12),
                   Text(
@@ -80,6 +89,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   Text(
                     auth.user?.email ?? "",
                     style: const TextStyle(color: Colors.black54, fontSize: 14),
+                  ),
+                  const SizedBox(height: 4),
+                  TextButton.icon(
+                    onPressed: _openPersonalInfo,
+                    icon: const Icon(Icons.camera_alt_outlined, size: 18),
+                    label: const Text("Fotoğrafı Düzenle"),
+                    style: TextButton.styleFrom(foregroundColor: Colors.red),
                   ),
                   const SizedBox(height: 8),
                   Container(
@@ -145,14 +161,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 _menuTile(
                   Icons.person_outline,
                   "Kişisel Bilgiler",
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const PersonalInfoScreen(),
-                      ),
-                    );
-                  },
+                  onTap: _openPersonalInfo,
                 ),
                 const Divider(height: 1, indent: 56),
                 _menuTile(

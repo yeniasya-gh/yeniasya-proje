@@ -17,6 +17,7 @@ import 'admin_home_showcase_page.dart';
 import 'admin_magazine_types_page.dart';
 import 'admin_manual_newspaper_users_page.dart';
 import 'admin_faq_page.dart';
+import 'admin_contact_messages_page.dart';
 import '../../services/loading_manager.dart';
 
 enum AdminPage {
@@ -30,6 +31,7 @@ enum AdminPage {
   manualNewspaperUsers,
   faqs,
   notifications,
+  contactMessages,
   promotions,
   orders,
   reviews,
@@ -109,6 +111,11 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
                       "Bildirimler",
                       Icons.notifications,
                       AdminPage.notifications,
+                    ),
+                    _menuItem(
+                      "İletişim Mesajları",
+                      Icons.contact_mail_outlined,
+                      AdminPage.contactMessages,
                     ),
                     _menuItem(
                       "Promosyon Kodları",
@@ -212,6 +219,8 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
         return const AdminFaqPage();
       case AdminPage.notifications:
         return const AdminNotificationsPage();
+      case AdminPage.contactMessages:
+        return const AdminContactMessagesPage();
       case AdminPage.promotions:
         return const AdminPromoCodesPage();
       case AdminPage.orders:

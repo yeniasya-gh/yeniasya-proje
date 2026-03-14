@@ -5,6 +5,7 @@ import '../../services/address_service.dart';
 import '../../services/admin/admin_user_access_audit_service.dart';
 import '../../services/admin/admin_user_service.dart';
 import '../../services/auth/auth_provider.dart';
+import '../../services/error/error_manager.dart';
 import '../../services/order_service.dart';
 import 'admin_loading_indicator.dart';
 
@@ -19,18 +20,22 @@ class AdminUserDetailPage extends StatefulWidget {
 
 class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
   final AdminUserService _adminService = AdminUserService();
-  final AdminUserAccessAuditService _auditService = AdminUserAccessAuditService();
+  final AdminUserAccessAuditService _auditService =
+      AdminUserAccessAuditService();
   final OrderService _orderService = OrderService();
   final AddressService _addressService = AddressService();
 
   bool _loading = true;
   String? _removingAccessKey;
+  String? _pageError;
   _AccessStatusFilter _statusFilter = _AccessStatusFilter.all;
   _AccessTypeFilter _typeFilter = _AccessTypeFilter.all;
+  Map<String, dynamic> _userDetails = {};
   List<Map<String, dynamic>> _access = [];
   List<Map<String, dynamic>> _accessLogs = [];
   List<Map<String, dynamic>> _orders = [];
   List<Map<String, dynamic>> _addresses = [];
+  final Map<String, String> _sectionErrors = {};
 
   @override
   void initState() {
@@ -39,29 +44,79 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
   }
 
   Future<void> _loadAll() async {
-    setState(() => _loading = true);
-    final userId = widget.user["id"] as int;
+    final userId = _asInt(widget.user["id"]);
+    if (userId == null) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _pageError = "Kullanıcı ID bilgisi okunamadı.";
+      });
+      return;
+    }
+
+    setState(() {
+      _loading = true;
+      _pageError = null;
+      _sectionErrors.clear();
+    });
+
+    final results = await Future.wait<dynamic>([
+      _loadSection<Map<String, dynamic>?>(
+        "user",
+        () => _adminService.getUserDetail(userId),
+      ),
+      _loadSection<List<Map<String, dynamic>>>(
+        "access",
+        () => _adminService.getAllAccess(userId),
+      ),
+      _loadSection<List<Map<String, dynamic>>>(
+        "audit",
+        () => _auditService.listForUser(userId),
+      ),
+      _loadSection<List<Map<String, dynamic>>>(
+        "orders",
+        () => _orderService.getOrdersWithItems(userId),
+      ),
+      _loadSection<List<Map<String, dynamic>>>(
+        "addresses",
+        () => _addressService.getAddresses(userId.toString()),
+      ),
+    ]);
+
+    if (!mounted) return;
+    setState(() {
+      _userDetails = (results[0] as Map<String, dynamic>?) ?? _userDetails;
+      _access = (results[1] as List<Map<String, dynamic>>?) ?? _access;
+      _accessLogs = (results[2] as List<Map<String, dynamic>>?) ?? _accessLogs;
+      _orders = (results[3] as List<Map<String, dynamic>>?) ?? _orders;
+      _addresses = (results[4] as List<Map<String, dynamic>>?) ?? _addresses;
+      _loading = false;
+      if (_userDetails.isEmpty &&
+          _access.isEmpty &&
+          _accessLogs.isEmpty &&
+          _orders.isEmpty &&
+          _addresses.isEmpty &&
+          _sectionErrors.isNotEmpty) {
+        _pageError = "Kullanıcı detay verileri yüklenemedi.";
+      }
+    });
+  }
+
+  Future<T?> _loadSection<T>(String key, Future<T> Function() loader) async {
     try {
-      final results = await Future.wait<dynamic>([
-        _adminService.getAllAccess(userId),
-        _auditService.listForUser(userId),
-        _orderService.getOrdersWithItems(userId),
-        _addressService.getAddresses(userId.toString()),
-      ]);
-      _access = results[0];
-      _accessLogs = results[1];
-      _orders = results[2];
-      _addresses = results[3];
-    } finally {
-      if (mounted) setState(() => _loading = false);
+      final result = await loader();
+      _sectionErrors.remove(key);
+      return result;
+    } catch (error) {
+      _sectionErrors[key] = ErrorManager.parseGraphQLError(error.toString());
+      return null;
     }
   }
 
   Future<void> _removeAccess(Map<String, dynamic> item) async {
     final accessKey = item["id"]?.toString() ?? "";
     final actor = context.read<AuthProvider>().user;
-    final itemTitle =
-        item["item_title"]?.toString().trim().isNotEmpty == true
+    final itemTitle = item["item_title"]?.toString().trim().isNotEmpty == true
         ? item["item_title"].toString()
         : (item["item_type_label"]?.toString() ?? "Bu erişim");
 
@@ -80,10 +135,7 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(context, true),
-            child: const Text(
-              "Kaldır",
-              style: TextStyle(color: Colors.white),
-            ),
+            child: const Text("Kaldır", style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -112,9 +164,9 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
       }
       await _loadAll();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Erişim pasife çekildi.")),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("Erişim pasife çekildi.")));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -127,7 +179,7 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
 
   @override
   Widget build(BuildContext context) {
-    final user = widget.user;
+    final user = _resolvedUser;
     final paidOrders = _orders
         .where((o) => (o["status"] ?? "").toString().toLowerCase() == "paid")
         .toList();
@@ -139,19 +191,51 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
     return Scaffold(
       appBar: AppBar(
         title: Text("${user["name"] ?? "Kullanıcı"} Detay"),
+        actions: [
+          IconButton(
+            tooltip: "Yenile",
+            onPressed: _loading ? null : _loadAll,
+            icon: const Icon(Icons.refresh),
+          ),
+        ],
       ),
       body: _loading
           ? const AdminLoadingIndicator()
           : ListView(
               padding: const EdgeInsets.all(16),
               children: [
+                if (_pageError != null) ...[
+                  _messageCard(
+                    _pageError!,
+                    color: const Color(0xFFB71C1C),
+                    backgroundColor: const Color(0xFFFFEBEE),
+                  ),
+                  const SizedBox(height: 18),
+                ],
+                if (_sectionErrors.isNotEmpty) ...[
+                  _sectionTitle("Yükleme Uyarıları"),
+                  _infoCard([
+                    for (final entry in _sectionErrors.entries)
+                      _infoRow(
+                        _sectionLabel(entry.key),
+                        entry.value,
+                        labelWidth: 130,
+                        multiLine: true,
+                      ),
+                  ]),
+                  const SizedBox(height: 18),
+                ],
                 _sectionTitle("Kullanıcı Bilgileri"),
                 _infoCard([
                   _infoRow("ID", user["id"]?.toString() ?? "-"),
                   _infoRow("Ad Soyad", user["name"] ?? "-"),
                   _infoRow("E-posta", user["email"] ?? "-"),
                   _infoRow("Telefon", user["phone"] ?? "-"),
-                  _infoRow("Rol", user["role"] ?? "-"),
+                  _infoRow("Rol", _roleLabel(user)),
+                  _infoRow("Durum", _userActiveLabel(user)),
+                  _infoRow("E-posta Onayı", _emailVerificationLabel(user)),
+                  _infoRow("Pay ID", _displayValue(user["payUniqe"])),
+                  _infoRow("Avatar", _displayValue(user["avatar_url"])),
                 ]),
                 const SizedBox(height: 18),
                 _sectionTitle("Abonelikler"),
@@ -223,14 +307,17 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
                       : "Seçili filtreye uygun erişim bulunamadı.",
                   items: filteredAccess,
                   itemBuilder: (item) {
-                    final type = item["item_type_label"]?.toString() ??
+                    final type =
+                        item["item_type_label"]?.toString() ??
                         _accessTypeLabel((item["item_type"] ?? "").toString());
                     final itemId = item["item_id"]?.toString() ?? "-";
                     final itemTitle =
                         item["item_title"]?.toString().trim().isNotEmpty == true
                         ? item["item_title"].toString()
                         : type;
-                    final itemSubtitle = item["item_subtitle"]?.toString().trim();
+                    final itemSubtitle = item["item_subtitle"]
+                        ?.toString()
+                        .trim();
                     final started = _formatDateShort(item["started_at"]);
                     final expires = _formatDateShort(item["expires_at"]);
                     final status = _accessStatus(item);
@@ -247,7 +334,8 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
                           Text(
                             [
                               type,
-                              if (itemSubtitle != null && itemSubtitle.isNotEmpty)
+                              if (itemSubtitle != null &&
+                                  itemSubtitle.isNotEmpty)
                                 itemSubtitle,
                               if (price != null) "Tutar: $price",
                             ].join("  •  "),
@@ -260,14 +348,19 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
                         mainAxisAlignment: MainAxisAlignment.center,
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
-                          Text("ID: $itemId", style: const TextStyle(fontSize: 12)),
+                          Text(
+                            "ID: $itemId",
+                            style: const TextStyle(fontSize: 12),
+                          ),
                           const SizedBox(height: 4),
-                          Text(status.label,
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: status.color,
-                                fontWeight: FontWeight.w600,
-                              )),
+                          Text(
+                            status.label,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: status.color,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                           const SizedBox(height: 6),
                           if (isRemoving)
                             const SizedBox(
@@ -300,15 +393,19 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
                   itemBuilder: (item) {
                     final created = _formatDateShort(item["created_at"]);
                     final actor = item["actor"] as Map<String, dynamic>?;
-                    final actorLabel = actor?["name"]?.toString().trim().isNotEmpty ==
-                            true
+                    final actorLabel =
+                        actor?["name"]?.toString().trim().isNotEmpty == true
                         ? actor!["name"].toString()
                         : "Yönetici";
-                    final title = item["item_title"]?.toString().trim().isNotEmpty ==
-                            true
+                    final title =
+                        item["item_title"]?.toString().trim().isNotEmpty == true
                         ? item["item_title"].toString()
-                        : _accessTypeLabel((item["item_type"] ?? "").toString());
-                    final previous = _formatDateShort(item["previous_expires_at"]);
+                        : _accessTypeLabel(
+                            (item["item_type"] ?? "").toString(),
+                          );
+                    final previous = _formatDateShort(
+                      item["previous_expires_at"],
+                    );
                     final next = _formatDateShort(item["new_expires_at"]);
                     final note = item["note"]?.toString().trim();
                     return ListTile(
@@ -327,7 +424,9 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
                           if (item["previous_expires_at"] != null ||
                               item["new_expires_at"] != null) ...[
                             const SizedBox(height: 4),
-                            Text("Önceki bitiş: $previous  •  Yeni bitiş: $next"),
+                            Text(
+                              "Önceki bitiş: $previous  •  Yeni bitiş: $next",
+                            ),
                           ],
                           if (note != null && note.isNotEmpty) ...[
                             const SizedBox(height: 4),
@@ -340,9 +439,7 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
                 ),
                 const SizedBox(height: 18),
                 _sectionTitle("Başarılı Siparişler"),
-                _infoCard([
-                  _infoRow("Toplam", paidOrders.length.toString()),
-                ]),
+                _infoCard([_infoRow("Toplam", paidOrders.length.toString())]),
                 const SizedBox(height: 8),
                 _listCard(
                   emptyText: "Başarılı sipariş bulunamadı.",
@@ -365,7 +462,8 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
                             ...items.map((it) {
                               final title = it["title"]?.toString() ?? "-";
                               final qty = it["quantity"]?.toString() ?? "1";
-                              final line = it["line_total"]?.toString() ??
+                              final line =
+                                  it["line_total"]?.toString() ??
                                   it["unit_price"]?.toString() ??
                                   "-";
                               return Text("• $title x$qty (₺$line)");
@@ -378,16 +476,16 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
                 ),
                 const SizedBox(height: 18),
                 _sectionTitle("Adresler"),
-                _infoCard([
-                  _infoRow("Toplam", _addresses.length.toString()),
-                ]),
+                _infoCard([_infoRow("Toplam", _addresses.length.toString())]),
                 const SizedBox(height: 8),
                 _listCard(
                   emptyText: "Adres bulunamadı.",
                   items: _addresses,
                   itemBuilder: (a) {
                     final name = a["address_name"] ?? "-";
-                    final type = (a["address_type"] ?? "").toString().toLowerCase() == "kurumsal"
+                    final type =
+                        (a["address_type"] ?? "").toString().toLowerCase() ==
+                            "kurumsal"
                         ? "Kurumsal"
                         : "Bireysel";
                     final full = a["full_address"] ?? "-";
@@ -411,7 +509,10 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
   }
 
   Widget _sectionTitle(String title) {
-    return Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700));
+    return Text(
+      title,
+      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+    );
   }
 
   Widget _infoCard(List<Widget> children) {
@@ -454,18 +555,41 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
         ],
       ),
       child: items.isEmpty
-          ? Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: Text(emptyText),
-            )
+          ? Padding(padding: const EdgeInsets.all(8.0), child: Text(emptyText))
           : Column(
               children: [
                 for (var i = 0; i < items.length; i++) ...[
                   itemBuilder(items[i]),
                   if (i != items.length - 1) const Divider(height: 1),
-                ]
+                ],
               ],
             ),
+    );
+  }
+
+  Map<String, dynamic> get _resolvedUser => {...widget.user, ..._userDetails};
+
+  Widget _messageCard(
+    String text, {
+    required Color color,
+    required Color backgroundColor,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.2)),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          color: color,
+          fontWeight: FontWeight.w600,
+          height: 1.4,
+        ),
+      ),
     );
   }
 
@@ -504,13 +628,21 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
     );
   }
 
-  Widget _infoRow(String label, String value) {
+  Widget _infoRow(
+    String label,
+    String value, {
+    double labelWidth = 110,
+    bool multiLine = false,
+  }) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
+        crossAxisAlignment: multiLine
+            ? CrossAxisAlignment.start
+            : CrossAxisAlignment.center,
         children: [
           SizedBox(
-            width: 110,
+            width: labelWidth,
             child: Text(label, style: const TextStyle(color: Colors.black54)),
           ),
           Expanded(child: Text(value)),
@@ -565,23 +697,22 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
         .toList(growable: false);
   }
 
-  List<Map<String, dynamic>> _buildContentSummary(List<Map<String, dynamic>> access) {
+  List<Map<String, dynamic>> _buildContentSummary(
+    List<Map<String, dynamic>> access,
+  ) {
     final grouped = <String, Map<String, dynamic>>{};
 
     for (final item in access) {
-      final type = item["item_type_label"]?.toString() ??
+      final type =
+          item["item_type_label"]?.toString() ??
           _accessTypeLabel((item["item_type"] ?? "").toString());
-      final name =
-          item["item_title"]?.toString().trim().isNotEmpty == true
+      final name = item["item_title"]?.toString().trim().isNotEmpty == true
           ? item["item_title"].toString().trim()
           : type;
       final key = type;
       final group = grouped.putIfAbsent(
         key,
-        () => {
-          "title": type,
-          "names": <String>{},
-        },
+        () => {"title": type, "names": <String>{}},
       );
       (group["names"] as Set<String>).add(name);
     }
@@ -649,6 +780,51 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
     if (raw is num) return raw.toInt();
     if (raw == null) return null;
     return int.tryParse(raw.toString());
+  }
+
+  String _displayValue(dynamic value) {
+    final text = value?.toString().trim();
+    if (text == null || text.isEmpty) return "-";
+    return text;
+  }
+
+  String _roleLabel(Map<String, dynamic> user) {
+    final role = user["role"];
+    if (role is Map<String, dynamic>) {
+      return _displayValue(role["name"]);
+    }
+    return _displayValue(role);
+  }
+
+  String _userActiveLabel(Map<String, dynamic> user) {
+    final isActive = user["is_active"];
+    if (isActive == null) return "-";
+    return isActive == true ? "Aktif" : "Pasif";
+  }
+
+  String _emailVerificationLabel(Map<String, dynamic> user) {
+    final verifiedAt = user["email_verified_at"];
+    if (verifiedAt == null || verifiedAt.toString().trim().isEmpty) {
+      return "Doğrulanmamış";
+    }
+    return _formatDateShort(verifiedAt);
+  }
+
+  String _sectionLabel(String key) {
+    switch (key) {
+      case "user":
+        return "Kullanıcı";
+      case "access":
+        return "Erişimler";
+      case "audit":
+        return "Erişim Hareketleri";
+      case "orders":
+        return "Siparişler";
+      case "addresses":
+        return "Adresler";
+      default:
+        return key;
+    }
   }
 
   String _auditActionLabel(Map<String, dynamic> item) {

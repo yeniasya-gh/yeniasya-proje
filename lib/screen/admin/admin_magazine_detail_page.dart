@@ -32,6 +32,7 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
   List<Map<String, dynamic>> _reviews = [];
   double _avgRating = 0;
   int _reviewCount = 0;
+  final Set<int> _publicationBusyIssueIds = <int>{};
 
   @override
   void initState() {
@@ -43,12 +44,59 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
   Future<void> _loadIssues() async {
     setState(() => _loading = true);
     try {
-      final list = await _service.getIssues(widget.magazine["id"] as int);
+      final list = await _service.getAdminIssues(widget.magazine["id"] as int);
       setState(() => _issues = list);
     } catch (e) {
       await _showError(e.toString());
     }
     setState(() => _loading = false);
+  }
+
+  bool _issueIsPublished(Map<String, dynamic> issue) =>
+      issue["is_published"] != false;
+
+  void _setIssuePublicationLocally(int id, bool isPublished) {
+    _issues = _issues
+        .map((issue) {
+          if (issue["id"] != id) return issue;
+          return {...issue, "is_published": isPublished};
+        })
+        .toList(growable: false);
+  }
+
+  Future<void> _toggleIssuePublication(
+    Map<String, dynamic> issue,
+    bool isPublished,
+  ) async {
+    final id = issue["id"] as int?;
+    if (id == null || _publicationBusyIssueIds.contains(id)) return;
+
+    setState(() => _publicationBusyIssueIds.add(id));
+    try {
+      await _service.setIssuePublicationStatus(
+        id: id,
+        isPublished: isPublished,
+      );
+      if (!mounted) return;
+      setState(() => _setIssuePublicationLocally(id, isPublished));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            isPublished
+                ? "Dergi sayısı yayına alındı."
+                : "Dergi sayısı yayından kaldırıldı.",
+          ),
+        ),
+      );
+    } catch (e) {
+      await _showError(e.toString());
+    } finally {
+      if (mounted) {
+        setState(() => _publicationBusyIssueIds.remove(id));
+      } else {
+        _publicationBusyIssueIds.remove(id);
+      }
+    }
   }
 
   Future<void> _loadReviews() async {
@@ -775,17 +823,31 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
                         itemBuilder: (_, i) {
                           final issue = _issues[i];
                           final issueYear = _issueYear(issue);
+                          final issueId = issue["id"] as int?;
+                          final isPublished = _issueIsPublished(issue);
+                          final busy =
+                              issueId != null &&
+                              _publicationBusyIssueIds.contains(issueId);
                           return ListTile(
                             leading: _issueCover(issue["photo_url"]),
                             title: Text(
                               "${(magazine["name"] ?? "").toString()} - ${issue["issue_number"]}",
                             ),
                             subtitle: Text(
-                              "Yıl: $issueYear • Eklendi: ${_formatDate(issue["added_at"])}",
+                              "Yıl: $issueYear • Eklendi: ${_formatDate(issue["added_at"])} • ${isPublished ? "Yayında" : "Kapalı"}",
                             ),
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
+                                Switch.adaptive(
+                                  value: isPublished,
+                                  onChanged: busy
+                                      ? null
+                                      : (value) => _toggleIssuePublication(
+                                          issue,
+                                          value,
+                                        ),
+                                ),
                                 IconButton(
                                   icon: const Icon(
                                     Icons.edit,

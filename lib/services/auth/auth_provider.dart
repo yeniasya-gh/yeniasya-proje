@@ -182,15 +182,15 @@ class AuthProvider with ChangeNotifier {
         debugPrint("🔴 [Auth] guest session bootstrap failed: $guestError");
         _expiryTimer?.cancel();
         _expiryTimer = null;
-      await AuthTokenStore.clear();
-      _user = null;
-      _isLoggedIn = false;
-      _errorMessage = null;
-      _needsEmailVerification = false;
-      _verificationEmailHint = null;
-      notifyListeners();
+        await AuthTokenStore.clear();
+        _user = null;
+        _isLoggedIn = false;
+        _errorMessage = null;
+        _needsEmailVerification = false;
+        _verificationEmailHint = null;
+        notifyListeners();
+      }
     }
-  }
   }
 
   Future<void> _saveSession({
@@ -297,11 +297,14 @@ class AuthProvider with ChangeNotifier {
           );
         }
         final displayName = firebaseUser?.displayName?.trim();
-        final name =
-            (displayName != null && displayName.isNotEmpty)
+        final name = (displayName != null && displayName.isNotEmpty)
             ? displayName
             : email.split("@").first;
-        return _completeSocialLogin(provider: "google", email: email, name: name);
+        return _completeSocialLogin(
+          provider: "google",
+          email: email,
+          name: name,
+        );
       }
 
       const webClientId = String.fromEnvironment(
@@ -434,11 +437,15 @@ class AuthProvider with ChangeNotifier {
             .where((value) => value.isNotEmpty)
             .join(" ")
             .trim();
-        final name = displayName ?? (fallbackName.isNotEmpty
-            ? fallbackName
-            : email.split("@").first);
+        final name =
+            displayName ??
+            (fallbackName.isNotEmpty ? fallbackName : email.split("@").first);
 
-        return _completeSocialLogin(provider: "apple", email: email, name: name);
+        return _completeSocialLogin(
+          provider: "apple",
+          email: email,
+          name: name,
+        );
       }
 
       final available = await SignInWithApple.isAvailable();
@@ -506,8 +513,7 @@ class AuthProvider with ChangeNotifier {
       if (code == "operation-not-allowed") {
         return "Firebase üzerinde Apple ile giriş etkin değil.";
       }
-      if (code == "popup-closed-by-user" ||
-          code == "cancelled-popup-request") {
+      if (code == "popup-closed-by-user" || code == "cancelled-popup-request") {
         return "Apple giriş penceresi kapatıldı, tekrar deneyin.";
       }
       if (code == "popup-blocked") {
@@ -700,24 +706,29 @@ class AuthProvider with ChangeNotifier {
   Future<void> refreshUser() async {
     final current = _user;
     if (current == null) return;
-    final updated = await _userService.getUserById(current.id);
-    if (updated == null) return;
-    _user = updated;
-    notifyListeners();
+    final updatedJson = await _authApi.getMe();
+    await _setCurrentUser(AppUser.fromAuthJson(updatedJson));
   }
 
   Future<void> updateProfile({required String name, String? phone}) async {
     final current = _user;
     if (current == null) return;
-    final updated = await _userService.updateProfile(
-      id: current.id,
-      name: name,
-      phone: phone,
-    );
-    if (updated != null) {
-      _user = updated;
-      notifyListeners();
-    }
+    final updatedJson = await _authApi.updateMe(name: name, phone: phone);
+    await _setCurrentUser(AppUser.fromAuthJson(updatedJson));
+  }
+
+  Future<void> updateAvatar({required String avatarUrl}) async {
+    final current = _user;
+    if (current == null) return;
+    final updatedJson = await _authApi.updateAvatar(avatarUrl: avatarUrl);
+    await _setCurrentUser(AppUser.fromAuthJson(updatedJson));
+  }
+
+  Future<void> removeAvatar() async {
+    final current = _user;
+    if (current == null) return;
+    final updatedJson = await _authApi.removeAvatar();
+    await _setCurrentUser(AppUser.fromAuthJson(updatedJson));
   }
 
   Future<bool> changePassword({
@@ -784,6 +795,18 @@ class AuthProvider with ChangeNotifier {
       notifyListeners();
       return false;
     }
+  }
+
+  Future<void> _setCurrentUser(AppUser user) async {
+    _user = user;
+    _isLoggedIn = true;
+    _errorMessage = null;
+    _needsEmailVerification = false;
+    _verificationEmailHint = null;
+    final expiresAt =
+        AuthTokenStore.expiresAt ?? DateTime.now().add(const Duration(days: 1));
+    await _saveSession(user: user, expiresAt: expiresAt);
+    notifyListeners();
   }
 }
 
