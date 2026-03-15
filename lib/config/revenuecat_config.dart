@@ -46,7 +46,7 @@ class RevenueCatConfig {
   /// CDN backend sync settings.
   static const String backendBaseUrl = String.fromEnvironment(
     "REVENUECAT_BACKEND_BASE_URL",
-    defaultValue: "https://cdn.yeniasyadigital.com",
+    defaultValue: "https://cdn.yeniasyadijital.com",
   );
   static const String backendSyncPath = String.fromEnvironment(
     "REVENUECAT_BACKEND_SYNC_PATH",

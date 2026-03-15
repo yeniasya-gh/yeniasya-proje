@@ -10,9 +10,9 @@
  *
  * Required env vars:
  *   DATABASE_URL=postgres://...
- *   MAIL_API_URL=https://cdn.yeniasyadigital.com/mail/send
+ *   MAIL_API_URL=https://cdn.yeniasyadijital.com/mail/send
  *   MAIL_API_TOKEN=...
- *   RESET_WEB_URL=https://cdn.yeniasyadigital.com/sifre-sifirla
+ *   RESET_WEB_URL=https://cdn.yeniasyadijital.com/sifre-sifirla
  *   PASSWORD_RESET_TOKEN_TTL_MINUTES=30
  *
  * Security notes:
@@ -32,10 +32,10 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const router = express.Router();
 
 const MAIL_API_URL =
-  process.env.MAIL_API_URL || "https://cdn.yeniasyadigital.com/mail/send";
+  process.env.MAIL_API_URL || "https://cdn.yeniasyadijital.com/mail/send";
 const MAIL_API_TOKEN = process.env.MAIL_API_TOKEN || "";
 const RESET_WEB_URL =
-  process.env.RESET_WEB_URL || "https://cdn.yeniasyadigital.com/sifre-sifirla";
+  process.env.RESET_WEB_URL || "https://cdn.yeniasyadijital.com/sifre-sifirla";
 const TOKEN_TTL_MINUTES = Number.parseInt(
   process.env.PASSWORD_RESET_TOKEN_TTL_MINUTES || "30",
   10,

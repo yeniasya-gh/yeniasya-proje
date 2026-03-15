@@ -1,7 +1,8 @@
+import 'dart:convert';
+
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:flutter/foundation.dart';
-
-import 'hasura_manager.dart';
+import 'package:http/http.dart' as http;
 
 class AppFeatureVisibility {
   final bool hideMagazines;
@@ -20,7 +21,19 @@ class AppFeatureVisibility {
 }
 
 class AppFeatureFlagsService {
-  final _hasura = HasuraManager.instance;
+  AppFeatureFlagsService({String? baseUrl, http.Client? client})
+    : _baseUrl =
+          baseUrl ??
+          const String.fromEnvironment(
+            "CDN_BASE_URL",
+            defaultValue: "https://cdn.yeniasyadijital.com",
+          ),
+      _client = client ?? http.Client();
+
+  final String _baseUrl;
+  final http.Client _client;
+
+  static const _cdnTimeout = Duration(seconds: 5);
 
   Future<AppFeatureVisibility> getVisibilityForCurrentApp() async {
     final packageInfo = await PackageInfo.fromPlatform();
@@ -48,39 +61,13 @@ class AppFeatureFlagsService {
       );
     }
 
-    final query =
-        '''
-      query GetAppFeatureFlags {
-        app_feature_flags(where: {id: {_eq: $flagId}}, limit: 1) {
-          id
-          version
-          hide_magazines
-          hide_newspapers
-        }
-      }
-    ''';
-
-    final data = await _hasura.graphQLRequest(
-      query: query,
-      timeout: HasuraManager.homeTimeout,
-    );
-    final rawItems = data["app_feature_flags"];
-    if (rawItems is! List || rawItems.isEmpty) {
+    final row = await _getFeatureFlagRow(flagId);
+    if (row == null) {
       return AppFeatureVisibility(
         appVersion: appVersion,
         appBuildNumber: appBuildNumber,
       );
     }
-
-    final first = rawItems.first;
-    if (first is! Map) {
-      return AppFeatureVisibility(
-        appVersion: appVersion,
-        appBuildNumber: appBuildNumber,
-      );
-    }
-
-    final row = Map<String, dynamic>.from(first);
     final configuredVersion = (row["version"] ?? "").toString().trim();
     final versionMatched = _matchesConfiguredVersion(
       configuredVersion: configuredVersion,
@@ -95,6 +82,39 @@ class AppFeatureFlagsService {
       appBuildNumber: appBuildNumber,
       configuredVersion: configuredVersion.isEmpty ? null : configuredVersion,
     );
+  }
+
+  Future<Map<String, dynamic>?> _getFeatureFlagRow(int flagId) async {
+    try {
+      return await _getFeatureFlagRowFromCdn(flagId);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<Map<String, dynamic>?> _getFeatureFlagRowFromCdn(int flagId) async {
+    final uri = Uri.parse(
+      "$_baseUrl/app/feature-flags",
+    ).replace(queryParameters: {"id": "$flagId"});
+    final response = await _client.get(uri).timeout(_cdnTimeout);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception("APP_FEATURE_FLAGS_HTTP_${response.statusCode}");
+    }
+
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map) {
+      throw Exception("APP_FEATURE_FLAGS_INVALID_PAYLOAD");
+    }
+    final body = Map<String, dynamic>.from(decoded);
+    if (body["ok"] == false) {
+      throw Exception(
+        body["error"]?.toString() ?? "APP_FEATURE_FLAGS_REQUEST_FAILED",
+      );
+    }
+
+    final data = body["data"];
+    if (data is! Map) return null;
+    return Map<String, dynamic>.from(data);
   }
 
   bool _matchesConfiguredVersion({

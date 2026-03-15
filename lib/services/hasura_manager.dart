@@ -112,7 +112,7 @@ class HasuraManager {
     if (HasuraService.endpointUri.scheme != "https") {
       throw Exception("Hasura endpoint must use https.");
     }
-    if (HasuraService.endpointUri.host != "cdn.yeniasyadigital.com") {
+    if (HasuraService.endpointUri.host != "cdn.yeniasyadijital.com") {
       throw Exception("Hasura endpoint host not allowed.");
     }
   }

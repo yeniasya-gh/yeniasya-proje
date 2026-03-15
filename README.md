@@ -21,9 +21,9 @@ Mail endpoint bilgileri artık sabit kod yerine `dart-define` ile override edile
 
 ```bash
 flutter run \
-  --dart-define=MAIL_API_URL=https://cdn.yeniasyadigital.com/mail/send \
-  --dart-define=MAIL_ORDER_SUMMARY_API_URL=https://cdn.yeniasyadigital.com/mail/order-summary \
-  --dart-define=MAIL_WELCOME_API_URL=https://cdn.yeniasyadigital.com/mail/welcome \
+  --dart-define=MAIL_API_URL=https://cdn.yeniasyadijital.com/mail/send \
+  --dart-define=MAIL_ORDER_SUMMARY_API_URL=https://cdn.yeniasyadijital.com/mail/order-summary \
+  --dart-define=MAIL_WELCOME_API_URL=https://cdn.yeniasyadijital.com/mail/welcome \
   --dart-define=MAIL_API_TOKEN=your-mail-token \
   --dart-define=MAIL_FROM_NAME="Yeni Asya Dijital"
 ```

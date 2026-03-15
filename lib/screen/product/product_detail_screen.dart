@@ -669,7 +669,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         typeParam = type;
     }
 
-    const base = "https://yeniasyadigital.com";
+    const base = "https://yeniasyadijital.com";
     return "$base/urun?type=$typeParam&id=$id";
   }
 

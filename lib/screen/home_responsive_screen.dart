@@ -153,9 +153,9 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
   @override
   void initState() {
     super.initState();
-    _loadData();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+      unawaited(_loadData());
       _authListener = context.read<AuthProvider>();
       _authListener?.addListener(_onAuthChange);
       _loadAccessIfNeeded();
@@ -170,14 +170,28 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     }
 
     final visibilityFuture = _loadVisibilitySafely();
+    unawaited(_applyVisibilityWhenReady(visibilityFuture));
+    final cachedBootstrap = await _homeBootstrapService.readCachedPayload();
+
+    if (showLoading && cachedBootstrap != null && mounted) {
+      _applyHomeData(
+        slidersData: cachedBootstrap.sliders,
+        magazinesData: cachedBootstrap.magazines,
+        booksData: cachedBootstrap.books,
+        newspapersData: cachedBootstrap.newspapers,
+        attachmentsData: cachedBootstrap.attachments,
+        homeBooksData: cachedBootstrap.homeBookEntries,
+        homeMagazinesData: cachedBootstrap.homeMagazineEntries,
+        visibility: _currentVisibilitySnapshot(),
+        homeLoadFailed: false,
+      );
+      _startSliderAuto();
+      unawaited(_handleInitialDeepLink());
+      setState(() => loading = false);
+    }
 
     try {
-      final results = await Future.wait<Object>([
-        _homeBootstrapService.fetch(),
-        visibilityFuture,
-      ]);
-      final bootstrap = results[0] as HomeBootstrapPayload;
-      final visibility = results[1] as AppFeatureVisibility;
+      final bootstrap = await _homeBootstrapService.fetch();
       if (!mounted) return;
       _applyHomeData(
         slidersData: bootstrap.sliders,
@@ -187,7 +201,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         attachmentsData: bootstrap.attachments,
         homeBooksData: bootstrap.homeBookEntries,
         homeMagazinesData: bootstrap.homeMagazineEntries,
-        visibility: visibility,
+        visibility: _currentVisibilitySnapshot(),
         homeLoadFailed: false,
       );
       _startSliderAuto();
@@ -200,7 +214,6 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         stackTrace: bootstrapStack,
       );
 
-      final visibility = await visibilityFuture;
       final fallback = await _loadLegacyHomeData();
       if (!mounted) return;
 
@@ -255,8 +268,8 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         attachmentsData: resolvedAttachments,
         homeBooksData: resolvedHomeBooks,
         homeMagazinesData: resolvedHomeMagazines,
-        hideMagazines: visibility.hideMagazines,
-        hideNewspapers: visibility.hideNewspapers,
+        hideMagazines: _hideMagazines,
+        hideNewspapers: _hideNewspapers,
       );
 
       _applyHomeData(
@@ -267,9 +280,25 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         attachmentsData: resolvedAttachments,
         homeBooksData: resolvedHomeBooks,
         homeMagazinesData: resolvedHomeMagazines,
-        visibility: visibility,
+        visibility: _currentVisibilitySnapshot(),
         homeLoadFailed: fallback.failedSources.isNotEmpty && !hasAnyContent,
       );
+
+      if (hasAnyContent) {
+        unawaited(
+          _homeBootstrapService.cachePayload(
+            HomeBootstrapPayload(
+              sliders: resolvedSliders,
+              magazines: resolvedMagazines,
+              books: resolvedBooks,
+              newspapers: resolvedNewspapers,
+              attachments: resolvedAttachments,
+              homeBookEntries: resolvedHomeBooks,
+              homeMagazineEntries: resolvedHomeMagazines,
+            ),
+          ),
+        );
+      }
 
       if (fallback.failedSources.isNotEmpty) {
         _logHomeLoadFailure(
@@ -302,6 +331,28 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
       );
       return const AppFeatureVisibility();
     }
+  }
+
+  AppFeatureVisibility _currentVisibilitySnapshot() {
+    return AppFeatureVisibility(
+      hideMagazines: _hideMagazines,
+      hideNewspapers: _hideNewspapers,
+    );
+  }
+
+  Future<void> _applyVisibilityWhenReady(
+    Future<AppFeatureVisibility> visibilityFuture,
+  ) async {
+    final visibility = await visibilityFuture;
+    if (!mounted) return;
+    setState(() {
+      _hideMagazines = visibility.hideMagazines;
+      _hideNewspapers = visibility.hideNewspapers;
+      if ((_hideMagazines && _section == HomeSection.magazines) ||
+          (_hideNewspapers && _section == HomeSection.newspapers)) {
+        _section = HomeSection.home;
+      }
+    });
   }
 
   Future<_HomeLoadBundle> _loadLegacyHomeData() async {

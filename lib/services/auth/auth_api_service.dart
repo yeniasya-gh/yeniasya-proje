@@ -4,7 +4,7 @@ import 'auth_token_store.dart';
 
 class AuthApiService {
   AuthApiService({String? baseUrl, http.Client? client})
-    : _baseUrl = baseUrl ?? "https://cdn.yeniasyadigital.com",
+    : _baseUrl = baseUrl ?? "https://cdn.yeniasyadijital.com",
       _client = client ?? http.Client();
 
   final String _baseUrl;

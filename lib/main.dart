@@ -65,9 +65,24 @@ class _AppBootstrapState extends State<AppBootstrap> {
   String? _lastRevenueCatIdentity;
   AuthProvider? _authProvider;
 
+  bool get _shouldGateHomeUntilBootstrap {
+    if (kIsWeb) return true;
+    switch (defaultTargetPlatform) {
+      case TargetPlatform.android:
+      case TargetPlatform.iOS:
+        return false;
+      case TargetPlatform.macOS:
+      case TargetPlatform.windows:
+      case TargetPlatform.linux:
+      case TargetPlatform.fuchsia:
+        return true;
+    }
+  }
+
   @override
   void initState() {
     super.initState();
+    _ready = !_shouldGateHomeUntilBootstrap;
     _authProvider = context.read<AuthProvider>();
     unawaited(_bootstrap());
   }
@@ -82,12 +97,12 @@ class _AppBootstrapState extends State<AppBootstrap> {
     final authProvider = context.read<AuthProvider>();
     final revenueCatService = context.read<RevenueCatService>();
 
-    setState(() => _status = "Oturum hazırlanıyor");
+    if (_shouldGateHomeUntilBootstrap && mounted) {
+      setState(() => _status = "Oturum hazırlanıyor");
+    }
 
-    await Future.wait<void>([
-      _initializeFirebaseSafely(),
-      authProvider.loadSession(),
-    ]);
+    unawaited(_initializeFirebaseSafely());
+    await authProvider.loadSession();
 
     final user = authProvider.user;
     _lastRevenueCatIdentity = authProvider.isLoggedIn && user != null
@@ -96,7 +111,7 @@ class _AppBootstrapState extends State<AppBootstrap> {
     _authProvider?.removeListener(_handleAuthChanged);
     _authProvider?.addListener(_handleAuthChanged);
 
-    if (mounted) {
+    if (_shouldGateHomeUntilBootstrap && mounted) {
       setState(() => _ready = true);
     }
 

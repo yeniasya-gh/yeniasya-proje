@@ -7,7 +7,7 @@ class HasuraService {
 
   static const String endpoint = String.fromEnvironment(
     "HASURA_ENDPOINT",
-    defaultValue: "https://cdn.yeniasyadigital.com/hasura",
+    defaultValue: "https://cdn.yeniasyadijital.com/hasura",
   );
   static final Uri endpointUri = Uri.parse(endpoint);
   static const Duration timeout = Duration(seconds: 20);

@@ -10,7 +10,7 @@ class NotificationService {
   final _hasura = HasuraManager.instance;
   final http.Client _http = http.Client();
   static const String _pushApiUrl =
-      "https://cdn.yeniasyadigital.com/admin/notifications/send";
+      "https://cdn.yeniasyadijital.com/admin/notifications/send";
 
   Future<void> registerDeviceToken({
     required int userId,

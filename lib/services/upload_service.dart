@@ -9,7 +9,7 @@ enum UploadFileType { book, magazine, newspaper, supplement, slider, profile }
 
 class UploadService {
   UploadService({String? baseUrl})
-    : _baseUrl = baseUrl ?? "https://cdn.yeniasyadigital.com";
+    : _baseUrl = baseUrl ?? "https://cdn.yeniasyadijital.com";
 
   final LoggingService _logger = LoggingService();
   final String _baseUrl;
@@ -57,7 +57,7 @@ class UploadService {
   /// Normalizes a returned path (e.g. `/public/kitap/x.png`) to a fully usable URL.
   static String normalizeUrl(
     String url, {
-    String baseUrl = "https://cdn.yeniasyadigital.com",
+    String baseUrl = "https://cdn.yeniasyadijital.com",
   }) {
     final value = url.trim();
     if (value.isEmpty) return value;
@@ -277,7 +277,7 @@ class UploadService {
   }
 
   Set<String> _managedHosts() {
-    final hosts = <String>{"yeniasya.b-cdn.net", "cdn.yeniasyadigital.com"};
+    final hosts = <String>{"yeniasya.b-cdn.net", "cdn.yeniasyadijital.com"};
     final parsedBase = Uri.tryParse(_baseUrl);
     final baseHost = parsedBase?.host.trim().toLowerCase() ?? "";
     if (baseHost.isNotEmpty) {
