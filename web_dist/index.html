@@ -100,6 +100,78 @@
           "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.14.305/pdf.worker.min.js";
       }
 
+      (function () {
+        var migrationKey = "ya-web-cache-migration-20260316-1";
+        var bootstrapSrc = "flutter_bootstrap.js?v=20260316-1";
+
+        function injectBootstrapScript() {
+          var script = document.createElement("script");
+          script.src = bootstrapSrc;
+          script.async = true;
+          document.body.appendChild(script);
+        }
+
+        async function prepareFlutterBootstrap() {
+          var shouldReload = false;
+
+          if ("serviceWorker" in navigator) {
+            var refreshing = false;
+            navigator.serviceWorker.addEventListener("controllerchange", function () {
+              if (refreshing) return;
+              refreshing = true;
+              window.location.reload();
+            });
+
+            try {
+              if (!window.localStorage.getItem(migrationKey)) {
+                var registrations = await navigator.serviceWorker.getRegistrations();
+                if (registrations.length > 0) {
+                  await Promise.all(
+                    registrations.map(function (registration) {
+                      return registration.unregister();
+                    })
+                  );
+                  if ("caches" in window) {
+                    var cacheKeys = await caches.keys();
+                    await Promise.all(
+                      cacheKeys
+                        .filter(function (key) {
+                          return key.indexOf("flutter-") === 0;
+                        })
+                        .map(function (key) {
+                          return caches.delete(key);
+                        })
+                    );
+                  }
+                  shouldReload = true;
+                }
+                window.localStorage.setItem(migrationKey, "done");
+              } else {
+                var registration = await navigator.serviceWorker.getRegistration();
+                if (registration) {
+                  await registration.update();
+                  if (registration.waiting) {
+                    registration.waiting.postMessage("skipWaiting");
+                    shouldReload = true;
+                  }
+                }
+              }
+            } catch (error) {
+              console.warn("Flutter cache migration skipped:", error);
+            }
+          }
+
+          if (shouldReload) {
+            window.location.reload();
+            return;
+          }
+
+          injectBootstrapScript();
+        }
+
+        window.__prepareFlutterBootstrap = prepareFlutterBootstrap;
+      })();
+
       window.addEventListener("flutter-first-frame", function () {
         var loader = document.getElementById("bootstrap-loader");
         if (!loader) return;
@@ -129,6 +201,8 @@
         <div class="bootstrap-spinner" aria-hidden="true"></div>
       </div>
     </div>
-    <script src="flutter_bootstrap.js" async></script>
+    <script>
+      window.__prepareFlutterBootstrap();
+    </script>
   </body>
 </html>
