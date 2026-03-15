@@ -241,9 +241,23 @@ query GetAllBooks {
         books_by_pk(id: $id) {
           id
           title
+          isbn
           author_id
+          category_id
           cover_url
           book_url
+          price
+          discount_price
+          description
+          min_description
+          author_rel: authorByAuthorId {
+            id
+            name
+          }
+          category_rel: categoryByCategoryId {
+            id
+            name
+          }
         }
       }
     ''';

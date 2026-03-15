@@ -94,6 +94,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
 
   final PageController _sliderController = PageController();
   Timer? _sliderTimer;
+  Timer? _libraryWarmupTimer;
   int _sliderIndex = 0;
 
   List<Map<String, dynamic>> sliders = [];
@@ -119,6 +120,8 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
   bool _homeLoadFailed = false;
   AuthProvider? _authListener;
   DateTime? _newsSelectedDate;
+
+  int _showcaseItemLimit(bool isWeb) => isWeb ? 10 : 6;
 
   DateTime get _newspaperPickerInitialDate =>
       _normalizeDate(_newsSelectedDate ?? DateTime.now());
@@ -159,8 +162,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
       _authListener = context.read<AuthProvider>();
       _authListener?.addListener(_onAuthChange);
       _loadAccessIfNeeded();
-      _loadLibraryOrders();
-      _loadLibraryAccess();
+      _scheduleDeferredLibraryWarmup();
     });
   }
 
@@ -560,11 +562,15 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
   void _onAuthChange() {
     final auth = _authListener;
     if (auth == null) return;
-    _loadLibraryOrders();
-    _loadLibraryAccess();
     if (auth.isLoggedIn) {
       _loadData();
       _loadAccessIfNeeded();
+      if (_mobileNavIndex == 2) {
+        _loadLibraryOrders();
+        _loadLibraryAccess();
+      } else {
+        _scheduleDeferredLibraryWarmup();
+      }
     } else {
       _resetAfterLogout();
     }
@@ -596,6 +602,15 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
       debugPrint("Library access load error: $e");
     }
     if (mounted) setState(() => libraryAccessLoading = false);
+  }
+
+  void _scheduleDeferredLibraryWarmup() {
+    _libraryWarmupTimer?.cancel();
+    _libraryWarmupTimer = Timer(const Duration(milliseconds: 900), () {
+      if (!mounted || _mobileNavIndex == 2) return;
+      unawaited(_loadLibraryOrders());
+      unawaited(_loadLibraryAccess());
+    });
   }
 
   Future<void> _handleInitialDeepLink() async {
@@ -667,6 +682,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
   void dispose() {
     _authListener?.removeListener(_onAuthChange);
     _sliderTimer?.cancel();
+    _libraryWarmupTimer?.cancel();
     _sliderController.dispose();
     super.dispose();
   }
@@ -761,17 +777,100 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         .toList(growable: false);
   }
 
-  void _openProductDetail(ProductDetail detail) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => ProductDetailScreen(detail: detail)),
+  bool _shouldHydrateProductDetail(ProductDetail detail) =>
+      detail.metadata?["hydrateOnOpen"] == true;
+
+  ProductDetail _mergeHydratedProductDetail(
+    ProductDetail current,
+    ProductDetail hydrated,
+  ) {
+    return ProductDetail(
+      id: hydrated.id,
+      title: hydrated.title,
+      subtitle: hydrated.subtitle,
+      description: hydrated.description,
+      imageUrl: hydrated.imageUrl,
+      price: hydrated.price,
+      type: hydrated.type,
+      actionLabel: hydrated.actionLabel,
+      metadata: {
+        ...(current.metadata ?? const <String, dynamic>{}),
+        ...(hydrated.metadata ?? const <String, dynamic>{}),
+        "hydrateOnOpen": false,
+      },
+      forceAccess: current.forceAccess || hydrated.forceAccess,
     );
   }
 
-  void _openEkDetail(Map<String, dynamic> ek) {
+  Future<ProductDetail> _hydrateProductDetailIfNeeded(
+    ProductDetail detail,
+  ) async {
+    if (!_shouldHydrateProductDetail(detail)) return detail;
+    final productId = _toInt(detail.metadata?["productId"]);
+    if (productId == null) return detail;
+
+    try {
+      switch (detail.type) {
+        case CartItemType.book:
+          final book = await _bookService.getBookById(productId);
+          if (book == null || book.isEmpty) return detail;
+          return _mergeHydratedProductDetail(detail, _mapBookDetail(book));
+        case CartItemType.magazine:
+          final magazine = await _magService.getMagazineById(productId);
+          if (magazine == null || magazine.isEmpty) return detail;
+          return _mergeHydratedProductDetail(
+            detail,
+            _mapMagazineDetail(magazine),
+          );
+        case CartItemType.newspaperSubscription:
+        case CartItemType.magazineIssue:
+        case CartItemType.supplement:
+          return detail;
+      }
+    } catch (error) {
+      debugPrint("Product detail hydrate error: $error");
+      return detail;
+    }
+  }
+
+  Future<Map<String, dynamic>> _hydrateEkIfNeeded(
+    Map<String, dynamic> ek,
+  ) async {
+    if (ek["created_at"] != null) return ek;
+    final ekId = _toInt(ek["id"]);
+    if (ekId == null) return ek;
+
+    try {
+      final fullEk = await _ekService.getEk(ekId);
+      if (fullEk != null && fullEk.isNotEmpty) {
+        return fullEk;
+      }
+    } catch (error) {
+      debugPrint("Ek detail hydrate error: $error");
+    }
+
+    return ek;
+  }
+
+  void _openProductDetail(ProductDetail detail) async {
+    final resolvedDetail = await _hydrateProductDetailIfNeeded(detail);
+    if (!mounted) return;
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => EkDetailScreen(ek: normalizeEk(ek))),
+      MaterialPageRoute(
+        builder: (_) => ProductDetailScreen(detail: resolvedDetail),
+      ),
+    );
+  }
+
+  void _openEkDetail(Map<String, dynamic> ek) async {
+    final resolvedEk = await _hydrateEkIfNeeded(ek);
+    if (!mounted) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => EkDetailScreen(ek: normalizeEk(resolvedEk)),
+      ),
     );
   }
 
@@ -1305,6 +1404,12 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     required String selectedIdKey,
   }) {
     if (baseItems.isEmpty) return [];
+    final itemsById = <int, Map<String, dynamic>>{};
+    for (final item in baseItems) {
+      final id = _toInt(item[idKey]);
+      if (id == null) continue;
+      itemsById[id] = item;
+    }
     final selectedIds = <int>{};
     final result = <Map<String, dynamic>>[];
 
@@ -1312,11 +1417,8 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
       if (result.length >= maxItems) break;
       final entryId = _toInt(entry[selectedIdKey]);
       if (entryId == null) continue;
-      final item = baseItems.firstWhere(
-        (i) => _toInt(i[idKey]) == entryId,
-        orElse: () => {},
-      );
-      if (item.isEmpty) continue;
+      final item = itemsById[entryId];
+      if (item == null) continue;
       selectedIds.add(entryId);
       result.add(item);
     }
@@ -1850,6 +1952,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
       itemId: mag["id"] as int?,
     );
     final actionLabel = hasAccess ? "E-dergiyi Gör" : "Abone Ol";
+    final needsHydration = mag["created_at"] == null;
     return ProductDetail(
       id: "mag-${mag["id"]}",
       title: mag["name"] ?? "",
@@ -1862,6 +1965,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         "productId": mag["id"],
         "disableAdd": hasAccess,
         "period": mag["period"],
+        "hydrateOnOpen": needsHydration,
       },
       actionLabel: actionLabel,
     );
@@ -1876,6 +1980,8 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     final actionLabel = (hasAccess || price <= 0)
         ? "Kitabı Gör"
         : "Sepete Ekle";
+    final needsHydration =
+        book["book_url"] == null || book["description"] == null;
     return ProductDetail(
       id: "book-${book["id"]}",
       title: book["title"] ?? "",
@@ -1884,7 +1990,11 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
       imageUrl: book["cover_url"] ?? "",
       price: price,
       type: CartItemType.book,
-      metadata: {"productId": book["id"], "disableAdd": hasAccess},
+      metadata: {
+        "productId": book["id"],
+        "disableAdd": hasAccess,
+        "hydrateOnOpen": needsHydration,
+      },
       actionLabel: actionLabel,
     );
   }
@@ -2006,6 +2116,191 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         context,
       ).push(MaterialPageRoute(builder: (_) => standalonePage));
     });
+  }
+
+  Widget _buildHomeStateMessage() {
+    if (_homeLoadFailed) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 64),
+        child: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                "İçerikler yüklenemedi.",
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.black87,
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                "Bağlantı yavaş veya geçici olarak servis yanıt vermiyor olabilir.",
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 14, color: Colors.black54),
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: _refreshHome,
+                child: const Text("Tekrar Dene"),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return const Padding(
+      padding: EdgeInsets.symmetric(vertical: 64),
+      child: Center(
+        child: Text(
+          "İçerik bulunmamaktadır.",
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+            color: Colors.black54,
+          ),
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _buildHomeShowcaseSections(
+    BuildContext context,
+    bool isWeb,
+    CartProvider cart,
+  ) {
+    final showcaseLimit = _showcaseItemLimit(isWeb);
+    final magazineDisplayList = _hideMagazines
+        ? const <Map<String, dynamic>>[]
+        : _buildHomeShowcaseList(
+            baseItems: magazines,
+            selectedEntries: homeMagazineEntries,
+            maxItems: showcaseLimit,
+            idKey: "id",
+            selectedIdKey: "product_id",
+          );
+    final bookDisplayList = _buildHomeShowcaseList(
+      baseItems: books,
+      selectedEntries: homeBookEntries,
+      maxItems: showcaseLimit,
+      idKey: "id",
+      selectedIdKey: "product_id",
+    );
+
+    final sections = <Widget>[];
+    if (!_hideNewspapers && newspapers.isNotEmpty) {
+      sections.add(
+        _newspaperShowcase(context, isWeb, itemLimit: showcaseLimit),
+      );
+    }
+    if (magazineDisplayList.isNotEmpty) {
+      sections.add(
+        _magazineShowcase(context, isWeb, displayList: magazineDisplayList),
+      );
+    }
+    if (bookDisplayList.isNotEmpty) {
+      sections.add(
+        _booksShowcase(context, isWeb, cart, displayList: bookDisplayList),
+      );
+    }
+    if (attachments.isNotEmpty) {
+      sections.add(
+        _homeEkSection(
+          context,
+          isWeb,
+          cart,
+          items: attachments.take(isWeb ? 5 : 4).toList(growable: false),
+        ),
+      );
+    }
+    return sections;
+  }
+
+  Widget _buildLegacyScrollableBody(
+    bool isWeb,
+    bool isTablet,
+    CartProvider cart, {
+    required bool hasSlider,
+  }) {
+    return RefreshIndicator(
+      onRefresh: _refreshHome,
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 1600),
+                child: Padding(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: isWeb ? 64 : (isTablet ? 32 : 16),
+                    vertical: 24,
+                  ),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(minHeight: 500),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (_section == HomeSection.home) ...[
+                          if (hasSlider) _buildSlider(isWeb, isTablet),
+                          if (hasSlider) const SizedBox(height: 16),
+                        ],
+                        _buildBodyContent(isWeb, isTablet, cart),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            if (isWeb) YeniAsyaFooter(onCategoryTap: _openSectionFromFooter),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMobileHomeBody(CartProvider cart) {
+    final sections = _buildHomeShowcaseSections(context, false, cart);
+    final children = <Widget>[];
+
+    if (sliders.isNotEmpty) {
+      children.add(_buildSlider(false, false));
+    }
+
+    if (sections.isNotEmpty) {
+      if (children.isNotEmpty) {
+        children.add(const SizedBox(height: 16));
+      }
+      for (var i = 0; i < sections.length; i++) {
+        if (i > 0) {
+          children.add(const SizedBox(height: 32));
+        }
+        children.add(sections[i]);
+      }
+    } else if (sliders.isEmpty) {
+      children.add(_buildHomeStateMessage());
+    }
+
+    return RefreshIndicator(
+      onRefresh: _refreshHome,
+      child: CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 24, 16, 24),
+            sliver: SliverList(
+              delegate: SliverChildBuilderDelegate(
+                (context, index) => children[index],
+                childCount: children.length,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -2202,54 +2497,14 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         top: false,
         child: _mobileNavIndex == 2 && !isWeb
             ? _libraryView(context, this)
-            : Stack(
-                children: [
-                  RefreshIndicator(
-                    onRefresh: _refreshHome,
-                    child: SingleChildScrollView(
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Center(
-                            child: ConstrainedBox(
-                              constraints: const BoxConstraints(maxWidth: 1600),
-                              child: Padding(
-                                padding: EdgeInsets.symmetric(
-                                  horizontal: isWeb ? 64 : (isTablet ? 32 : 16),
-                                  vertical: 24,
-                                ),
-                                child: ConstrainedBox(
-                                  constraints: const BoxConstraints(
-                                    minHeight: 500,
-                                  ),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      if (_section == HomeSection.home) ...[
-                                        if (hasSlider)
-                                          _buildSlider(isWeb, isTablet),
-                                        if (hasSlider)
-                                          const SizedBox(height: 16),
-                                      ],
-                                      _buildBodyContent(isWeb, isTablet, cart),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                          if (isWeb)
-                            YeniAsyaFooter(
-                              onCategoryTap: _openSectionFromFooter,
-                            ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+            : (!isWeb && _section == HomeSection.home
+                  ? _buildMobileHomeBody(cart)
+                  : _buildLegacyScrollableBody(
+                      isWeb,
+                      isTablet,
+                      cart,
+                      hasSlider: hasSlider,
+                    )),
       ),
       bottomNavigationBar: isWeb
           ? null
@@ -2276,7 +2531,9 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
                       _openSearch();
                     }
                     if (index == 2) {
+                      _libraryWarmupTimer?.cancel();
                       _loadLibraryOrders();
+                      _loadLibraryAccess();
                     }
                     if (index == 3) {
                       if (auth.isLoggedIn) {
@@ -2383,102 +2640,20 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
           ],
         );
       case HomeSection.home:
-      default:
-        final hasNewspaperShowcase = !_hideNewspapers && newspapers.isNotEmpty;
-        final hasMagazineShowcase = !_hideMagazines
-            ? _buildHomeShowcaseList(
-                baseItems: magazines,
-                selectedEntries: homeMagazineEntries,
-                maxItems: 10,
-                idKey: "id",
-                selectedIdKey: "product_id",
-              ).isNotEmpty
-            : false;
-        final hasBookShowcase = _buildHomeShowcaseList(
-          baseItems: books,
-          selectedEntries: homeBookEntries,
-          maxItems: 10,
-          idKey: "id",
-          selectedIdKey: "product_id",
-        ).isNotEmpty;
-        final hasEkSection = attachments.isNotEmpty;
-        final hasAnyContent =
-            sliders.isNotEmpty ||
-            hasNewspaperShowcase ||
-            hasMagazineShowcase ||
-            hasBookShowcase ||
-            hasEkSection;
-
-        if (!hasAnyContent) {
-          if (_homeLoadFailed) {
-            return Padding(
-              padding: const EdgeInsets.symmetric(vertical: 64),
-              child: Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Text(
-                      "İçerikler yüklenemedi.",
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.black87,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      "Bağlantı yavaş veya geçici olarak servis yanıt vermiyor olabilir.",
-                      textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 14, color: Colors.black54),
-                    ),
-                    const SizedBox(height: 16),
-                    ElevatedButton(
-                      onPressed: _refreshHome,
-                      child: const Text("Tekrar Dene"),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          }
-
-          return const Padding(
-            padding: EdgeInsets.symmetric(vertical: 64),
-            child: Center(
-              child: Text(
-                "İçerik bulunmamaktadır.",
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.black54,
-                ),
-              ),
-            ),
-          );
+        final sections = _buildHomeShowcaseSections(context, isWeb, cart);
+        if (sections.isEmpty) {
+          return sliders.isNotEmpty
+              ? const SizedBox.shrink()
+              : _buildHomeStateMessage();
         }
 
         final children = <Widget>[];
-        void addSection(Widget widget) {
-          if (children.isNotEmpty) {
+        for (var i = 0; i < sections.length; i++) {
+          if (i > 0) {
             children.add(const SizedBox(height: 32));
           }
-          children.add(widget);
+          children.add(sections[i]);
         }
-
-        if (hasNewspaperShowcase) {
-          addSection(_newspaperShowcase(context, isWeb));
-        }
-        if (hasMagazineShowcase) {
-          addSection(_magazineShowcase(context, isWeb));
-        }
-        if (hasBookShowcase) {
-          addSection(_booksShowcase(context, isWeb, cart));
-        }
-        if (hasEkSection) {
-          addSection(_homeEkSection(context, isWeb, cart));
-        }
-
-        if (children.isEmpty) return const SizedBox.shrink();
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -2631,15 +2806,21 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     );
   }
 
-  Widget _magazineShowcase(BuildContext context, bool isWeb) {
-    final displayList = _buildHomeShowcaseList(
-      baseItems: magazines,
-      selectedEntries: homeMagazineEntries,
-      maxItems: 10,
-      idKey: "id",
-      selectedIdKey: "product_id",
-    );
-    if (displayList.isEmpty) return const SizedBox.shrink();
+  Widget _magazineShowcase(
+    BuildContext context,
+    bool isWeb, {
+    List<Map<String, dynamic>>? displayList,
+  }) {
+    final resolvedDisplayList =
+        displayList ??
+        _buildHomeShowcaseList(
+          baseItems: magazines,
+          selectedEntries: homeMagazineEntries,
+          maxItems: _showcaseItemLimit(isWeb),
+          idKey: "id",
+          selectedIdKey: "product_id",
+        );
+    if (resolvedDisplayList.isEmpty) return const SizedBox.shrink();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2665,10 +2846,10 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
           height: isWeb ? 336 : 264,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
-            itemCount: displayList.length,
+            itemCount: resolvedDisplayList.length,
             separatorBuilder: (_, __) => const SizedBox(width: 14),
             itemBuilder: (_, i) {
-              final magazine = displayList[i];
+              final magazine = resolvedDisplayList[i];
               final category = magazine["category"]?.toString().trim() ?? "";
               final description =
                   magazine["description"]?.toString().trim() ?? "";
@@ -2700,16 +2881,23 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     );
   }
 
-  Widget _booksShowcase(BuildContext context, bool isWeb, CartProvider cart) {
-    final access = context.watch<AccessProvider>();
-    final displayList = _buildHomeShowcaseList(
-      baseItems: books,
-      selectedEntries: homeBookEntries,
-      maxItems: 10,
-      idKey: "id",
-      selectedIdKey: "product_id",
-    );
-    if (displayList.isEmpty) return const SizedBox.shrink();
+  Widget _booksShowcase(
+    BuildContext context,
+    bool isWeb,
+    CartProvider cart, {
+    List<Map<String, dynamic>>? displayList,
+  }) {
+    context.watch<AccessProvider>();
+    final resolvedDisplayList =
+        displayList ??
+        _buildHomeShowcaseList(
+          baseItems: books,
+          selectedEntries: homeBookEntries,
+          maxItems: _showcaseItemLimit(isWeb),
+          idKey: "id",
+          selectedIdKey: "product_id",
+        );
+    if (resolvedDisplayList.isEmpty) return const SizedBox.shrink();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2734,33 +2922,36 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
           height: isWeb ? 285 : 272,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
-            itemCount: displayList.length,
+            itemCount: resolvedDisplayList.length,
             separatorBuilder: (_, __) => const SizedBox(width: 14),
             itemBuilder: (_, i) {
-              final effectivePrice = _effectiveBookPrice(displayList[i]);
+              final effectivePrice = _effectiveBookPrice(
+                resolvedDisplayList[i],
+              );
               final item = CartItem(
-                id: "book-${displayList[i]["id"]}",
-                title: displayList[i]["title"] ?? "",
-                subtitle: displayList[i]["author_rel"]?["name"] ?? "",
-                imageUrl: displayList[i]["cover_url"] ?? "",
+                id: "book-${resolvedDisplayList[i]["id"]}",
+                title: resolvedDisplayList[i]["title"] ?? "",
+                subtitle: resolvedDisplayList[i]["author_rel"]?["name"] ?? "",
+                imageUrl: resolvedDisplayList[i]["cover_url"] ?? "",
                 price: effectivePrice,
                 quantity: 1,
                 type: CartItemType.book,
-                metadata: {"productId": displayList[i]["id"]},
+                metadata: {"productId": resolvedDisplayList[i]["id"]},
               );
               final alreadyInCart = cart.contains(item);
               final isFree = effectivePrice <= 0;
               final purchased = _hasPurchased(
                 "book",
-                _toInt(displayList[i]["id"]),
+                _toInt(resolvedDisplayList[i]["id"]),
               );
               return _bookCard(
                 {
-                  "image": displayList[i]["cover_url"],
-                  "title": displayList[i]["title"],
-                  "author": displayList[i]["author_rel"]?["name"] ?? "-",
-                  "salePrice": displayList[i]["price"],
-                  "campaignPrice": displayList[i]["discount_price"],
+                  "image": resolvedDisplayList[i]["cover_url"],
+                  "title": resolvedDisplayList[i]["title"],
+                  "author":
+                      resolvedDisplayList[i]["author_rel"]?["name"] ?? "-",
+                  "salePrice": resolvedDisplayList[i]["price"],
+                  "campaignPrice": resolvedDisplayList[i]["discount_price"],
                 },
                 isWeb,
                 bookStyle: true,
@@ -2769,7 +2960,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
                     ? null
                     : () => _addToCart(context, cart, item),
                 onTap: () {
-                  _openProductDetail(_mapBookDetail(displayList[i]));
+                  _openProductDetail(_mapBookDetail(resolvedDisplayList[i]));
                 },
               );
             },
@@ -2779,11 +2970,17 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     );
   }
 
-  Widget _newspaperShowcase(BuildContext context, bool isWeb) {
+  Widget _newspaperShowcase(
+    BuildContext context,
+    bool isWeb, {
+    int? itemLimit,
+  }) {
     if (newspapers.isEmpty) return const SizedBox.shrink();
     const fallbackImage = "assets/images/gazete.jpg";
     final today = DateTime.now();
-    final items = newspapers.take(10).map((n) {
+    final items = newspapers.take(itemLimit ?? _showcaseItemLimit(isWeb)).map((
+      n,
+    ) {
       final dateStr = n["publish_date"]?.toString() ?? "";
       final d = DateTime.tryParse(dateStr);
       final label = d != null ? _formatDateTr(d) : dateStr;
@@ -2910,9 +3107,15 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     );
   }
 
-  Widget _homeEkSection(BuildContext context, bool isWeb, CartProvider cart) {
-    if (attachments.isEmpty) return const SizedBox.shrink();
-    final list = attachments.take(isWeb ? 5 : 4).toList();
+  Widget _homeEkSection(
+    BuildContext context,
+    bool isWeb,
+    CartProvider cart, {
+    List<Map<String, dynamic>>? items,
+  }) {
+    final list =
+        items ?? attachments.take(isWeb ? 5 : 4).toList(growable: false);
+    if (list.isEmpty) return const SizedBox.shrink();
     final viewportHeight = max(0.0, MediaQuery.of(context).size.height);
     final maxCardHeight = viewportHeight * (isWeb ? 0.35 : 0.38);
     final height = min(isWeb ? 324.0 : 278.0, maxCardHeight);
