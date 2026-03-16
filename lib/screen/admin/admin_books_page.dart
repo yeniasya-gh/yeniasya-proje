@@ -9,6 +9,7 @@ import '../../services/admin/admin_category_service.dart';
 import '../../services/upload_service.dart';
 import '../../utils/asset_image_picker.dart';
 import '../../utils/safe_image.dart';
+import 'admin_upload_progress_dialog.dart';
 
 class AdminBooksPage extends StatefulWidget {
   const AdminBooksPage({super.key});
@@ -238,6 +239,7 @@ class _AdminBooksPageState extends State<AdminBooksPage> {
     try {
       final picked = await AssetImagePicker.pickFile(
         allowedExtensions: const ["pdf"],
+        maxBytes: UploadService.maxUploadBytes,
       );
       if (picked == null) return;
       onPicked(picked.bytes, picked.name);
@@ -497,54 +499,79 @@ class _AdminBooksPageState extends State<AdminBooksPage> {
                 Navigator.pop(context);
 
                 try {
-                  String? coverUrl;
-                  if (pickedCoverBytes != null && pickedCoverName != null) {
-                    coverUrl = await _uploadService.uploadPublic(
-                      type: UploadFileType.book,
-                      bytes: pickedCoverBytes!,
-                      filename: pickedCoverName!,
-                    );
-                  } else if ((payload["cover"] as String).isNotEmpty) {
-                    coverUrl = payload["cover"] as String;
-                  }
+                  await runAdminUploadTask(
+                    context,
+                    title: "Kitap yükleniyor",
+                    task: (progress) async {
+                      String? coverUrl;
+                      if (pickedCoverBytes != null && pickedCoverName != null) {
+                        coverUrl = await _uploadService.uploadPublic(
+                          type: UploadFileType.book,
+                          bytes: pickedCoverBytes!,
+                          filename: pickedCoverName!,
+                          onProgress: (snapshot) =>
+                              progress.trackUpload("Kapak görseli", snapshot),
+                        );
+                      } else if ((payload["cover"] as String).isNotEmpty) {
+                        coverUrl = payload["cover"] as String;
+                      }
 
-                  String? bookUrl = (payload["book_url"] as String).isNotEmpty
-                      ? payload["book_url"] as String
-                      : null;
-                  if (pickedPdfBytes != null && pickedPdfName != null) {
-                    final isFree = price <= 0;
-                    bookUrl = isFree
-                        ? await _uploadService.uploadPublic(
-                            type: UploadFileType.book,
-                            bytes: pickedPdfBytes!,
-                            filename: pickedPdfName!,
-                          )
-                        : await _uploadService.uploadPrivate(
-                            type: UploadFileType.book,
-                            bytes: pickedPdfBytes!,
-                            filename: pickedPdfName!,
-                          );
-                  }
+                      String? bookUrl =
+                          (payload["book_url"] as String).isNotEmpty
+                          ? payload["book_url"] as String
+                          : null;
+                      if (pickedPdfBytes != null && pickedPdfName != null) {
+                        final isFree = price <= 0;
+                        bookUrl = isFree
+                            ? await _uploadService.uploadPublic(
+                                type: UploadFileType.book,
+                                bytes: pickedPdfBytes!,
+                                filename: pickedPdfName!,
+                                onProgress: (snapshot) => progress.trackUpload(
+                                  "Kitap PDF'i",
+                                  snapshot,
+                                ),
+                              )
+                            : await _uploadService.uploadPrivate(
+                                type: UploadFileType.book,
+                                bytes: pickedPdfBytes!,
+                                filename: pickedPdfName!,
+                                onProgress: (snapshot) => progress.trackUpload(
+                                  "Kitap PDF'i",
+                                  snapshot,
+                                ),
+                              );
+                      }
 
-                  await _bookService.addBook(
-                    title: payload["title"] as String,
-                    isbn: payload["isbn"] as String,
-                    price: price,
-                    coverUrl: coverUrl,
-                    bookUrl: bookUrl,
-                    discountPrice: discount,
-                    categoryId: payload["category_id"] as int?,
-                    authorId: payload["author_id"] as int?,
-                    description: (payload["description"] as String).isEmpty
-                        ? null
-                        : payload["description"] as String,
-                    minDescription:
-                        (payload["min_description"] as String).isEmpty
-                        ? null
-                        : payload["min_description"] as String,
+                      progress.update(
+                        message: "Kitap kaydı veritabanına kaydediliyor...",
+                        detail: payload["title"] as String,
+                      );
+                      await _bookService.addBook(
+                        title: payload["title"] as String,
+                        isbn: payload["isbn"] as String,
+                        price: price,
+                        coverUrl: coverUrl,
+                        bookUrl: bookUrl,
+                        discountPrice: discount,
+                        categoryId: payload["category_id"] as int?,
+                        authorId: payload["author_id"] as int?,
+                        description: (payload["description"] as String).isEmpty
+                            ? null
+                            : payload["description"] as String,
+                        minDescription:
+                            (payload["min_description"] as String).isEmpty
+                            ? null
+                            : payload["min_description"] as String,
+                      );
+
+                      progress.update(
+                        message: "Kitap listesi yenileniyor...",
+                        detail: payload["title"] as String,
+                      );
+                      await _loadBooks();
+                    },
                   );
-
-                  await _loadBooks();
 
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -783,63 +810,92 @@ class _AdminBooksPageState extends State<AdminBooksPage> {
                 Navigator.pop(context);
 
                 try {
-                  String? coverUrl;
-                  if (pickedCoverBytes != null && pickedCoverName != null) {
-                    coverUrl = await _uploadService.uploadPublic(
-                      type: UploadFileType.book,
-                      bytes: pickedCoverBytes!,
-                      filename: pickedCoverName!,
-                    );
-                  } else if ((payload["cover"] as String).isNotEmpty) {
-                    coverUrl = payload["cover"] as String;
-                  }
+                  await runAdminUploadTask(
+                    context,
+                    title: "Kitap güncelleniyor",
+                    task: (progress) async {
+                      String? coverUrl;
+                      if (pickedCoverBytes != null && pickedCoverName != null) {
+                        coverUrl = await _uploadService.uploadPublic(
+                          type: UploadFileType.book,
+                          bytes: pickedCoverBytes!,
+                          filename: pickedCoverName!,
+                          onProgress: (snapshot) =>
+                              progress.trackUpload("Kapak görseli", snapshot),
+                        );
+                      } else if ((payload["cover"] as String).isNotEmpty) {
+                        coverUrl = payload["cover"] as String;
+                      }
 
-                  String? bookUrl = (payload["book_url"] as String).isNotEmpty
-                      ? payload["book_url"] as String
-                      : null;
-                  if (pickedPdfBytes != null && pickedPdfName != null) {
-                    final isFree = price <= 0;
-                    bookUrl = isFree
-                        ? await _uploadService.uploadPublic(
-                            type: UploadFileType.book,
-                            bytes: pickedPdfBytes!,
-                            filename: pickedPdfName!,
-                          )
-                        : await _uploadService.uploadPrivate(
-                            type: UploadFileType.book,
-                            bytes: pickedPdfBytes!,
-                            filename: pickedPdfName!,
-                          );
-                  }
+                      String? bookUrl =
+                          (payload["book_url"] as String).isNotEmpty
+                          ? payload["book_url"] as String
+                          : null;
+                      if (pickedPdfBytes != null && pickedPdfName != null) {
+                        final isFree = price <= 0;
+                        bookUrl = isFree
+                            ? await _uploadService.uploadPublic(
+                                type: UploadFileType.book,
+                                bytes: pickedPdfBytes!,
+                                filename: pickedPdfName!,
+                                onProgress: (snapshot) => progress.trackUpload(
+                                  "Kitap PDF'i",
+                                  snapshot,
+                                ),
+                              )
+                            : await _uploadService.uploadPrivate(
+                                type: UploadFileType.book,
+                                bytes: pickedPdfBytes!,
+                                filename: pickedPdfName!,
+                                onProgress: (snapshot) => progress.trackUpload(
+                                  "Kitap PDF'i",
+                                  snapshot,
+                                ),
+                              );
+                      }
 
-                  await _bookService.updateBook(
-                    id: payload["id"] as int,
-                    title: payload["title"] as String,
-                    isbn: payload["isbn"] as String,
-                    price: price,
-                    coverUrl: coverUrl,
-                    bookUrl: bookUrl,
-                    discountPrice: discount,
-                    categoryId: payload["category_id"] as int?,
-                    authorId: payload["author_id"] as int?,
-                    description: (payload["description"] as String).isEmpty
-                        ? null
-                        : payload["description"] as String,
-                    minDescription:
-                        (payload["min_description"] as String).isEmpty
-                        ? null
-                        : payload["min_description"] as String,
-                  );
-                  await _uploadService.cleanupReplacedFile(
-                    previousUrl: book["cover_url"]?.toString(),
-                    nextUrl: coverUrl,
-                  );
-                  await _uploadService.cleanupReplacedFile(
-                    previousUrl: book["book_url"]?.toString(),
-                    nextUrl: bookUrl,
-                  );
+                      progress.update(
+                        message: "Kitap kaydı güncelleniyor...",
+                        detail: payload["title"] as String,
+                      );
+                      await _bookService.updateBook(
+                        id: payload["id"] as int,
+                        title: payload["title"] as String,
+                        isbn: payload["isbn"] as String,
+                        price: price,
+                        coverUrl: coverUrl,
+                        bookUrl: bookUrl,
+                        discountPrice: discount,
+                        categoryId: payload["category_id"] as int?,
+                        authorId: payload["author_id"] as int?,
+                        description: (payload["description"] as String).isEmpty
+                            ? null
+                            : payload["description"] as String,
+                        minDescription:
+                            (payload["min_description"] as String).isEmpty
+                            ? null
+                            : payload["min_description"] as String,
+                      );
+                      progress.update(
+                        message: "Eski dosyalar temizleniyor...",
+                        detail: payload["title"] as String,
+                      );
+                      await _uploadService.cleanupReplacedFile(
+                        previousUrl: book["cover_url"]?.toString(),
+                        nextUrl: coverUrl,
+                      );
+                      await _uploadService.cleanupReplacedFile(
+                        previousUrl: book["book_url"]?.toString(),
+                        nextUrl: bookUrl,
+                      );
 
-                  await _loadBooks();
+                      progress.update(
+                        message: "Kitap listesi yenileniyor...",
+                        detail: payload["title"] as String,
+                      );
+                      await _loadBooks();
+                    },
+                  );
 
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(

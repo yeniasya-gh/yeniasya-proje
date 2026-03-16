@@ -16,6 +16,14 @@ class AssetImagePicker {
   static const List<String> _allowedExtensions = ["png", "jpg", "jpeg", "webp"];
   static const int _maxBytes = 20 * 1024 * 1024; // 20MB
 
+  static String _formatMaxSize(int maxBytes) {
+    final mb = maxBytes / (1024 * 1024);
+    final text = mb == mb.roundToDouble()
+        ? mb.toStringAsFixed(0)
+        : mb.toStringAsFixed(1);
+    return "${text}MB";
+  }
+
   /// Picks an image file (png/jpg/webp) and returns its bytes + original name.
   /// No file-system write is performed; upload logic should handle storage.
   static Future<PickedImageFile?> pickImageFile() async {
@@ -52,7 +60,7 @@ class AssetImagePicker {
     }
 
     if (bytes.length > maxBytes) {
-      throw Exception("Dosya 20MB sınırını aşıyor.");
+      throw Exception("Dosya ${_formatMaxSize(maxBytes)} sınırını aşıyor.");
     }
 
     return PickedImageFile(name: picked.name, bytes: bytes);

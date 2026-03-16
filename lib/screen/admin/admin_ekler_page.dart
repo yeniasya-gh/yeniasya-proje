@@ -9,6 +9,7 @@ import '../../utils/asset_image_picker.dart';
 import '../../utils/safe_image.dart';
 import '../../services/loading_manager.dart';
 import 'admin_loading_indicator.dart';
+import 'admin_upload_progress_dialog.dart';
 
 class AdminEklerPage extends StatefulWidget {
   const AdminEklerPage({super.key});
@@ -251,26 +252,40 @@ class _AdminEklerPageState extends State<AdminEklerPage> {
 
     setState(() => _saving = true);
     try {
-      final photoUrl = await _uploadService.uploadPublic(
-        type: UploadFileType.supplement,
-        bytes: imageBytes,
-        filename: imageName,
-      );
-      // PDF her zaman private yüklensin (ücretsiz olsa bile)
-      final url = await _uploadService.uploadPrivate(
-        type: UploadFileType.supplement,
-        bytes: bytes,
-        filename: name,
-      );
+      await runAdminUploadTask(
+        context,
+        title: "Ek yükleniyor",
+        task: (progress) async {
+          final photoUrl = await _uploadService.uploadPublic(
+            type: UploadFileType.supplement,
+            bytes: imageBytes,
+            filename: imageName,
+            onProgress: (snapshot) =>
+                progress.trackUpload("Kapak görseli", snapshot),
+          );
+          final url = await _uploadService.uploadPrivate(
+            type: UploadFileType.supplement,
+            bytes: bytes,
+            filename: name,
+            onProgress: (snapshot) =>
+                progress.trackUpload("Ek PDF'i", snapshot),
+          );
 
-      await _service.add(
-        ad: ad,
-        aciklama: aciklama.isEmpty ? null : aciklama,
-        fiyat: fiyat,
-        pdfUrl: UploadService.normalizeUrl(url),
-        photoUrl: UploadService.normalizeUrl(photoUrl),
+          progress.update(
+            message: "Ek kaydı veritabanına ekleniyor...",
+            detail: ad,
+          );
+          await _service.add(
+            ad: ad,
+            aciklama: aciklama.isEmpty ? null : aciklama,
+            fiyat: fiyat,
+            pdfUrl: UploadService.normalizeUrl(url),
+            photoUrl: UploadService.normalizeUrl(photoUrl),
+          );
+          progress.update(message: "Ek listesi yenileniyor...", detail: ad);
+          await _load();
+        },
       );
-      await _load();
       _showSnack("Ek oluşturuldu");
     } catch (e) {
       _showSnack(ErrorManager.parseGraphQLError(e.toString()));
@@ -455,45 +470,63 @@ class _AdminEklerPageState extends State<AdminEklerPage> {
 
     setState(() => _saving = true);
     try {
-      if (imageBytes != null && imageName != null) {
-        photoUrl = await _uploadService.uploadPublic(
-          type: UploadFileType.supplement,
-          bytes: imageBytes,
-          filename: imageName,
-        );
-      }
-      if (bytes != null && name != null) {
-        final isFree = fiyat == 0;
-        pdfUrl = isFree
-            ? await _uploadService.uploadPublic(
-                type: UploadFileType.supplement,
-                bytes: bytes,
-                filename: name,
-              )
-            : await _uploadService.uploadPrivate(
-                type: UploadFileType.supplement,
-                bytes: bytes,
-                filename: name,
-              );
-      }
+      await runAdminUploadTask(
+        context,
+        title: "Ek güncelleniyor",
+        task: (progress) async {
+          if (imageBytes != null && imageName != null) {
+            photoUrl = await _uploadService.uploadPublic(
+              type: UploadFileType.supplement,
+              bytes: imageBytes,
+              filename: imageName,
+              onProgress: (snapshot) =>
+                  progress.trackUpload("Kapak görseli", snapshot),
+            );
+          }
+          if (bytes != null && name != null) {
+            final isFree = fiyat == 0;
+            pdfUrl = isFree
+                ? await _uploadService.uploadPublic(
+                    type: UploadFileType.supplement,
+                    bytes: bytes,
+                    filename: name,
+                    onProgress: (snapshot) =>
+                        progress.trackUpload("Ek PDF'i", snapshot),
+                  )
+                : await _uploadService.uploadPrivate(
+                    type: UploadFileType.supplement,
+                    bytes: bytes,
+                    filename: name,
+                    onProgress: (snapshot) =>
+                        progress.trackUpload("Ek PDF'i", snapshot),
+                  );
+          }
 
-      await _service.update(
-        id: int.tryParse(result["id"].toString()) ?? 0,
-        ad: ad,
-        aciklama: aciklama.isEmpty ? null : aciklama,
-        fiyat: fiyat,
-        pdfUrl: UploadService.normalizeUrl(pdfUrl),
-        photoUrl: UploadService.normalizeUrl(photoUrl),
+          progress.update(
+            message: "Ek kaydı veritabanında güncelleniyor...",
+            detail: ad,
+          );
+          await _service.update(
+            id: int.tryParse(result["id"].toString()) ?? 0,
+            ad: ad,
+            aciklama: aciklama.isEmpty ? null : aciklama,
+            fiyat: fiyat,
+            pdfUrl: UploadService.normalizeUrl(pdfUrl),
+            photoUrl: UploadService.normalizeUrl(photoUrl),
+          );
+          progress.update(message: "Eski dosyalar temizleniyor...", detail: ad);
+          await _uploadService.cleanupReplacedFile(
+            previousUrl: result["pdfUrl"]?.toString(),
+            nextUrl: pdfUrl,
+          );
+          await _uploadService.cleanupReplacedFile(
+            previousUrl: result["photoUrl"]?.toString(),
+            nextUrl: photoUrl,
+          );
+          progress.update(message: "Ek listesi yenileniyor...", detail: ad);
+          await _load();
+        },
       );
-      await _uploadService.cleanupReplacedFile(
-        previousUrl: result["pdfUrl"]?.toString(),
-        nextUrl: pdfUrl,
-      );
-      await _uploadService.cleanupReplacedFile(
-        previousUrl: result["photoUrl"]?.toString(),
-        nextUrl: photoUrl,
-      );
-      await _load();
       _showSnack("Ek güncellendi");
     } catch (e) {
       _showSnack(ErrorManager.parseGraphQLError(e.toString()));
@@ -537,7 +570,10 @@ class _AdminEklerPageState extends State<AdminEklerPage> {
 
   Future<PickedImageFile?> _pickPdf() async {
     try {
-      return await AssetImagePicker.pickFile(allowedExtensions: const ["pdf"]);
+      return await AssetImagePicker.pickFile(
+        allowedExtensions: const ["pdf"],
+        maxBytes: UploadService.maxUploadBytes,
+      );
     } catch (e) {
       await showDialog(
         context: context,

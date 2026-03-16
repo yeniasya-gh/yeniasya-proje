@@ -9,6 +9,7 @@ import '../../services/loading_manager.dart';
 import '../../utils/asset_image_picker.dart';
 import '../../utils/safe_image.dart';
 import 'admin_loading_indicator.dart';
+import 'admin_upload_progress_dialog.dart';
 
 class AdminMagazineDetailPage extends StatefulWidget {
   final Map<String, dynamic> magazine;
@@ -353,37 +354,58 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
                       final price = _parsePrice(priceCtrl.text.trim());
                       if (price == null || price < 0) return;
                       try {
-                        String fileUrl = fileCtrl.text.trim();
-                        if (pickedPdfBytes != null && pickedPdfName != null) {
-                          fileUrl = await _uploadService.uploadPrivate(
-                            type: UploadFileType.magazine,
-                            bytes: pickedPdfBytes!,
-                            filename: pickedPdfName!,
-                          );
-                        }
+                        await runAdminUploadTask(
+                          context,
+                          title: "Dergi sayısı yükleniyor",
+                          task: (progress) async {
+                            String fileUrl = fileCtrl.text.trim();
+                            if (pickedPdfBytes != null &&
+                                pickedPdfName != null) {
+                              fileUrl = await _uploadService.uploadPrivate(
+                                type: UploadFileType.magazine,
+                                bytes: pickedPdfBytes!,
+                                filename: pickedPdfName!,
+                                onProgress: (snapshot) => progress.trackUpload(
+                                  "Sayı PDF'i",
+                                  snapshot,
+                                ),
+                              );
+                            }
 
-                        String? photoUrl = photoCtrl.text.trim().isEmpty
-                            ? null
-                            : photoCtrl.text.trim();
-                        if (pickedPhotoBytes != null &&
-                            pickedPhotoName != null) {
-                          photoUrl = await _uploadService.uploadPublic(
-                            type: UploadFileType.magazine,
-                            bytes: pickedPhotoBytes!,
-                            filename: pickedPhotoName!,
-                          );
-                        }
+                            String? photoUrl = photoCtrl.text.trim().isEmpty
+                                ? null
+                                : photoCtrl.text.trim();
+                            if (pickedPhotoBytes != null &&
+                                pickedPhotoName != null) {
+                              photoUrl = await _uploadService.uploadPublic(
+                                type: UploadFileType.magazine,
+                                bytes: pickedPhotoBytes!,
+                                filename: pickedPhotoName!,
+                                onProgress: (snapshot) => progress.trackUpload(
+                                  "Kapak görseli",
+                                  snapshot,
+                                ),
+                              );
+                            }
 
-                        await _service.addIssue(
-                          magazineId: widget.magazine["id"] as int,
-                          issueNumber: issueNumber,
-                          fileUrl: fileUrl,
-                          photoUrl: photoUrl,
-                          price: price,
-                          description: descCtrl.text.trim().isEmpty
-                              ? null
-                              : descCtrl.text.trim(),
-                          addedAt: _yearToAddedAt(selectedYear),
+                            progress.update(
+                              message:
+                                  "Dergi sayısı kaydı veritabanına ekleniyor...",
+                              detail:
+                                  "${widget.magazine["name"] ?? "Dergi"} • Sayı $issueNumber",
+                            );
+                            await _service.addIssue(
+                              magazineId: widget.magazine["id"] as int,
+                              issueNumber: issueNumber,
+                              fileUrl: fileUrl,
+                              photoUrl: photoUrl,
+                              price: price,
+                              description: descCtrl.text.trim().isEmpty
+                                  ? null
+                                  : descCtrl.text.trim(),
+                              addedAt: _yearToAddedAt(selectedYear),
+                            );
+                          },
                         );
                         if (!mounted) return;
                         Navigator.pop(context);
@@ -584,45 +606,71 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
                       final price = _parsePrice(priceCtrl.text.trim());
                       if (price == null || price < 0) return;
                       try {
-                        String fileUrl = fileCtrl.text.trim();
-                        if (pickedPdfBytes != null && pickedPdfName != null) {
-                          fileUrl = await _uploadService.uploadPrivate(
-                            type: UploadFileType.magazine,
-                            bytes: pickedPdfBytes!,
-                            filename: pickedPdfName!,
-                          );
-                        }
+                        await runAdminUploadTask(
+                          context,
+                          title: "Dergi sayısı güncelleniyor",
+                          task: (progress) async {
+                            String fileUrl = fileCtrl.text.trim();
+                            if (pickedPdfBytes != null &&
+                                pickedPdfName != null) {
+                              fileUrl = await _uploadService.uploadPrivate(
+                                type: UploadFileType.magazine,
+                                bytes: pickedPdfBytes!,
+                                filename: pickedPdfName!,
+                                onProgress: (snapshot) => progress.trackUpload(
+                                  "Sayı PDF'i",
+                                  snapshot,
+                                ),
+                              );
+                            }
 
-                        String? photoUrl = photoCtrl.text.trim().isEmpty
-                            ? null
-                            : photoCtrl.text.trim();
-                        if (pickedPhotoBytes != null &&
-                            pickedPhotoName != null) {
-                          photoUrl = await _uploadService.uploadPublic(
-                            type: UploadFileType.magazine,
-                            bytes: pickedPhotoBytes!,
-                            filename: pickedPhotoName!,
-                          );
-                        }
+                            String? photoUrl = photoCtrl.text.trim().isEmpty
+                                ? null
+                                : photoCtrl.text.trim();
+                            if (pickedPhotoBytes != null &&
+                                pickedPhotoName != null) {
+                              photoUrl = await _uploadService.uploadPublic(
+                                type: UploadFileType.magazine,
+                                bytes: pickedPhotoBytes!,
+                                filename: pickedPhotoName!,
+                                onProgress: (snapshot) => progress.trackUpload(
+                                  "Kapak görseli",
+                                  snapshot,
+                                ),
+                              );
+                            }
 
-                        await _service.updateIssue(
-                          id: issue["id"] as int,
-                          issueNumber: issueNumber,
-                          fileUrl: fileUrl,
-                          photoUrl: photoUrl,
-                          price: price,
-                          description: descCtrl.text.trim().isEmpty
-                              ? null
-                              : descCtrl.text.trim(),
-                          addedAt: _yearToAddedAt(selectedYear),
-                        );
-                        await _uploadService.cleanupReplacedFile(
-                          previousUrl: issue["file_url"]?.toString(),
-                          nextUrl: fileUrl,
-                        );
-                        await _uploadService.cleanupReplacedFile(
-                          previousUrl: issue["photo_url"]?.toString(),
-                          nextUrl: photoUrl,
+                            progress.update(
+                              message:
+                                  "Dergi sayısı kaydı veritabanında güncelleniyor...",
+                              detail:
+                                  "${widget.magazine["name"] ?? "Dergi"} • Sayı $issueNumber",
+                            );
+                            await _service.updateIssue(
+                              id: issue["id"] as int,
+                              issueNumber: issueNumber,
+                              fileUrl: fileUrl,
+                              photoUrl: photoUrl,
+                              price: price,
+                              description: descCtrl.text.trim().isEmpty
+                                  ? null
+                                  : descCtrl.text.trim(),
+                              addedAt: _yearToAddedAt(selectedYear),
+                            );
+                            progress.update(
+                              message: "Eski dosyalar temizleniyor...",
+                              detail:
+                                  "${widget.magazine["name"] ?? "Dergi"} • Sayı $issueNumber",
+                            );
+                            await _uploadService.cleanupReplacedFile(
+                              previousUrl: issue["file_url"]?.toString(),
+                              nextUrl: fileUrl,
+                            );
+                            await _uploadService.cleanupReplacedFile(
+                              previousUrl: issue["photo_url"]?.toString(),
+                              nextUrl: photoUrl,
+                            );
+                          },
                         );
                         if (!mounted) return;
                         Navigator.pop(context);
@@ -704,6 +752,7 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
     try {
       final picked = await AssetImagePicker.pickFile(
         allowedExtensions: const ["pdf"],
+        maxBytes: UploadService.maxUploadBytes,
       );
       if (picked == null) return;
       onPicked(picked.bytes, picked.name);

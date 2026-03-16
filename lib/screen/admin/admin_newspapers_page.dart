@@ -9,6 +9,7 @@ import '../../services/error/error_manager.dart';
 import '../../services/upload_service.dart';
 import '../../utils/asset_image_picker.dart';
 import '../../utils/safe_image.dart';
+import 'admin_upload_progress_dialog.dart';
 
 class AdminNewspapersPage extends StatefulWidget {
   const AdminNewspapersPage({super.key});
@@ -205,61 +206,86 @@ class _AdminNewspapersPageState extends State<AdminNewspapersPage> {
                       Navigator.pop(context);
 
                       try {
-                        String imageUrl = (newspaper?["image_url"] ?? "")
-                            .toString()
-                            .trim();
-                        if (pickedImageBytes != null &&
-                            pickedImageName != null) {
-                          imageUrl = await _uploadService.uploadPublic(
-                            type: UploadFileType.newspaper,
-                            bytes: pickedImageBytes!,
-                            filename: pickedImageName!,
-                          );
-                        }
-                        if (imageUrl.isEmpty) {
-                          await _showError(
-                            "Kapak görseli oluşturulamadı. Lütfen PDF'i yeniden seçin.",
-                          );
-                          if (mounted) {
-                            await Future.microtask(
-                              () => _showAddOrEditDialog(newspaper: newspaper),
+                        await runAdminUploadTask(
+                          context,
+                          title: isEdit
+                              ? "E-gazete güncelleniyor"
+                              : "E-gazete yükleniyor",
+                          task: (progress) async {
+                            String imageUrl = (newspaper?["image_url"] ?? "")
+                                .toString()
+                                .trim();
+                            if (pickedImageBytes != null &&
+                                pickedImageName != null) {
+                              imageUrl = await _uploadService.uploadPublic(
+                                type: UploadFileType.newspaper,
+                                bytes: pickedImageBytes!,
+                                filename: pickedImageName!,
+                                onProgress: (snapshot) => progress.trackUpload(
+                                  "Kapak görseli",
+                                  snapshot,
+                                ),
+                              );
+                            }
+                            if (imageUrl.isEmpty) {
+                              throw Exception(
+                                "Kapak görseli oluşturulamadı. Lütfen PDF'i yeniden seçin.",
+                              );
+                            }
+
+                            String fileUrl = payload["file_url"] as String;
+                            if (pickedPdfBytes != null &&
+                                pickedPdfName != null) {
+                              fileUrl = await _uploadService.uploadPrivate(
+                                type: UploadFileType.newspaper,
+                                bytes: pickedPdfBytes!,
+                                filename: pickedPdfName!,
+                                onProgress: (snapshot) => progress.trackUpload(
+                                  "Gazete PDF'i",
+                                  snapshot,
+                                ),
+                              );
+                            }
+
+                            progress.update(
+                              message: isEdit
+                                  ? "E-gazete kaydı güncelleniyor..."
+                                  : "E-gazete kaydı veritabanına ekleniyor...",
+                              detail: payload["publish_date"] as String,
                             );
-                          }
-                          return;
-                        }
-
-                        String fileUrl = payload["file_url"] as String;
-                        if (pickedPdfBytes != null && pickedPdfName != null) {
-                          fileUrl = await _uploadService.uploadPrivate(
-                            type: UploadFileType.newspaper,
-                            bytes: pickedPdfBytes!,
-                            filename: pickedPdfName!,
-                          );
-                        }
-
-                        if (isEdit) {
-                          await _service.update(
-                            id: payload["id"] as int,
-                            imageUrl: imageUrl,
-                            fileUrl: fileUrl,
-                            publishDate: payload["publish_date"] as String,
-                          );
-                          await _uploadService.cleanupReplacedFile(
-                            previousUrl: newspaper["image_url"]?.toString(),
-                            nextUrl: imageUrl,
-                          );
-                          await _uploadService.cleanupReplacedFile(
-                            previousUrl: newspaper["file_url"]?.toString(),
-                            nextUrl: fileUrl,
-                          );
-                        } else {
-                          await _service.add(
-                            imageUrl: imageUrl,
-                            fileUrl: fileUrl,
-                            publishDate: payload["publish_date"] as String,
-                          );
-                        }
-                        await _loadData();
+                            if (isEdit) {
+                              await _service.update(
+                                id: payload["id"] as int,
+                                imageUrl: imageUrl,
+                                fileUrl: fileUrl,
+                                publishDate: payload["publish_date"] as String,
+                              );
+                              progress.update(
+                                message: "Eski dosyalar temizleniyor...",
+                                detail: payload["publish_date"] as String,
+                              );
+                              await _uploadService.cleanupReplacedFile(
+                                previousUrl: newspaper["image_url"]?.toString(),
+                                nextUrl: imageUrl,
+                              );
+                              await _uploadService.cleanupReplacedFile(
+                                previousUrl: newspaper["file_url"]?.toString(),
+                                nextUrl: fileUrl,
+                              );
+                            } else {
+                              await _service.add(
+                                imageUrl: imageUrl,
+                                fileUrl: fileUrl,
+                                publishDate: payload["publish_date"] as String,
+                              );
+                            }
+                            progress.update(
+                              message: "Gazete listesi yenileniyor...",
+                              detail: payload["publish_date"] as String,
+                            );
+                            await _loadData();
+                          },
+                        );
                       } catch (e) {
                         await _showError(e.toString());
                         if (mounted) {
@@ -324,6 +350,7 @@ class _AdminNewspapersPageState extends State<AdminNewspapersPage> {
     try {
       final picked = await AssetImagePicker.pickFile(
         allowedExtensions: const ["pdf"],
+        maxBytes: UploadService.maxUploadBytes,
       );
       if (picked == null) return;
       controller.text = picked.name;

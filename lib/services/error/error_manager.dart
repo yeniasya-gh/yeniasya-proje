@@ -1,10 +1,26 @@
 class ErrorManager {
   static String parseGraphQLError(String errorMessage) {
     final msg = errorMessage.toLowerCase();
+    final cleaned = errorMessage.replaceFirst("Exception: ", "").trim();
+
+    const passThroughMarkers = [
+      "yükleme başarısız",
+      "yükleme zaman aşımına uğradı",
+      "çok fazla yükleme denemesi",
+      "oturum doğrulanamadı",
+      "cdn yükleme servisi",
+      "dosya 50mb sınırını aşıyor",
+      "izin verilmeyen dosya tipi",
+      "kapak görseli oluşturulamadı",
+    ];
+
+    if (passThroughMarkers.any((marker) => msg.contains(marker))) {
+      return cleaned;
+    }
 
     // 🔥 Eğer zaten kullanıcıya gösterilebilir bir hata ise → direkt döndür
     if (msg.contains("zaten kayıtlı") || msg.contains("telefon")) {
-      return errorMessage.replaceFirst("Exception: ", "").trim();
+      return cleaned;
     }
 
     // 📌 Unique violation - phone
