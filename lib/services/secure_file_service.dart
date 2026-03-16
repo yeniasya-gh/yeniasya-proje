@@ -192,6 +192,7 @@ class SecureFileService {
         connectTimeout: _privateConnectTimeout,
         inactivityTimeout: _privateInactivityTimeout,
         overallTimeout: const Duration(minutes: 3),
+        maxTimeoutRetries: 0,
         onProgress: onProgress,
       );
     } on TimeoutException catch (e, s) {
@@ -414,6 +415,7 @@ class SecureFileService {
         connectTimeout: _privateConnectTimeout,
         inactivityTimeout: _privateInactivityTimeout,
         overallTimeout: const Duration(minutes: 2),
+        maxTimeoutRetries: 0,
         onProgress: onProgress,
       );
       if (resp.statusCode == 200 &&
@@ -511,11 +513,13 @@ class SecureFileService {
     required Duration connectTimeout,
     required Duration inactivityTimeout,
     required Duration overallTimeout,
+    int maxTimeoutRetries = 2,
+    int maxSocketRetries = 1,
     ValueChanged<double>? onProgress,
   }) async {
-    const maxTimeoutRetries = 2;
-    const maxSocketRetries = 1;
-    const maxRetries = maxTimeoutRetries;
+    final timeoutRetries = max(0, maxTimeoutRetries);
+    final socketRetries = max(0, maxSocketRetries);
+    final maxRetries = max(timeoutRetries, socketRetries);
     for (var attempt = 0; attempt <= maxRetries; attempt++) {
       final client = http.Client();
       try {
@@ -551,7 +555,7 @@ class SecureFileService {
             : inactivityTimeout;
         final isShortTimeout = dur == null || dur <= retryableTimeout;
         if (!isShortTimeout) rethrow;
-        if (attempt >= maxTimeoutRetries) {
+        if (attempt >= timeoutRetries) {
           await _logger.logError(
             service: "SecureFileService",
             operation: "downloadRetry",
@@ -569,7 +573,7 @@ class SecureFileService {
         }
         await Future<void>.delayed(Duration(milliseconds: 450 * (attempt + 1)));
       } on SocketException catch (e, s) {
-        if (attempt >= maxSocketRetries) {
+        if (attempt >= socketRetries) {
           await _logger.logError(
             service: "SecureFileService",
             operation: "downloadRetry",

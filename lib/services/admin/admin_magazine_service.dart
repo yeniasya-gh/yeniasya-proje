@@ -1,7 +1,24 @@
+import 'dart:convert';
+
+import 'package:http/http.dart' as http;
+
 import '../hasura_manager.dart';
 
 class AdminMagazineService {
+  AdminMagazineService({String? baseUrl, http.Client? client})
+    : _baseUrl =
+          baseUrl ??
+          const String.fromEnvironment(
+            "CDN_BASE_URL",
+            defaultValue: "https://cdn.yeniasyadijital.com",
+          ),
+      _client = client ?? http.Client();
+
   final _hasura = HasuraManager.instance;
+  final String _baseUrl;
+  final http.Client _client;
+
+  static const _publicIssuesTimeout = Duration(seconds: 8);
 
   Future<List<Map<String, dynamic>>> getMagazines() async {
     const query = r'''
@@ -203,32 +220,28 @@ class AdminMagazineService {
   }
 
   Future<List<Map<String, dynamic>>> getPublicIssues(int magazineId) async {
-    const query = r'''
-      query GetPublicIssues($magazine_id: Int!) {
-        magazine_issue(
-          where: {
-            magazine_id: {_eq: $magazine_id},
-            is_published: {_eq: true}
-          },
-          order_by: {issue_number: desc}
-        ) {
-          id
-          magazine_id
-          issue_number
-          photo_url
-          price
-          description
-          added_at
-        }
-      }
-    ''';
+    final uri = Uri.parse("$_baseUrl/magazines/$magazineId/issues/public");
+    final response = await _client.get(uri).timeout(_publicIssuesTimeout);
 
-    final data = await _hasura.graphQLRequest(
-      query: query,
-      variables: {"magazine_id": magazineId},
-    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception("Dergi sayıları yüklenemedi.");
+    }
 
-    return List<Map<String, dynamic>>.from(data["magazine_issue"]);
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map) {
+      throw Exception("Dergi sayıları için geçersiz yanıt alındı.");
+    }
+
+    final body = Map<String, dynamic>.from(decoded);
+    if (body["ok"] == false) {
+      throw Exception(
+        body["error"]?.toString().trim().isNotEmpty == true
+            ? body["error"].toString().trim()
+            : "Dergi sayıları yüklenemedi.",
+      );
+    }
+
+    return List<Map<String, dynamic>>.from(body["data"] ?? const []);
   }
 
   Future<bool> addIssue({

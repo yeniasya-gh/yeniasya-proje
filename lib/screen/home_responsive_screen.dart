@@ -118,6 +118,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
   bool _hideMagazines = false;
   bool _hideNewspapers = false;
   bool _homeLoadFailed = false;
+  bool _openingArchivedNewspaper = false;
   AuthProvider? _authListener;
   DateTime? _newsSelectedDate;
 
@@ -137,6 +138,14 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
       return;
     }
     setState(() => _newsSelectedDate = normalized);
+  }
+
+  void _setOpeningArchivedNewspaper(bool value) {
+    if (!mounted) {
+      _openingArchivedNewspaper = value;
+      return;
+    }
+    setState(() => _openingArchivedNewspaper = value);
   }
 
   void _openSectionFromFooter(String label) {
@@ -726,10 +735,18 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     DateTime date,
   ) async {
     final normalized = _normalizeDate(date);
+    final localNewspaper = _findLocalNewspaperByDate(normalized);
+    final preferLocal = localNewspaper != null;
     final dateLabel =
         "${normalized.day.toString().padLeft(2, "0")}.${normalized.month.toString().padLeft(2, "0")}.${normalized.year}";
     try {
-      final viewInfo = await _authApi.getNewspaperViewInfo(date: normalized);
+      if (!preferLocal) {
+        _setOpeningArchivedNewspaper(true);
+      }
+      final viewInfo = await _authApi.getNewspaperViewInfo(
+        date: normalized,
+        preferLocal: preferLocal,
+      );
       final source = viewInfo["source"]?.toString().trim().toLowerCase() ?? "";
       final pdfUrl = _resolveArchivedNewspaperUrl(
         viewInfo,
@@ -758,8 +775,35 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
           ),
         ),
       );
+    } finally {
+      _setOpeningArchivedNewspaper(false);
     }
   }
+
+  Map<String, dynamic>? _findLocalNewspaperByDate(DateTime date) {
+    final target = _normalizeDate(date);
+    for (final item in newspapers) {
+      final raw = item["publish_date"]?.toString();
+      if (raw == null || raw.isEmpty) continue;
+      final parsed = DateTime.tryParse(raw);
+      if (parsed == null) continue;
+      if (_normalizeDate(parsed) == target) return item;
+    }
+    return null;
+  }
+
+  String get _newspaperEmptyStateMessage {
+    if (_newsSelectedDate == null) {
+      return "Henüz e-gazete bulunamadı.";
+    }
+    if (_openingArchivedNewspaper) {
+      return "Uygulamada yüklü gazete bulunamadı.\nArşiv taranıyor, lütfen bekleyin.";
+    }
+    return "Seçilen tarihte uygulamada yüklü gazete bulunamadı.";
+  }
+
+  bool get _shouldShowNewspaperArchiveLookup =>
+      _newsSelectedDate != null && _openingArchivedNewspaper;
 
   List<Map<String, dynamic>> _filteredNewspapers() {
     final selectedDate = _newsSelectedDate;
@@ -4689,8 +4733,13 @@ class _NewspaperListScreenState extends State<_NewspaperListScreen> {
     if (picked == null) return;
     if (!mounted) return;
     widget.homeState._setNewspaperSelectedDate(picked);
+    final openFuture = widget.homeState._openArchivedNewspaperForDate(
+      context,
+      picked,
+    );
     setState(() {});
-    await widget.homeState._openArchivedNewspaperForDate(context, picked);
+    await openFuture;
+    if (mounted) setState(() {});
   }
 
   @override
@@ -4870,10 +4919,23 @@ class _NewspaperBrowseBodyState extends State<_NewspaperBrowseBody> {
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: const Color(0xFFE8E8E8)),
         ),
-        child: const Text(
-          "Henüz e-gazete bulunamadı.",
-          textAlign: TextAlign.center,
-          style: TextStyle(color: Colors.black54),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (widget.homeState._shouldShowNewspaperArchiveLookup) ...[
+              const SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+              const SizedBox(height: 12),
+            ],
+            Text(
+              widget.homeState._newspaperEmptyStateMessage,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.black54, height: 1.45),
+            ),
+          ],
         ),
       );
     }

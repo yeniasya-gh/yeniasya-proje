@@ -16,6 +16,7 @@ import '../address/address_list_screen.dart';
 import '../admin/admin_panel_screen.dart';
 import '../order/order_list_screen.dart';
 import '../contact/contact_form.dart';
+import '../footer/faq_page.dart';
 import '../notification/notification_list_screen.dart';
 import 'pdf_viewer_screen.dart';
 import 'personal_info_screen.dart';
@@ -211,6 +212,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       context,
                       MaterialPageRoute(
                         builder: (_) => const NotificationListScreen(),
+                      ),
+                    );
+                  },
+                ),
+                const Divider(height: 1, indent: 56),
+                _menuTile(
+                  Icons.help_center_outlined,
+                  "Yardım Merkezi",
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const FaqPage(title: "Yardım Merkezi"),
                       ),
                     );
                   },

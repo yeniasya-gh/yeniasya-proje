@@ -18,12 +18,14 @@ class PdfViewerScreen extends StatefulWidget {
   final String url;
   final String title;
   final bool isPrivate;
+  final Uint8List? initialBytes;
 
   const PdfViewerScreen({
     super.key,
     required this.url,
     required this.title,
     this.isPrivate = true,
+    this.initialBytes,
   });
 
   @override
@@ -54,6 +56,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   final Map<String, StickyNoteAnnotation> _noteAnnotations = {};
 
   PdfTextSearchResult? _searchResult;
+  bool _consumedInitialBytes = false;
 
   @override
   void initState() {
@@ -111,7 +114,15 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     });
     try {
       await _loadPersistedState();
-      _bytes = await _fetchPdfBytes();
+      final seededBytes = widget.initialBytes;
+      if (!_consumedInitialBytes &&
+          seededBytes != null &&
+          seededBytes.isNotEmpty) {
+        _bytes = seededBytes;
+        _consumedInitialBytes = true;
+      } else {
+        _bytes = await _fetchPdfBytes();
+      }
     } catch (e, s) {
       _error = ErrorManager.parseGraphQLError(e.toString());
       await _logger.logError(

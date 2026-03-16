@@ -94,7 +94,7 @@ class PdfOpenHelper {
 
     try {
       report(0);
-      await SecureFileService.instance.getPdfBytes(
+      final initialBytes = await SecureFileService.instance.getPdfBytes(
         url: normalized,
         isPrivate: isPrivate,
         onProgress: (p) {
@@ -118,6 +118,7 @@ class PdfOpenHelper {
             url: normalized,
             title: title,
             isPrivate: isPrivate,
+            initialBytes: initialBytes,
           ),
         ),
       );

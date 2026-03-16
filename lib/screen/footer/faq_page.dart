@@ -4,7 +4,9 @@ import '../../services/error/error_manager.dart';
 import '../../services/faq_service.dart';
 
 class FaqPage extends StatefulWidget {
-  const FaqPage({super.key});
+  final String title;
+
+  const FaqPage({super.key, this.title = "SSS"});
 
   @override
   State<FaqPage> createState() => _FaqPageState();
@@ -32,7 +34,7 @@ class _FaqPageState extends State<FaqPage> {
       appBar: AppBar(
         backgroundColor: Colors.white,
         foregroundColor: Colors.black,
-        title: const Text("SSS"),
+        title: Text(widget.title),
         elevation: 1,
       ),
       body: SafeArea(

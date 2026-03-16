@@ -303,6 +303,7 @@ class AuthApiService {
 
   Future<Map<String, dynamic>> getNewspaperViewInfo({
     required DateTime date,
+    bool preferLocal = false,
   }) async {
     final uri = Uri.parse("$_baseUrl/newspaper/view-url");
     final headers = {
@@ -318,7 +319,10 @@ class AuthApiService {
     final resp = await _client.post(
       uri,
       headers: headers,
-      body: jsonEncode({"date": dateOnly}),
+      body: jsonEncode({
+        "date": dateOnly,
+        if (preferLocal) "preferLocal": true,
+      }),
     );
 
     if (resp.statusCode < 200 || resp.statusCode >= 300) {
@@ -429,6 +433,7 @@ class AuthApiService {
 
   String _newspaperViewUrlError(http.Response resp) {
     final message = _responseMessage(resp);
+    final code = _responseCode(resp);
     switch (resp.statusCode) {
       case 400:
         return message.isNotEmpty
@@ -441,6 +446,9 @@ class AuthApiService {
             ? message
             : "Aktif e-gazete aboneliğiniz bulunmuyor.";
       case 404:
+        if (code == "LOCAL_NEWSPAPER_NOT_FOUND") {
+          return "Seçilen tarih uygulama arşivinde bulunamadı.";
+        }
         return message.isNotEmpty
             ? message
             : "Seçilen tarihe ait e-gazete bulunamadı.";
@@ -451,6 +459,16 @@ class AuthApiService {
       default:
         return message.isNotEmpty ? message : "E-gazete bağlantısı alınamadı.";
     }
+  }
+
+  String _responseCode(http.Response resp) {
+    try {
+      final decoded = jsonDecode(resp.body);
+      if (decoded is Map<String, dynamic>) {
+        return decoded["code"]?.toString().trim() ?? "";
+      }
+    } catch (_) {}
+    return "";
   }
 
   String _responseMessage(http.Response resp) {
