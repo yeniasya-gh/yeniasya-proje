@@ -703,6 +703,23 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
   DateTime _normalizeDate(DateTime date) =>
       DateTime(date.year, date.month, date.day);
 
+  DateTime? _parseNewspaperPublishDate(dynamic value) {
+    final raw = value?.toString().trim() ?? "";
+    if (raw.isEmpty) return null;
+    final parsed = DateTime.tryParse(raw);
+    if (parsed == null) return null;
+    return parsed.isUtc ? parsed.toLocal() : parsed;
+  }
+
+  String _formatNewspaperPublishDate(
+    dynamic value, {
+    bool short = false,
+  }) {
+    final parsed = _parseNewspaperPublishDate(value);
+    if (parsed == null) return value?.toString() ?? "";
+    return short ? _formatDateShort(parsed) : _formatDateTr(parsed);
+  }
+
   String _formatIsoDateOnly(DateTime date) {
     final normalized = _normalizeDate(date);
     return "${normalized.year.toString().padLeft(4, "0")}-"
@@ -783,9 +800,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
   Map<String, dynamic>? _findLocalNewspaperByDate(DateTime date) {
     final target = _normalizeDate(date);
     for (final item in newspapers) {
-      final raw = item["publish_date"]?.toString();
-      if (raw == null || raw.isEmpty) continue;
-      final parsed = DateTime.tryParse(raw);
+      final parsed = _parseNewspaperPublishDate(item["publish_date"]);
       if (parsed == null) continue;
       if (_normalizeDate(parsed) == target) return item;
     }
@@ -812,9 +827,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     final target = _normalizeDate(selectedDate);
     return newspapers
         .where((n) {
-          final raw = n["publish_date"]?.toString();
-          if (raw == null) return false;
-          final parsed = DateTime.tryParse(raw);
+          final parsed = _parseNewspaperPublishDate(n["publish_date"]);
           if (parsed == null) return false;
           return _normalizeDate(parsed) == target;
         })
@@ -2057,7 +2070,10 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
   }
 
   ProductDetail _mapNewspaperDetail(Map<String, dynamic> news) {
-    final dateStr = news["publish_date"]?.toString() ?? "";
+    final dateStr = _formatNewspaperPublishDate(
+      news["publish_date"],
+      short: true,
+    );
     final hasSub = _hasNewspaperSubscription(context);
     final title = "E-Gazete";
     return ProductDetail(
@@ -3025,9 +3041,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     final items = newspapers.take(itemLimit ?? _showcaseItemLimit(isWeb)).map((
       n,
     ) {
-      final dateStr = n["publish_date"]?.toString() ?? "";
-      final d = DateTime.tryParse(dateStr);
-      final label = d != null ? _formatDateTr(d) : dateStr;
+      final label = _formatNewspaperPublishDate(n["publish_date"]);
       final titleText = label.isNotEmpty ? label : _formatDateTr(today);
       return {
         "image": n["image_url"] ?? fallbackImage,
@@ -3498,9 +3512,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
           itemCount: visibleItems.length,
           itemBuilder: (_, i) {
             final item = visibleItems[i];
-            final dateStr = item["publish_date"]?.toString() ?? "";
-            final dt = DateTime.tryParse(dateStr);
-            final label = dt != null ? _formatDateTr(dt) : dateStr;
+            final label = _formatNewspaperPublishDate(item["publish_date"]);
             final title = label.isNotEmpty ? label : "Gazete";
             return _newspaperPreviewCard(
               {"image": item["image_url"], "title": title, "date": "E-Gazete"},
