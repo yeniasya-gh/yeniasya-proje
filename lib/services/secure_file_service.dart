@@ -4,6 +4,7 @@ import 'dart:math';
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:crypto/crypto.dart';
 import 'package:encrypt/encrypt.dart' as enc;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -847,8 +848,12 @@ class SecureFileService {
 
   String _safeFileName(String url) {
     final uri = Uri.tryParse(url);
-    final path = uri?.pathSegments.join("_") ?? url;
-    return path.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), "_");
+    final labelSource = uri?.pathSegments.isNotEmpty == true
+        ? uri!.pathSegments.last
+        : url;
+    final safeLabel = labelSource.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), "_");
+    final digest = sha1.convert(utf8.encode(url)).toString();
+    return "${safeLabel}_$digest";
   }
 }
 

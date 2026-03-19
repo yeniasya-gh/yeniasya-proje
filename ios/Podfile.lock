@@ -345,6 +345,6 @@ SPEC CHECKSUMS:
   url_launcher_ios: 7a95fa5b60cc718a708b8f2966718e93db0cef1b
   webview_flutter_wkwebview: 8ebf4fded22593026f7dbff1fbff31ea98573c8d
 
-PODFILE CHECKSUM: fad3759ec9a2d87882887b017edbff8494e9b47a
+PODFILE CHECKSUM: b2dc6cdecda2e10b2583c851c9366cd49c45a264
 
 COCOAPODS: 1.16.2

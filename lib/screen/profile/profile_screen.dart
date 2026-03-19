@@ -380,6 +380,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             Row(
               children: [
                 Expanded(
+                  flex: hasRevenueCatSubscription ? 9 : 1,
                   child: ElevatedButton(
                     onPressed: busy
                         ? null
@@ -409,11 +410,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 if (hasRevenueCatSubscription) ...[
                   const SizedBox(width: 10),
                   Expanded(
+                    flex: 11,
                     child: OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                      ),
                       onPressed: busy
                           ? null
                           : () => _onOpenCustomerCenter(auth: auth, rc: rc),
-                      child: const Text("Aboneliği Yönet"),
+                      child: const FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          "Aboneliği Yönet",
+                          maxLines: 1,
+                          softWrap: false,
+                        ),
+                      ),
                     ),
                   ),
                 ],

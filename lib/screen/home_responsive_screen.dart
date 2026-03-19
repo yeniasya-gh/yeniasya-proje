@@ -711,10 +711,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     return parsed.isUtc ? parsed.toLocal() : parsed;
   }
 
-  String _formatNewspaperPublishDate(
-    dynamic value, {
-    bool short = false,
-  }) {
+  String _formatNewspaperPublishDate(dynamic value, {bool short = false}) {
     final parsed = _parseNewspaperPublishDate(value);
     if (parsed == null) return value?.toString() ?? "";
     return short ? _formatDateShort(parsed) : _formatDateTr(parsed);
@@ -726,6 +723,18 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         "${normalized.month.toString().padLeft(2, "0")}-"
         "${normalized.day.toString().padLeft(2, "0")}";
   }
+
+  double _newspaperPreviewCardWidth(bool isWeb) => isWeb ? 220.0 : 165.0;
+
+  double _newspaperPreviewImageHeight({
+    required double cardWidth,
+    required bool isWeb,
+  }) => (cardWidth * 1.45).clamp(190.0, isWeb ? 340.0 : 300.0).toDouble();
+
+  double _newspaperPreviewCardHeight({
+    required double imageHeight,
+    required bool showRead,
+  }) => imageHeight + (showRead ? 88.0 : 72.0);
 
   String _resolveArchivedNewspaperUrl(
     Map<String, dynamic> viewInfo, {
@@ -781,7 +790,9 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         url: pdfUrl,
         title: "E-Gazete $dateLabel",
         isPrivate: isPrivate,
+        titleFontSize: 13.5,
       );
+      _setNewspaperSelectedDate(null);
     } catch (e) {
       if (!context.mounted) return;
       final message = e.toString().replaceFirst("Exception: ", "").trim();
@@ -795,6 +806,20 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     } finally {
       _setOpeningArchivedNewspaper(false);
     }
+  }
+
+  Future<void> _handleNewspaperDateSelection(
+    BuildContext context,
+    DateTime date,
+  ) async {
+    final normalized = _normalizeDate(date);
+    _setNewspaperSelectedDate(normalized);
+
+    if (_findLocalNewspaperByDate(normalized) != null) {
+      return;
+    }
+
+    await _openArchivedNewspaperForDate(context, normalized);
   }
 
   Map<String, dynamic>? _findLocalNewspaperByDate(DateTime date) {
@@ -3084,36 +3109,41 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         ),
         const SizedBox(height: 12),
         if (items.isNotEmpty)
-          SizedBox(
-            height: isWeb ? 336 : 264,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: items.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 14),
-              itemBuilder: (_, i) {
-                final raw = items[i]["raw"] as Map<String, dynamic>;
-                return SizedBox(
-                  width: isWeb ? 160 : 146,
-                  child: _magazineCard(
-                    {
-                      "image": items[i]["image"],
-                      "title": items[i]["title"],
-                      "desc": items[i]["date"],
-                      "price": "",
-                    },
-                    imageHeight: isWeb ? 196 : 148,
-                    spacious: isWeb,
-                    fullWidthAction: true,
-                    actionPadding: showRead
-                        ? const EdgeInsets.symmetric(vertical: 4)
-                        : EdgeInsets.zero,
-                    hideAction: showRead,
-                    onAdd: () => _openProductDetail(_mapNewspaperDetail(raw)),
-                    onTap: () => _openProductDetail(_mapNewspaperDetail(raw)),
-                  ),
-                );
-              },
-            ),
+          Builder(
+            builder: (context) {
+              final cardWidth = _newspaperPreviewCardWidth(isWeb);
+              final imageHeight = _newspaperPreviewImageHeight(
+                cardWidth: cardWidth,
+                isWeb: isWeb,
+              );
+              final cardHeight = _newspaperPreviewCardHeight(
+                imageHeight: imageHeight,
+                showRead: showRead,
+              );
+              return SizedBox(
+                height: cardHeight,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: items.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 14),
+                  itemBuilder: (_, i) {
+                    final raw = items[i]["raw"] as Map<String, dynamic>;
+                    return _newspaperPreviewCard(
+                      {
+                        "image": items[i]["image"],
+                        "title": items[i]["title"],
+                        "date": items[i]["date"],
+                      },
+                      width: cardWidth,
+                      compact: true,
+                      imageHeight: imageHeight,
+                      showRead: showRead,
+                      onTap: () => _openProductDetail(_mapNewspaperDetail(raw)),
+                    );
+                  },
+                ),
+              );
+            },
           ),
       ],
     );
@@ -3135,9 +3165,8 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
       );
       if (picked == null) return;
       if (!mounted) return;
-      _setNewspaperSelectedDate(picked);
       if (!context.mounted) return;
-      await _openArchivedNewspaperForDate(context, picked);
+      await _handleNewspaperDateSelection(context, picked);
     }
 
     return Column(
@@ -3492,12 +3521,14 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         final crossAxisCount = computedColumns;
         final cardWidth =
             (maxWidth - (spacing * (crossAxisCount - 1))) / crossAxisCount;
-        // Keep newspaper cards portrait-oriented so full first page fits better.
-        final imageHeight = (cardWidth * 1.45).clamp(
-          190.0,
-          isWeb ? 340.0 : 300.0,
+        final imageHeight = _newspaperPreviewImageHeight(
+          cardWidth: cardWidth,
+          isWeb: isWeb,
         );
-        final cardHeight = imageHeight + (hasSub ? 88.0 : 72.0);
+        final cardHeight = _newspaperPreviewCardHeight(
+          imageHeight: imageHeight,
+          showRead: hasSub,
+        );
 
         return GridView.builder(
           shrinkWrap: true,
@@ -4744,8 +4775,7 @@ class _NewspaperListScreenState extends State<_NewspaperListScreen> {
     );
     if (picked == null) return;
     if (!mounted) return;
-    widget.homeState._setNewspaperSelectedDate(picked);
-    final openFuture = widget.homeState._openArchivedNewspaperForDate(
+    final openFuture = widget.homeState._handleNewspaperDateSelection(
       context,
       picked,
     );

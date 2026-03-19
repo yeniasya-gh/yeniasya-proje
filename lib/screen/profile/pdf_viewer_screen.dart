@@ -19,6 +19,7 @@ class PdfViewerScreen extends StatefulWidget {
   final String title;
   final bool isPrivate;
   final Uint8List? initialBytes;
+  final double? titleFontSize;
 
   const PdfViewerScreen({
     super.key,
@@ -26,6 +27,7 @@ class PdfViewerScreen extends StatefulWidget {
     required this.title,
     this.isPrivate = true,
     this.initialBytes,
+    this.titleFontSize,
   });
 
   @override
@@ -186,7 +188,14 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     return Scaffold(
       backgroundColor: isWeb ? const Color(0xFFF4F6F8) : null,
       appBar: AppBar(
-        title: Text(widget.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+        title: Text(
+          widget.title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: widget.titleFontSize == null
+              ? null
+              : TextStyle(fontSize: widget.titleFontSize),
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),

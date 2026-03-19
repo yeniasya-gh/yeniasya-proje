@@ -13,6 +13,7 @@ class PdfOpenHelper {
     required bool isPrivate,
     ValueChanged<double>? onProgress,
     bool showDialogProgress = false,
+    double? titleFontSize,
   }) async {
     final normalized = UploadService.normalizeUrl(url);
 
@@ -24,6 +25,7 @@ class PdfOpenHelper {
             url: normalized,
             title: title,
             isPrivate: isPrivate,
+            titleFontSize: titleFontSize,
           ),
         ),
       );
@@ -41,6 +43,7 @@ class PdfOpenHelper {
               url: normalized,
               title: title,
               isPrivate: isPrivate,
+              titleFontSize: titleFontSize,
             ),
           ),
         );
@@ -119,6 +122,7 @@ class PdfOpenHelper {
             title: title,
             isPrivate: isPrivate,
             initialBytes: initialBytes,
+            titleFontSize: titleFontSize,
           ),
         ),
       );
