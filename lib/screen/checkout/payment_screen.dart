@@ -242,7 +242,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
             paymentResponseCode: immediateResult.responseCode,
             paymentResponseMsg: immediateResult.responseMsg,
             paymentErrorCode: immediateResult.errorCode,
-            paymentErrorMsg: immediateResult.errorMsg ?? immediateResult.message,
+            paymentErrorMsg:
+                immediateResult.errorMsg ?? immediateResult.message,
           );
           return;
         }
@@ -274,7 +275,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
             payload: redirectPayload,
             redirectUri: _paymentService.redirectUri(),
             returnUrl: PaymentConfig.returnUrl,
-            orderId: orderId,
           ),
         ),
       );
@@ -674,10 +674,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
             }
           }
         } catch (_) {}
-        return PaymentResult(
-          false,
-          message,
-        );
+        return PaymentResult(false, message);
       }
 
       final location = resp.headers["location"];

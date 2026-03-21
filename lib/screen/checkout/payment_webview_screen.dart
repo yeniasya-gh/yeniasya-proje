@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io';
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -9,21 +8,17 @@ import '../../services/auth/auth_token_store.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import '../../services/payment_service.dart';
-import '../../helpers/payment_web_helper.dart';
-import '../../services/order_service.dart';
 
 class PaymentWebViewScreen extends StatefulWidget {
   final PaymentRedirectPayload payload;
   final Uri redirectUri;
   final String returnUrl;
-  final int? orderId;
 
   const PaymentWebViewScreen({
     super.key,
     required this.payload,
     required this.redirectUri,
     required this.returnUrl,
-    this.orderId,
   });
 
   @override
@@ -36,11 +31,13 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
   bool _completed = false;
   bool _awaitingResult = false;
   Timer? _pollTimer;
-  int _pollAttempts = 0;
-  PaymentWindowHandle? _paymentWindow;
-  final _orderService = OrderService();
-  bool _pollingStarted = false;
   bool _seenRedirectOnce = false;
+
+  void _log(String message) {
+    if (kDebugMode) {
+      debugPrint("[payment][ios] $message");
+    }
+  }
 
   @override
   void initState() {
@@ -51,11 +48,13 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
     _controller.setNavigationDelegate(
       NavigationDelegate(
         onPageStarted: (url) {
+          _log("page started: $url");
           _setLoading(true);
         },
         onPageFinished: (url) {
+          _log("page finished: $url");
           _setLoading(false);
-          if (_isReturnUrl(url)) {
+          if (_isPaymentResultUrl(url)) {
             _awaitingResult = true;
             _processReturnUrl(url);
           }
@@ -66,16 +65,23 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
         },
         onNavigationRequest: (request) {
           final url = request.url;
+          _log("navigation request: $url");
           if (!_seenRedirectOnce &&
               url.startsWith(widget.redirectUri.toString())) {
             _seenRedirectOnce = true;
             return NavigationDecision.navigate;
           }
-          if (_isReturnUrl(url)) {
+          if (_isPaymentReturnPage(url)) {
+            _awaitingResult = true;
+            _setLoading(true);
+            _log("allowing return page navigation: $url");
+            return NavigationDecision.navigate;
+          }
+          if (_isPaymentResultUrl(url)) {
             _awaitingResult = true;
             _setLoading(true);
             _processReturnUrl(url);
-            return NavigationDecision.navigate;
+            return NavigationDecision.prevent;
           }
           return NavigationDecision.navigate;
         },
@@ -92,7 +98,16 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
     }
   }
 
-  bool _isReturnUrl(String url) {
+  bool _isPaymentReturnPage(String url) {
+    final uri = Uri.tryParse(url);
+    if (uri != null && uri.path.contains("/payment/return")) {
+      return true;
+    }
+    final target = widget.returnUrl;
+    return url == target || url.startsWith(target);
+  }
+
+  bool _isPaymentResultUrl(String url) {
     final uri = Uri.tryParse(url);
     if (uri != null) {
       final path = uri.path;
@@ -101,8 +116,6 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
         return true;
       }
     }
-    final target = widget.returnUrl;
-    if (url == target || url.startsWith(target)) return true;
     final redirect = widget.redirectUri.toString();
     if (_seenRedirectOnce && url.startsWith(redirect)) return true;
     return false;
@@ -112,15 +125,50 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
     if (_completed || !mounted) return;
     _awaitingResult = true;
     _setLoading(true);
+    _log("processing return url: $url");
     try {
       final fromUrl = _parseResultFromUrl(url);
       if (fromUrl != null) {
+        _log(
+          "parsed from url -> approved=${fromUrl["approved"]} responseCode=${fromUrl["responseCode"]} errorCode=${fromUrl["errorCode"]}",
+        );
         _finishWithResult(PaymentResult.fromJson(fromUrl));
         return;
       }
-      final data = await _readJsonFromPage();
-      _finishWithResult(PaymentResult.fromJson(data));
+      final currentHref = await _readCurrentLocationHref();
+      if (currentHref != null && currentHref.isNotEmpty && currentHref != url) {
+        _log("current location href: $currentHref");
+        final fromCurrentHref = _parseResultFromUrl(currentHref);
+        if (fromCurrentHref != null) {
+          _log(
+            "parsed from current href -> approved=${fromCurrentHref["approved"]} responseCode=${fromCurrentHref["responseCode"]} errorCode=${fromCurrentHref["errorCode"]}",
+          );
+          _finishWithResult(PaymentResult.fromJson(fromCurrentHref));
+          return;
+        }
+      }
+
+      Map<String, dynamic> data;
+      Object? lastError;
+      for (var attempt = 1; attempt <= 2; attempt++) {
+        try {
+          data = await _readJsonFromPage();
+          _log(
+            "parsed from page -> approved=${data["approved"]} responseCode=${data["responseCode"]} errorCode=${data["errorCode"]}",
+          );
+          _finishWithResult(PaymentResult.fromJson(data));
+          return;
+        } catch (e) {
+          lastError = e;
+          _log("page parse attempt $attempt failed: $e");
+          if (attempt < 2) {
+            await Future.delayed(const Duration(milliseconds: 350));
+          }
+        }
+      }
+      throw lastError ?? Exception("Odeme sonucu okunamadi.");
     } catch (e) {
+      _log("failed to read return result: $e");
       _finishWithResult(const PaymentResult(false, "Odeme sonucu alinmadi."));
     }
   }
@@ -136,6 +184,7 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
       text = raw.toString();
     }
     text = text.trim();
+    _log("return page body length=${text.length}");
     if (text.startsWith('"') && text.endsWith('"')) {
       final decoded = jsonDecode(text);
       if (decoded is String) {
@@ -158,6 +207,27 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
       return Map<String, dynamic>.from(parsed);
     }
     throw Exception("Odeme sonucu json degil");
+  }
+
+  Future<String?> _readCurrentLocationHref() async {
+    try {
+      final raw = await _controller.runJavaScriptReturningResult(
+        "window.location.href",
+      );
+      final text = raw is String ? raw : raw.toString();
+      final trimmed = text.trim();
+      if (trimmed.isEmpty) return null;
+      if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
+        final decoded = jsonDecode(trimmed);
+        if (decoded is String) {
+          return decoded;
+        }
+      }
+      return trimmed;
+    } catch (e) {
+      _log("failed to read current location href: $e");
+      return null;
+    }
   }
 
   Map<String, dynamic>? _parseResultFromUrl(String url) {
@@ -196,86 +266,54 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
         "Authorization": "Bearer $token",
       };
 
-      // Tüm platformlarda aynı: WebView içinde yükle, header düşmesin diye Android'de http.post + loadHtmlString.
-      if (kIsWeb || Platform.isAndroid) {
-        final resp = await http.post(
-          widget.redirectUri,
-          headers: headers,
-          body: jsonEncode(payload),
-        );
-        final location = resp.headers["location"];
-        if (resp.isRedirect && location != null) {
-          _processReturnUrl(location);
-          return;
-        }
-        if (resp.statusCode < 200 || resp.statusCode >= 300) {
-          String message = "Ödeme işlemi başlatılamadı.";
-          try {
-            final data = jsonDecode(resp.body);
-            if (data is Map<String, dynamic>) {
-              final apiMessage =
-                  data["error"]?.toString().trim() ??
-                  data["message"]?.toString().trim();
-              if (apiMessage != null && apiMessage.isNotEmpty) {
-                message = apiMessage;
-              }
-            }
-          } catch (_) {
-            final body = resp.body.trim();
-            if (body.isNotEmpty) {
-              message = body;
+      // iOS'ta WKWebView POST navigation güvenilir değildi.
+      // Backend aynı HTML/redirect cevabını verdiği için tüm platformlarda
+      // önce HTTP POST yapıp ardından dönen HTML'i WebView'e yükliyoruz.
+      final resp = await http.post(
+        widget.redirectUri,
+        headers: headers,
+        body: jsonEncode(payload),
+      );
+      _log(
+        "redirect response: status=${resp.statusCode} redirect=${resp.isRedirect} contentType=${resp.headers["content-type"]} bodyLength=${resp.body.length}",
+      );
+      final location = resp.headers["location"];
+      if (resp.isRedirect && location != null) {
+        _log("redirect location header: $location");
+        _processReturnUrl(location);
+        return;
+      }
+      if (resp.statusCode < 200 || resp.statusCode >= 300) {
+        String message = "Ödeme işlemi başlatılamadı.";
+        try {
+          final data = jsonDecode(resp.body);
+          if (data is Map<String, dynamic>) {
+            final apiMessage =
+                data["error"]?.toString().trim() ??
+                data["message"]?.toString().trim();
+            if (apiMessage != null && apiMessage.isNotEmpty) {
+              message = apiMessage;
             }
           }
-          _finishWithResult(PaymentResult(false, message));
-          return;
+        } catch (_) {
+          final body = resp.body.trim();
+          if (body.isNotEmpty) {
+            message = body;
+          }
         }
-        await _controller.loadHtmlString(
-          resp.body,
-          baseUrl: widget.redirectUri.toString(),
-        );
-      } else {
-        // iOS: doğrudan loadRequest
-        final body = Uint8List.fromList(utf8.encode(jsonEncode(payload)));
-        await _controller.loadRequest(
-          widget.redirectUri,
-          method: LoadRequestMethod.post,
-          headers: headers,
-          body: body,
-        );
+        _finishWithResult(PaymentResult(false, message));
+        return;
       }
+      await _controller.loadHtmlString(
+        resp.body,
+        baseUrl: widget.redirectUri.origin,
+      );
     } catch (e) {
+      _log("failed to start payment: $e");
       _finishWithResult(
         const PaymentResult(false, "Ödeme işlemi başlatılamadı."),
       );
     }
-  }
-
-  void _startOrderPolling() {
-    if (_completed || _pollingStarted) return;
-    if (widget.orderId == null) {
-      _setLoading(false);
-      return;
-    }
-    _pollingStarted = true;
-    _setLoading(true);
-    _pollTimer?.cancel();
-    _pollAttempts = 0;
-    _pollTimer = Timer.periodic(const Duration(seconds: 2), (_) async {
-      _pollAttempts++;
-      if (_pollAttempts > 90) {
-        _finishWithResult(const PaymentResult(false, "Odeme sonucu alinmadi."));
-        return;
-      }
-      try {
-        final detail = await _orderService.getOrderDetail(widget.orderId!);
-        final status = (detail?["status"] ?? "").toString().toLowerCase();
-        if (status == "paid") {
-          _finishWithResult(const PaymentResult(true, null));
-        }
-      } catch (_) {
-        // keep polling on transient errors
-      }
-    });
   }
 
   void _finishWithResult(PaymentResult result) {
@@ -283,7 +321,9 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
     _completed = true;
     _awaitingResult = false;
     _pollTimer?.cancel();
-    _pollingStarted = false;
+    _log(
+      "finish result -> success=${result.success} responseCode=${result.responseCode} errorCode=${result.errorCode} message=${result.message}",
+    );
     Navigator.pop(context, result);
   }
 
