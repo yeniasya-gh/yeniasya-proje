@@ -114,7 +114,6 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
   bool _loadingLibraryMagazineIssues = false;
   bool _libraryMagazineIssuesSheetOpen = false;
   bool _deepLinkHandled = false;
-  bool _standaloneRouteHandled = false;
   bool _hideMagazines = false;
   bool _hideNewspapers = false;
   bool _homeLoadFailed = false;
@@ -2187,22 +2186,6 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     );
   }
 
-  void _scheduleInitialStandaloneRedirect() {
-    if (_standaloneRouteHandled) return;
-    final standalonePage = _buildStandalonePageByPath(
-      widget.initialUri?.path ?? "",
-    );
-    if (standalonePage == null) return;
-    _standaloneRouteHandled = true;
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      Navigator.of(
-        context,
-      ).push(MaterialPageRoute(builder: (_) => standalonePage));
-    });
-  }
-
   Widget _buildHomeStateMessage() {
     if (_homeLoadFailed) {
       return Padding(
@@ -2390,6 +2373,13 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final standalonePage = _buildStandalonePageByPath(
+      widget.initialUri?.path ?? "",
+    );
+    if (standalonePage != null) {
+      return standalonePage;
+    }
+
     // Access provider'ı dinleyerek satın alınan içeriklerin UI'yi güncellemesini sağla
     context.watch<AccessProvider>();
     final auth = context.watch<AuthProvider>();
@@ -2402,7 +2392,6 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     if (loading) {
       return const AppBootstrapScreen(status: "İçerikler hazırlanıyor");
     }
-    _scheduleInitialStandaloneRedirect();
 
     return Scaffold(
       backgroundColor: Colors.white,
