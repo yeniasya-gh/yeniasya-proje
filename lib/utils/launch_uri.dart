@@ -1,13 +1,2 @@
-import 'package:flutter/foundation.dart';
-import 'package:flutter/widgets.dart';
-
-Uri currentLaunchUri() {
-  if (kIsWeb) {
-    final routeName =
-        WidgetsBinding.instance.platformDispatcher.defaultRouteName;
-    if (routeName.isNotEmpty) {
-      return Uri.parse(routeName);
-    }
-  }
-  return Uri.base;
-}
+export 'launch_uri_stub.dart'
+    if (dart.library.html) 'launch_uri_web.dart';

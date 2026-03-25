@@ -22,6 +22,8 @@ void main() {
   if (kIsWeb) {
     usePathUrlStrategy();
   }
+  final launchUri = currentLaunchUri();
+  debugPrint("Launch URI: $launchUri");
 
   final authProvider = AuthProvider();
   final cartProvider = CartProvider();
@@ -34,7 +36,7 @@ void main() {
     accessProvider.clear();
     rootNavigatorKey.currentState?.pushAndRemoveUntil(
       MaterialPageRoute(
-        builder: (_) => HomeResponsiveScreen(initialUri: currentLaunchUri()),
+        builder: (_) => HomeResponsiveScreen(initialUri: launchUri),
       ),
       (route) => false,
     );
@@ -48,13 +50,15 @@ void main() {
         ChangeNotifierProvider.value(value: accessProvider),
         ChangeNotifierProvider.value(value: revenueCatService),
       ],
-      child: const AppBootstrap(),
+      child: AppBootstrap(initialUri: launchUri),
     ),
   );
 }
 
 class AppBootstrap extends StatefulWidget {
-  const AppBootstrap({super.key});
+  final Uri initialUri;
+
+  const AppBootstrap({super.key, required this.initialUri});
 
   @override
   State<AppBootstrap> createState() => _AppBootstrapState();
@@ -153,7 +157,7 @@ class _AppBootstrapState extends State<AppBootstrap> {
       },
       child: MyApp(
         home: _ready
-            ? HomeResponsiveScreen(initialUri: currentLaunchUri())
+            ? HomeResponsiveScreen(initialUri: widget.initialUri)
             : AppBootstrapScreen(status: _status),
       ),
     );
