@@ -17,7 +17,10 @@ class _FakeAdminUserService extends AdminUserService {
   Future<List<Map<String, dynamic>>> getAllUsers() async {
     getAllUsersCalls += 1;
     await Future<void>.delayed(const Duration(milliseconds: 10));
-    return _users.map((item) => Map<String, dynamic>.from(item)).toList();
+    return _users
+        .where((item) => item["is_active"] != false)
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
   }
 
   @override
@@ -45,6 +48,7 @@ class _FakeAdminUserService extends AdminUserService {
       "phone": phone,
       "role_id": roleId,
       "role": roleId == 2 ? "Admin" : "User",
+      "is_active": true,
     });
     return true;
   }
@@ -53,7 +57,16 @@ class _FakeAdminUserService extends AdminUserService {
   Future<bool> deleteUser(int id) async {
     deleteUserCalls += 1;
     await Future<void>.delayed(const Duration(milliseconds: 10));
-    _users.removeWhere((item) => item["id"] == id);
+    final index = _users.indexWhere((item) => item["id"] == id);
+    if (index != -1) {
+      _users[index] = {
+        ..._users[index],
+        "name": "Silinmiş Hesap",
+        "email": "deleted_$id@example.local",
+        "phone": null,
+        "is_active": false,
+      };
+    }
     return true;
   }
 }
@@ -68,6 +81,16 @@ void main() {
         "phone": "05550000000",
         "role_id": 1,
         "role": "User",
+        "is_active": true,
+      },
+      {
+        "id": 2,
+        "name": "Pasif Kullanıcı",
+        "email": "pasif@example.com",
+        "phone": "05551110000",
+        "role_id": 1,
+        "role": "User",
+        "is_active": false,
       },
     ]);
 
@@ -79,6 +102,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text("mevcut@example.com"), findsOneWidget);
+    expect(find.text("pasif@example.com"), findsNothing);
 
     await tester.tap(find.text("Kullanıcı Ekle").first);
     await tester.pumpAndSettle();
@@ -117,6 +141,7 @@ void main() {
         "phone": "05550000000",
         "role_id": 1,
         "role": "User",
+        "is_active": true,
       },
     ]);
 
@@ -131,9 +156,9 @@ void main() {
     await tester.tap(deleteButton);
     await tester.pumpAndSettle();
 
-    expect(find.text("Kullanıcı silinsin mi?"), findsOneWidget);
+    expect(find.text("Kullanıcı pasif hale getirilsin mi?"), findsOneWidget);
     expect(fakeService.deleteUserCalls, 0);
-    expect(find.textContaining("Bağlı siparişler"), findsOneWidget);
+    expect(find.textContaining("pasif hale getirilecek"), findsOneWidget);
 
     await tester.tap(find.widgetWithText(ElevatedButton, "Sil"));
     await tester.pump();
@@ -142,7 +167,7 @@ void main() {
     expect(fakeService.deleteUserCalls, 1);
     expect(find.text("Silinecek Kullanıcı"), findsNothing);
     expect(find.text("silinecek@example.com"), findsNothing);
-    expect(find.text("Kullanıcı silindi"), findsOneWidget);
+    expect(find.text("Kullanıcı pasif hale getirildi"), findsOneWidget);
     expect(find.byType(AlertDialog), findsNothing);
   });
 }

@@ -9,7 +9,7 @@ class _FakeHasuraManager implements HasuraManager {
   Map<String, dynamic>? lastVariables;
   final List<String> queries = [];
   int callCount = 0;
-  bool failHardDelete = false;
+  bool failRelatedCleanup = false;
 
   @override
   Future<Map<String, dynamic>> graphQLRequest({
@@ -21,13 +21,12 @@ class _FakeHasuraManager implements HasuraManager {
     lastVariables = variables;
     queries.add(query);
     callCount += 1;
-    if (failHardDelete && query.contains("delete_users_by_pk")) {
+    if (failRelatedCleanup && query.contains("delete_order_items")) {
       throw Exception("constraint-violation");
     }
     return {
       if (query.contains("insert_users_one")) "insert_users_one": {"id": 1},
       if (query.contains("update_users_by_pk")) "update_users_by_pk": {"id": 1},
-      if (query.contains("delete_users_by_pk")) "delete_users_by_pk": {"id": 1},
       if (query.contains("delete_order_items"))
         "delete_order_items": {"affected_rows": 1},
       if (query.contains("delete_orders"))
@@ -87,10 +86,26 @@ void main() {
     },
   );
 
+  test("AdminUserService.deleteUser soft-deletes user after cleanup", () async {
+    final fakeHasura = _FakeHasuraManager();
+    final service = AdminUserService(hasura: fakeHasura);
+
+    final deleted = await service.deleteUser(42);
+
+    expect(deleted, true);
+    expect(fakeHasura.callCount, 2);
+    expect(fakeHasura.queries.first, contains("delete_order_items"));
+    expect(fakeHasura.queries.first, contains("delete_user_addresses"));
+    expect(fakeHasura.queries.first, contains("delete_user_content_access"));
+    expect(fakeHasura.queries[1], contains("update_users_by_pk"));
+    expect(fakeHasura.lastQuery, contains("update_users_by_pk"));
+    expect(fakeHasura.lastQuery, contains("is_active: false"));
+  });
+
   test(
-    "AdminUserService.deleteUser deletes related records before hard delete",
+    "AdminUserService.deleteUser still soft-deletes when cleanup fails",
     () async {
-      final fakeHasura = _FakeHasuraManager();
+      final fakeHasura = _FakeHasuraManager()..failRelatedCleanup = true;
       final service = AdminUserService(hasura: fakeHasura);
 
       final deleted = await service.deleteUser(42);
@@ -98,30 +113,12 @@ void main() {
       expect(deleted, true);
       expect(fakeHasura.callCount, 2);
       expect(fakeHasura.queries.first, contains("delete_order_items"));
-      expect(fakeHasura.queries.first, contains("delete_user_addresses"));
-      expect(fakeHasura.queries.first, contains("delete_user_content_access"));
-      expect(fakeHasura.queries[1], contains("delete_users_by_pk"));
-      expect(fakeHasura.lastQuery, contains("delete_users_by_pk"));
-    },
-  );
-
-  test(
-    "AdminUserService.deleteUser falls back to soft delete when hard delete fails",
-    () async {
-      final fakeHasura = _FakeHasuraManager()..failHardDelete = true;
-      final service = AdminUserService(hasura: fakeHasura);
-
-      final deleted = await service.deleteUser(42);
-
-      expect(deleted, true);
-      expect(fakeHasura.callCount, 3);
-      expect(fakeHasura.queries.first, contains("delete_order_items"));
-      expect(fakeHasura.queries[1], contains("delete_users_by_pk"));
-      expect(fakeHasura.queries[2], contains("update_users_by_pk"));
+      expect(fakeHasura.queries[1], contains("update_users_by_pk"));
       expect(fakeHasura.lastVariables?["id"], 42);
       expect(fakeHasura.lastVariables?["name"], "Silinmiş Hesap");
       expect(fakeHasura.lastVariables?["email"], contains("deleted_42_"));
       expect(fakeHasura.lastVariables?["password"], isNotNull);
+      expect(fakeHasura.lastQuery, contains("is_active: false"));
     },
   );
 }

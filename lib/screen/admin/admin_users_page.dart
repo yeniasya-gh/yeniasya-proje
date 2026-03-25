@@ -117,7 +117,7 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
       if (ok) {
         await _loadUsers();
         messenger.showSnackBar(
-          const SnackBar(content: Text("Kullanıcı silindi")),
+          const SnackBar(content: Text("Kullanıcı pasif hale getirildi")),
         );
       } else {
         await _showError("Kullanıcı silinemedi.");
@@ -135,10 +135,10 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) => AlertDialog(
-        title: const Text("Kullanıcı silinsin mi?"),
+        title: const Text("Kullanıcı pasif hale getirilsin mi?"),
         content: Text(
-          "${user["name"] ?? "Bu kullanıcı"} silinecek.\n"
-          "Bağlı siparişler, adresler, erişimler, bildirimler, yorumlar ve kayıtlar da silinecek.",
+          "${user["name"] ?? "Bu kullanıcı"} pasif hale getirilecek.\n"
+          "Aktif kullanıcı listesinden gizlenecek ve giriş yapamayacak.",
         ),
         actions: [
           TextButton(

@@ -25,12 +25,16 @@ class AdminUserService {
   Future<List<Map<String, dynamic>>> getAllUsers() async {
     const String query = r'''
       query GetAllUsers {
-        users(order_by: {id: asc}) {
+        users(
+          where: {is_active: {_eq: true}},
+          order_by: {id: asc}
+        ) {
           id
           name
           email
           phone
           role_id
+          is_active
           role { id name }
         }
       }
@@ -47,6 +51,7 @@ class AdminUserService {
         "email": u["email"],
         "phone": u["phone"],
         "role_id": u["role_id"],
+        "is_active": u["is_active"] == true,
         "role": u["role"]?["name"] ?? "User",
       };
     }).toList();
@@ -194,27 +199,13 @@ class AdminUserService {
 
   /// Kullanıcı sil
   Future<bool> deleteUser(int id) async {
-    const hardDeleteMutation = r'''
-      mutation DeleteUser($id: bigint!) {
-        delete_users_by_pk(id: $id) { id }
-      }
-    ''';
-
     try {
       await _deleteUserRelatedData(id);
-
-      final hardDeleteData = await _hasura.graphQLRequest(
-        query: hardDeleteMutation,
-        variables: {"id": id},
-      );
-      if (hardDeleteData["delete_users_by_pk"] != null) {
-        return true;
-      }
     } catch (_) {
-      // İlişkili kayıtlar veya ek kısıtlar nedeniyle hard delete başarısız olabilir.
+      // İlişkili kayıt temizliği başarısız olsa da hesabı pasife almayı dene.
     }
 
-    // Son çare: hesabı anonimize edip pasifleştir.
+    // Kullanıcıyı pasifleştirip anonimleştir.
     final now = DateTime.now().millisecondsSinceEpoch;
     final deletedEmail = "deleted_${id}_$now@yeniasya.local";
     final deletedPassword = HashHelper.hashPassword("deleted_${id}_$now");
@@ -228,19 +219,20 @@ class AdminUserService {
       ) {
         update_users_by_pk(
           pk_columns: {id: $id},
-          _set: {
-            name: $name,
-            email: $email,
-            phone: null,
-            password: $password,
-            is_active: false,
-            email_verified_at: null,
-            firebase_token: null
-          }
-        ) {
-          id
+        _set: {
+          name: $name,
+          email: $email,
+          phone: null,
+          password: $password,
+          is_active: false,
+          email_verified_at: null,
+          firebase_token: null
         }
+      ) {
+        id
+        is_active
       }
+    }
     ''';
 
     final softDeleteData = await _hasura.graphQLRequest(
