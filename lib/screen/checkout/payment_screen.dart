@@ -177,6 +177,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         billingAddressId: widget.billingAddressId,
         totalPaid: payableTotal,
         status: "pending",
+        paymentProvider: "paratika",
         promoCodeId: promo?.id,
         promoCode: promo?.code,
         promoDiscountPercent: promo?.discountPercent,
@@ -451,6 +452,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         appUserId: user?.revenueCatUserId,
         expirationDate: expiresAt,
         lifetime: expiresAt == null,
+        purchasePlatform: "paratika",
       );
       return true;
     } catch (e) {
@@ -515,13 +517,17 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
       final qty = item.quantity <= 0 ? 1 : item.quantity;
       for (var i = 0; i < qty; i++) {
-        accessItems.add({
+        final itemData = <String, dynamic>{
           "item_type": itemType,
           "item_id": itemId,
           "started_at": DateTime.now().toIso8601String(),
           "expires_at": expiresAt?.toIso8601String(),
           "purchase_price": item.price,
-        });
+        };
+        if (itemType == "newspaper_subscription") {
+          itemData["purchase_platform"] = "paratika";
+        }
+        accessItems.add(itemData);
       }
     }
     return accessItems;

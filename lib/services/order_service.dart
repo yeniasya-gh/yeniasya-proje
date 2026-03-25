@@ -1,9 +1,18 @@
 import 'hasura_manager.dart';
 import 'cdn_authenticated_client.dart';
 
+bool _isMissingPaymentProviderColumnError(Object error) {
+  final message = error.toString().toLowerCase();
+  return message.contains("payment_provider");
+}
+
 class OrderService {
-  final _hasura = HasuraManager.instance;
-  final _cdn = CdnAuthenticatedClient();
+  OrderService({HasuraManager? hasura, CdnAuthenticatedClient? cdn})
+    : _hasura = hasura ?? HasuraManager.instance,
+      _cdn = cdn ?? CdnAuthenticatedClient();
+
+  final HasuraManager _hasura;
+  final CdnAuthenticatedClient _cdn;
 
   Future<List<Map<String, dynamic>>> getOrders(int userId) async {
     if (_cdn.canReadUserScopedData(userId)) {
@@ -20,7 +29,22 @@ class OrderService {
   }
 
   Future<List<Map<String, dynamic>>> _getOrdersFromHasura(int userId) async {
-    const query = r'''
+    const queryWithProvider = r'''
+      query GetOrders($user_id: bigint!) {
+        orders(where: {user_id: {_eq: $user_id}}, order_by: {created_at: desc}) {
+          id
+          total_paid
+          status
+          payment_provider
+          promo_code_id
+          promo_code
+          promo_discount_percent
+          promo_discount_amount
+          created_at
+        }
+      }
+    ''';
+    const queryWithoutProvider = r'''
       query GetOrders($user_id: bigint!) {
         orders(where: {user_id: {_eq: $user_id}}, order_by: {created_at: desc}) {
           id
@@ -35,10 +59,21 @@ class OrderService {
       }
     ''';
 
-    final data = await _hasura.graphQLRequest(
-      query: query,
-      variables: {"user_id": userId},
-    );
+    Map<String, dynamic> data;
+    try {
+      data = await _hasura.graphQLRequest(
+        query: queryWithProvider,
+        variables: {"user_id": userId},
+      );
+    } catch (error) {
+      if (!_isMissingPaymentProviderColumnError(error)) {
+        rethrow;
+      }
+      data = await _hasura.graphQLRequest(
+        query: queryWithoutProvider,
+        variables: {"user_id": userId},
+      );
+    }
 
     return List<Map<String, dynamic>>.from(data["orders"] ?? []);
   }
@@ -115,7 +150,33 @@ class OrderService {
   }
 
   Future<Map<String, dynamic>?> _getOrderDetailFromHasura(int id) async {
-    const query = r'''
+    const queryWithProvider = r'''
+      query GetOrderDetail($id: bigint!) {
+        orders_by_pk(id: $id) {
+          id
+          total_paid
+          status
+          created_at
+          payment_provider
+          delivery_address_id
+          billing_address_id
+          promo_code_id
+          promo_code
+          promo_discount_percent
+          promo_discount_amount
+        }
+        order_items(where: {order_id: {_eq: $id}}) {
+          id
+          title
+          quantity
+          unit_price
+          line_total
+          product_type
+          metadata
+        }
+      }
+    ''';
+    const queryWithoutProvider = r'''
       query GetOrderDetail($id: bigint!) {
         orders_by_pk(id: $id) {
           id
@@ -141,10 +202,21 @@ class OrderService {
       }
     ''';
 
-    final data = await _hasura.graphQLRequest(
-      query: query,
-      variables: {"id": id},
-    );
+    Map<String, dynamic> data;
+    try {
+      data = await _hasura.graphQLRequest(
+        query: queryWithProvider,
+        variables: {"id": id},
+      );
+    } catch (error) {
+      if (!_isMissingPaymentProviderColumnError(error)) {
+        rethrow;
+      }
+      data = await _hasura.graphQLRequest(
+        query: queryWithoutProvider,
+        variables: {"id": id},
+      );
+    }
 
     final order = data["orders_by_pk"] as Map<String, dynamic>?;
     if (order == null) return null;
@@ -184,12 +256,62 @@ class OrderService {
     String? merchantPaymentId,
     String? paymentSessionToken,
     bool? paymentApproved,
+    String? paymentProvider,
     String? paymentResponseCode,
     String? paymentResponseMsg,
     String? paymentErrorCode,
     String? paymentErrorMsg,
   }) async {
-    const createOrderMutation = r'''
+    const createOrderMutationWithProvider = r'''
+      mutation CreateOrder(
+        $user_id: bigint!,
+        $delivery_address_id: bigint!,
+        $billing_address_id: bigint!,
+        $total_paid: numeric!,
+        $status: order_status!,
+        $promo_code_id: bigint,
+        $promo_code: String,
+        $promo_discount_percent: numeric,
+        $promo_discount_amount: numeric,
+        $payment_provider: String,
+        $merchant_payment_id: String,
+        $payment_session_token: String,
+        $payment_approved: Boolean,
+        $payment_response_code: String,
+        $payment_response_msg: String,
+        $payment_error_code: String,
+        $payment_error_msg: String
+      ) {
+        insert_orders_one(object: {
+          user_id: $user_id,
+          status: $status,
+          delivery_address_id: $delivery_address_id,
+          billing_address_id: $billing_address_id,
+          total_paid: $total_paid,
+          promo_code_id: $promo_code_id,
+          promo_code: $promo_code,
+          promo_discount_percent: $promo_discount_percent,
+          promo_discount_amount: $promo_discount_amount,
+          payment_provider: $payment_provider,
+          merchant_payment_id: $merchant_payment_id,
+          payment_session_token: $payment_session_token,
+          payment_approved: $payment_approved,
+          payment_response_code: $payment_response_code,
+          payment_response_msg: $payment_response_msg,
+          payment_error_code: $payment_error_code,
+          payment_error_msg: $payment_error_msg
+        }) {
+          id
+          total_paid
+          created_at
+          promo_code
+          promo_discount_percent
+          promo_discount_amount
+          payment_provider
+        }
+      }
+    ''';
+    const createOrderMutationWithoutProvider = r'''
       mutation CreateOrder(
         $user_id: bigint!,
         $delivery_address_id: bigint!,
@@ -236,8 +358,7 @@ class OrderService {
       }
     ''';
 
-    final orderData = await _hasura.graphQLRequest(
-      query: createOrderMutation,
+    final orderData = await _createOrderWithFallback(
       variables: {
         "user_id": userId,
         "delivery_address_id": deliveryAddressId,
@@ -248,6 +369,7 @@ class OrderService {
         "promo_code": promoCode,
         "promo_discount_percent": promoDiscountPercent,
         "promo_discount_amount": promoDiscountAmount,
+        "payment_provider": paymentProvider,
         "merchant_payment_id": merchantPaymentId,
         "payment_session_token": paymentSessionToken,
         "payment_approved": paymentApproved,
@@ -256,6 +378,8 @@ class OrderService {
         "payment_error_code": paymentErrorCode,
         "payment_error_msg": paymentErrorMsg,
       },
+      withProviderQuery: createOrderMutationWithProvider,
+      withoutProviderQuery: createOrderMutationWithoutProvider,
     );
 
     final createdOrder = Map<String, dynamic>.from(
@@ -281,6 +405,29 @@ class OrderService {
     }
 
     return createdOrder;
+  }
+
+  Future<Map<String, dynamic>> _createOrderWithFallback({
+    required Map<String, dynamic> variables,
+    required String withProviderQuery,
+    required String withoutProviderQuery,
+  }) async {
+    try {
+      return await _hasura.graphQLRequest(
+        query: withProviderQuery,
+        variables: variables,
+      );
+    } catch (error) {
+      if (!_isMissingPaymentProviderColumnError(error)) {
+        rethrow;
+      }
+      final fallbackVariables = Map<String, dynamic>.from(variables)
+        ..remove("payment_provider");
+      return await _hasura.graphQLRequest(
+        query: withoutProviderQuery,
+        variables: fallbackVariables,
+      );
+    }
   }
 
   Future<void> updateOrderPaymentStatus({

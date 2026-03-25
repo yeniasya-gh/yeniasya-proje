@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../services/order_service.dart';
 import '../../services/auth/auth_provider.dart';
 import '../../services/error/error_manager.dart';
+import '../../utils/purchase_channel_labels.dart';
 import 'order_detail_screen.dart';
 
 class OrderListScreen extends StatefulWidget {
@@ -33,7 +34,9 @@ class _OrderListScreenState extends State<OrderListScreen> {
     } catch (e) {
       final parsed = ErrorManager.parseGraphQLError(e.toString());
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(parsed)));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(parsed)));
       }
     }
     setState(() => _loading = false);
@@ -76,6 +79,9 @@ class _OrderListScreenState extends State<OrderListScreen> {
     final total = order["total_paid"]?.toString() ?? "0";
     final status = (order["status"] ?? "paid").toString();
     final date = _formatDate(order["created_at"]);
+    final paymentChannel = PurchaseChannelLabels.paymentProviderLabel(
+      order["payment_provider"],
+    );
 
     return InkWell(
       onTap: () {
@@ -93,7 +99,11 @@ class _OrderListScreenState extends State<OrderListScreen> {
           color: Colors.white,
           borderRadius: BorderRadius.circular(14),
           boxShadow: [
-            BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8, offset: const Offset(0, 4)),
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 8,
+              offset: const Offset(0, 4),
+            ),
           ],
         ),
         child: Column(
@@ -102,28 +112,58 @@ class _OrderListScreenState extends State<OrderListScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text("Sipariş #$id", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                Text(
+                  "Sipariş #$id",
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.blue.shade50,
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Text(
                     _statusLabel(status),
-                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.blue),
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.blue,
+                    ),
                   ),
                 ),
               ],
             ),
             const SizedBox(height: 6),
-            Text(date, style: const TextStyle(color: Colors.black54, fontSize: 13)),
+            Text(
+              date,
+              style: const TextStyle(color: Colors.black54, fontSize: 13),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              "Ödeme Kanalı: $paymentChannel",
+              style: const TextStyle(color: Colors.black54, fontSize: 13),
+            ),
             const SizedBox(height: 8),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text("Toplam", style: TextStyle(fontWeight: FontWeight.w600)),
-                Text("₺$total", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
+                const Text(
+                  "Toplam",
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+                Text(
+                  "₺$total",
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.red,
+                  ),
+                ),
               ],
             ),
           ],

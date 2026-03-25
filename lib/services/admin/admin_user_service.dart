@@ -1,5 +1,12 @@
 import '../hasura_manager.dart';
 import '../../utils/hash_helper.dart';
+import '../../utils/purchase_channel_labels.dart';
+
+bool _isMissingAccessChannelColumnError(Object error) {
+  final message = error.toString().toLowerCase();
+  return message.contains("purchase_platform") ||
+      message.contains("grant_source");
+}
 
 class AdminUserService {
   AdminUserService({HasuraManager? hasura})
@@ -303,7 +310,28 @@ class AdminUserService {
   }
 
   Future<List<Map<String, dynamic>>> getActiveAccess(int userId) async {
-    const query = r'''
+    const queryWithChannel = r'''
+      query GetUserAccess($user_id: Int!) {
+        user_content_access(
+          where: {
+            user_id: {_eq: $user_id},
+            is_active: {_eq: true}
+          },
+          order_by: {started_at: desc}
+        ) {
+          id
+          item_type
+          item_id
+          started_at
+          expires_at
+          purchase_price
+          is_active
+          grant_source
+          purchase_platform
+        }
+      }
+    ''';
+    const queryWithoutChannel = r'''
       query GetUserAccess($user_id: Int!) {
         user_content_access(
           where: {
@@ -323,10 +351,21 @@ class AdminUserService {
       }
     ''';
 
-    final data = await _hasura.graphQLRequest(
-      query: query,
-      variables: {"user_id": userId},
-    );
+    Map<String, dynamic> data;
+    try {
+      data = await _hasura.graphQLRequest(
+        query: queryWithChannel,
+        variables: {"user_id": userId},
+      );
+    } catch (error) {
+      if (!_isMissingAccessChannelColumnError(error)) {
+        rethrow;
+      }
+      data = await _hasura.graphQLRequest(
+        query: queryWithoutChannel,
+        variables: {"user_id": userId},
+      );
+    }
 
     final access = List<Map<String, dynamic>>.from(
       data["user_content_access"] ?? [],
@@ -335,7 +374,25 @@ class AdminUserService {
   }
 
   Future<List<Map<String, dynamic>>> getAllAccess(int userId) async {
-    const query = r'''
+    const queryWithChannel = r'''
+      query GetUserAccessAll($user_id: Int!) {
+        user_content_access(
+          where: {user_id: {_eq: $user_id}},
+          order_by: {started_at: desc}
+        ) {
+          id
+          item_type
+          item_id
+          started_at
+          expires_at
+          is_active
+          purchase_price
+          grant_source
+          purchase_platform
+        }
+      }
+    ''';
+    const queryWithoutChannel = r'''
       query GetUserAccessAll($user_id: Int!) {
         user_content_access(
           where: {user_id: {_eq: $user_id}},
@@ -352,10 +409,21 @@ class AdminUserService {
       }
     ''';
 
-    final data = await _hasura.graphQLRequest(
-      query: query,
-      variables: {"user_id": userId},
-    );
+    Map<String, dynamic> data;
+    try {
+      data = await _hasura.graphQLRequest(
+        query: queryWithChannel,
+        variables: {"user_id": userId},
+      );
+    } catch (error) {
+      if (!_isMissingAccessChannelColumnError(error)) {
+        rethrow;
+      }
+      data = await _hasura.graphQLRequest(
+        query: queryWithoutChannel,
+        variables: {"user_id": userId},
+      );
+    }
 
     final access = List<Map<String, dynamic>>.from(
       data["user_content_access"] ?? [],
@@ -544,6 +612,8 @@ class AdminUserService {
           }
 
           normalized["item_type_label"] = _typeLabel(type);
+          normalized["access_channel_label"] =
+              PurchaseChannelLabels.accessChannelLabel(normalized);
           return normalized;
         })
         .toList(growable: false);

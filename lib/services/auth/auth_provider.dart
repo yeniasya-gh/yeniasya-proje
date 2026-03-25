@@ -94,6 +94,14 @@ class AuthProvider with ChangeNotifier {
     return DateTime.now().add(const Duration(days: 1));
   }
 
+  bool _isSessionInvalidError(Object error) {
+    final message = error.toString().toLowerCase();
+    return message.contains("session_revoked") ||
+        message.contains("invalid token") ||
+        message.contains("missing token") ||
+        message.contains("unauthorized");
+  }
+
   Future<void> _activateGuestSession({
     bool clearSavedUser = true,
     bool notify = true,
@@ -173,6 +181,16 @@ class AuthProvider with ChangeNotifier {
 
       _scheduleExpiry(expiresAt);
       notifyListeners();
+
+      try {
+        await _authApi.getMe();
+      } catch (e) {
+        if (_isSessionInvalidError(e)) {
+          debugPrint("🔴 [Auth] stored session revoked during loadSession: $e");
+          await logout();
+          return;
+        }
+      }
     } catch (e) {
       // If stored auth data is stale/corrupted, clear it instead of crashing on launch.
       debugPrint("🔴 [Auth] loadSession failed, switching to guest: $e");
@@ -706,8 +724,17 @@ class AuthProvider with ChangeNotifier {
   Future<void> refreshUser() async {
     final current = _user;
     if (current == null) return;
-    final updatedJson = await _authApi.getMe();
-    await _setCurrentUser(AppUser.fromAuthJson(updatedJson));
+    try {
+      final updatedJson = await _authApi.getMe();
+      await _setCurrentUser(AppUser.fromAuthJson(updatedJson));
+    } catch (e) {
+      if (_isSessionInvalidError(e)) {
+        debugPrint("🔴 [Auth] refreshUser detected revoked session: $e");
+        await logout();
+        return;
+      }
+      rethrow;
+    }
   }
 
   Future<void> updateProfile({required String name, String? phone}) async {

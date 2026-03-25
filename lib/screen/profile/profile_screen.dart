@@ -370,6 +370,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ],
           ),
+          if (rc.isRevenueCatEntitlementLocked) ...[
+            const SizedBox(height: 8),
+            Text(
+              rc.revenueCatOwnershipConflictMessage ??
+                  "Bu abonelik başka bir hesapta aktif.",
+              style: const TextStyle(
+                color: Colors.red,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
           const SizedBox(height: 12),
           if (!rc.supportsNativePurchaseUi)
             const Text(
@@ -519,6 +531,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     await rc.syncWithAuthUser(user);
     await rc.restorePurchases(userId: user.id);
     if (!mounted) return;
+    final conflictMessage =
+        rc.revenueCatOwnershipConflictMessage ?? rc.errorMessage;
+    if (conflictMessage != null && conflictMessage.isNotEmpty) {
+      _showInfo(conflictMessage);
+      return;
+    }
     if (rc.isYeniasyaProActive) {
       _showInfo("Abonelik geri yüklendi.");
       unawaited(context.read<AccessProvider>().load(user.id));

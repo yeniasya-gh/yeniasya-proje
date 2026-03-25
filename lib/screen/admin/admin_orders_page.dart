@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../services/admin/admin_order_service.dart';
 import '../../services/error/error_manager.dart';
+import '../../utils/purchase_channel_labels.dart';
 import '../order/order_detail_screen.dart';
 
 class AdminOrdersPage extends StatefulWidget {
@@ -41,9 +42,9 @@ class _AdminOrdersPageState extends State<AdminOrdersPage> {
     } catch (e) {
       final parsed = ErrorManager.parseGraphQLError(e.toString());
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(parsed)),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(parsed)));
       }
     }
     setState(() => _loading = false);
@@ -57,11 +58,11 @@ class _AdminOrdersPageState extends State<AdminOrdersPage> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text("Siparişler", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-            IconButton(
-              icon: const Icon(Icons.refresh),
-              onPressed: _load,
+            const Text(
+              "Siparişler",
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
             ),
+            IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
           ],
         ),
         const SizedBox(height: 12),
@@ -73,7 +74,10 @@ class _AdminOrdersPageState extends State<AdminOrdersPage> {
             prefixIcon: const Icon(Icons.search),
             filled: true,
             fillColor: Colors.white,
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide.none,
+            ),
           ),
         ),
         const SizedBox(height: 12),
@@ -85,65 +89,93 @@ class _AdminOrdersPageState extends State<AdminOrdersPage> {
               color: Colors.white,
               borderRadius: BorderRadius.circular(16),
               boxShadow: [
-                BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8, offset: const Offset(0, 4)),
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.04),
+                  blurRadius: 8,
+                  offset: const Offset(0, 4),
+                ),
               ],
             ),
             child: _loading
                 ? const SizedBox.shrink()
                 : _filtered.isEmpty
-                    ? const Center(child: Text("Sipariş bulunamadı."))
-                    : LayoutBuilder(
-                        builder: (context, constraints) {
-                          return SingleChildScrollView(
-                            scrollDirection: Axis.horizontal,
-                            child: ConstrainedBox(
-                              constraints: BoxConstraints(minWidth: constraints.maxWidth),
-                              child: DataTable(
-                                headingRowColor: MaterialStateProperty.all(Colors.grey.shade100),
-                                columnSpacing: 24,
-                                dataRowHeight: 52,
-                                columns: const [
-                                  DataColumn(label: Text("#")),
-                                  DataColumn(label: Text("Kullanıcı")),
-                                  DataColumn(label: Text("Tutar")),
-                                  DataColumn(label: Text("Durum")),
-                                  DataColumn(label: Text("Tarih")),
-                                  DataColumn(label: Text("Detay")),
-                                ],
-                                rows: _filtered.map((o) {
-                                  final total = (o["total_paid"] ?? 0).toString();
-                                  final userName = o["user"]?["name"] ?? o["user"]?["email"] ?? "-";
-                                  return DataRow(
-                                    cells: [
-                                      DataCell(Text(o["id"]?.toString() ?? "")),
-                                      DataCell(Text(userName)),
-                                      DataCell(Text("₺$total")),
-                                      DataCell(Text(_statusLabel(o["status"]?.toString() ?? ""))),
-                                      DataCell(Text(_formatDate(o["created_at"]))),
-                                      DataCell(
-                                        IconButton(
-                                          icon: const Icon(Icons.open_in_new, color: Colors.blue),
-                                          onPressed: () {
-                                            final id = o["id"];
-                                            if (id != null) {
-                                              Navigator.push(
-                                                context,
-                                                MaterialPageRoute(
-                                                  builder: (_) => OrderDetailScreen(orderId: id as int),
-                                                ),
-                                              );
-                                            }
-                                          },
-                                        ),
-                                      ),
-                                    ],
-                                  );
-                                }).toList(),
-                              ),
+                ? const Center(child: Text("Sipariş bulunamadı."))
+                : LayoutBuilder(
+                    builder: (context, constraints) {
+                      return SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(
+                            minWidth: constraints.maxWidth,
+                          ),
+                          child: DataTable(
+                            headingRowColor: MaterialStateProperty.all(
+                              Colors.grey.shade100,
                             ),
-                          );
-                        },
-                      ),
+                            columnSpacing: 24,
+                            dataRowHeight: 52,
+                            columns: const [
+                              DataColumn(label: Text("#")),
+                              DataColumn(label: Text("Kullanıcı")),
+                              DataColumn(label: Text("Tutar")),
+                              DataColumn(label: Text("Kanal")),
+                              DataColumn(label: Text("Durum")),
+                              DataColumn(label: Text("Tarih")),
+                              DataColumn(label: Text("Detay")),
+                            ],
+                            rows: _filtered.map((o) {
+                              final total = (o["total_paid"] ?? 0).toString();
+                              final userName =
+                                  o["user"]?["name"] ??
+                                  o["user"]?["email"] ??
+                                  "-";
+                              final paymentChannel =
+                                  PurchaseChannelLabels.paymentProviderLabel(
+                                    o["payment_provider"],
+                                  );
+                              return DataRow(
+                                cells: [
+                                  DataCell(Text(o["id"]?.toString() ?? "")),
+                                  DataCell(Text(userName)),
+                                  DataCell(Text("₺$total")),
+                                  DataCell(Text(paymentChannel)),
+                                  DataCell(
+                                    Text(
+                                      _statusLabel(
+                                        o["status"]?.toString() ?? "",
+                                      ),
+                                    ),
+                                  ),
+                                  DataCell(Text(_formatDate(o["created_at"]))),
+                                  DataCell(
+                                    IconButton(
+                                      icon: const Icon(
+                                        Icons.open_in_new,
+                                        color: Colors.blue,
+                                      ),
+                                      onPressed: () {
+                                        final id = o["id"];
+                                        if (id != null) {
+                                          Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (_) => OrderDetailScreen(
+                                                orderId: id as int,
+                                              ),
+                                            ),
+                                          );
+                                        }
+                                      },
+                                    ),
+                                  ),
+                                ],
+                              );
+                            }).toList(),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
           ),
         ),
       ],

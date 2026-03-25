@@ -506,6 +506,12 @@ class AuthApiService {
     http.Response resp, {
     required String fallbackMessage,
   }) {
+    if (resp.statusCode == 401 || resp.statusCode == 403) {
+      final code = _responseCode(resp);
+      if (code.isNotEmpty) {
+        throw Exception(code);
+      }
+    }
     if (resp.statusCode < 200 || resp.statusCode >= 300) {
       final message = _responseMessage(resp);
       throw Exception(message.isNotEmpty ? message : fallbackMessage);

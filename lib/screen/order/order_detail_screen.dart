@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../services/order_service.dart';
 import '../../services/error/error_manager.dart';
 import '../../utils/safe_image.dart';
+import '../../utils/purchase_channel_labels.dart';
 
 class OrderDetailScreen extends StatefulWidget {
   final int orderId;
@@ -31,7 +32,9 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     } catch (e) {
       final parsed = ErrorManager.parseGraphQLError(e.toString());
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(parsed)));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(parsed)));
       }
     }
     setState(() => _loading = false);
@@ -51,18 +54,18 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         child: _loading
             ? const Center(child: CircularProgressIndicator())
             : _order == null
-                ? const Center(child: Text("Sipariş bulunamadı."))
-                : SingleChildScrollView(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _itemsCard(),
-                        const SizedBox(height: 12),
-                        _summaryCard(),
-                      ],
-                    ),
-                  ),
+            ? const Center(child: Text("Sipariş bulunamadı."))
+            : SingleChildScrollView(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _itemsCard(),
+                    const SizedBox(height: 12),
+                    _summaryCard(),
+                  ],
+                ),
+              ),
       ),
     );
   }
@@ -72,9 +75,16 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     final total = _order?["total_paid"]?.toString() ?? "0";
     final date = _formatDate(_order?["created_at"]);
     final promoCode = _order?["promo_code"]?.toString();
-    final promoDiscountAmount =
-        (_order?["promo_discount_amount"] is num) ? (_order?["promo_discount_amount"] as num).toDouble() : double.tryParse(_order?["promo_discount_amount"]?.toString() ?? "0") ?? 0;
+    final promoDiscountAmount = (_order?["promo_discount_amount"] is num)
+        ? (_order?["promo_discount_amount"] as num).toDouble()
+        : double.tryParse(
+                _order?["promo_discount_amount"]?.toString() ?? "0",
+              ) ??
+              0;
     final promoPercent = _order?["promo_discount_percent"];
+    final paymentChannel = PurchaseChannelLabels.paymentProviderLabel(
+      _order?["payment_provider"],
+    );
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -82,7 +92,11 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8, offset: const Offset(0, 4)),
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
         ],
       ),
       child: Column(
@@ -91,28 +105,46 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text("Sipariş Özeti", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+              const Text(
+                "Sipariş Özeti",
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+              ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.blue.shade50,
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Text(
                   _statusLabel(status),
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.blue),
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.blue,
+                  ),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 8),
           Text(date, style: const TextStyle(color: Colors.black54)),
+          const SizedBox(height: 6),
+          Text(
+            "Ödeme Kanalı: $paymentChannel",
+            style: const TextStyle(color: Colors.black54),
+          ),
           const SizedBox(height: 8),
           if (promoCode != null && promoCode.isNotEmpty) ...[
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text("Promosyon ($promoCode)", style: const TextStyle(color: Colors.black87)),
+                Text(
+                  "Promosyon ($promoCode)",
+                  style: const TextStyle(color: Colors.black87),
+                ),
                 Text(
                   promoPercent == null ? " " : "%${promoPercent.toString()}",
                   style: const TextStyle(color: Colors.black54),
@@ -126,7 +158,10 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                 const Text("İndirim"),
                 Text(
                   "-₺${promoDiscountAmount.toStringAsFixed(2)}",
-                  style: const TextStyle(color: Colors.green, fontWeight: FontWeight.w600),
+                  style: const TextStyle(
+                    color: Colors.green,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ],
             ),
@@ -135,8 +170,17 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text("Toplam", style: TextStyle(fontWeight: FontWeight.w600)),
-              Text("₺$total", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
+              const Text(
+                "Toplam",
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
+              Text(
+                "₺$total",
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.red,
+                ),
+              ),
             ],
           ),
         ],
@@ -153,13 +197,20 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8, offset: const Offset(0, 4)),
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text("Ürünler", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+          const Text(
+            "Ürünler",
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+          ),
           const SizedBox(height: 8),
           ...items.map((i) {
             final type = _typeLabel(i["product_type"]);
@@ -190,11 +241,17 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(i["title"] ?? "", style: const TextStyle(fontWeight: FontWeight.w600)),
+                        Text(
+                          i["title"] ?? "",
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
                         const SizedBox(height: 4),
                         Text(
                           "Adet: ${i["quantity"] ?? 1}  |  Tip: $type",
-                          style: const TextStyle(color: Colors.black54, fontSize: 12),
+                          style: const TextStyle(
+                            color: Colors.black54,
+                            fontSize: 12,
+                          ),
                         ),
                       ],
                     ),
@@ -210,7 +267,10 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           if (items.isEmpty)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 8.0),
-              child: Text("Ürün bulunamadı.", style: TextStyle(color: Colors.black54)),
+              child: Text(
+                "Ürün bulunamadı.",
+                style: TextStyle(color: Colors.black54),
+              ),
             ),
         ],
       ),

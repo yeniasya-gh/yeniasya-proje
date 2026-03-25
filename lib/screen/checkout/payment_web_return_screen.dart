@@ -191,6 +191,7 @@ class _PaymentWebReturnScreenState extends State<PaymentWebReturnScreen> {
         appUserId: user?.revenueCatUserId,
         expirationDate: expiresAt,
         lifetime: expiresAt == null,
+        purchasePlatform: "paratika",
       );
       return true;
     } catch (_) {

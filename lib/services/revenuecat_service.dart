@@ -39,6 +39,8 @@ class RevenueCatService with ChangeNotifier {
   DateTime? _lastBackendSyncAttemptAt;
   String? _lastBackendEventFingerprint;
   DateTime? _lastBackendEventAttemptAt;
+  bool _revenueCatEntitlementLocked = false;
+  String? _revenueCatEntitlementLockMessage;
   CustomerInfo? _customerInfo;
   Offerings? _offerings;
   PaywallResult? _lastPaywallResult;
@@ -61,6 +63,9 @@ class RevenueCatService with ChangeNotifier {
   String? get currentAppUserId => _currentAppUserId;
   String? get expectedAppUserId => _expectedAppUserId;
   int? get currentDbUserId => _currentDbUserId;
+  bool get isRevenueCatEntitlementLocked => _revenueCatEntitlementLocked;
+  String? get revenueCatOwnershipConflictMessage =>
+      _revenueCatEntitlementLockMessage;
   CustomerInfo? get customerInfo => _customerInfo;
   Offerings? get offerings => _offerings;
   PaywallResult? get lastPaywallResult => _lastPaywallResult;
@@ -82,14 +87,16 @@ class RevenueCatService with ChangeNotifier {
           defaultTargetPlatform == TargetPlatform.iOS);
 
   bool get isYeniasyaProActive =>
+      !_revenueCatEntitlementLocked &&
       _customerInfo
-          ?.entitlements
-          .all[RevenueCatConfig.entitlementYeniasyaPro]
-          ?.isActive ==
-      true;
+              ?.entitlements
+              .all[RevenueCatConfig.entitlementYeniasyaPro]
+              ?.isActive ==
+          true;
 
-  String get newspaperStatusLabel =>
-      isYeniasyaProActive ? "Abonelik Var" : "Abonelik Yok";
+  String get newspaperStatusLabel => isRevenueCatEntitlementLocked
+      ? "Abonelik Başka Hesapta"
+      : (isYeniasyaProActive ? "Abonelik Var" : "Abonelik Yok");
 
   Offering? get currentOffering =>
       _offerings?.getOffering(RevenueCatConfig.offeringId) ??
@@ -180,8 +187,12 @@ class RevenueCatService with ChangeNotifier {
   }
 
   Future<void> syncWithAuthUser(AppUser? user) async {
+    final previousIdentity = _expectedAppUserId;
     _expectedAppUserId = user?.revenueCatUserId;
     _currentDbUserId = user?.id;
+    if (previousIdentity != _expectedAppUserId) {
+      _setRevenueCatOwnershipLock(locked: false);
+    }
 
     if (!supportsNativePurchaseUi) {
       _currentAppUserId = user?.revenueCatUserId;
@@ -320,6 +331,21 @@ class RevenueCatService with ChangeNotifier {
         source: "paywall_${result.name}",
         userId: userId,
       );
+      final backendConfirmed = await _confirmBackendSubscriptionState(
+        source: "paywall_${result.name}",
+        userId: userId,
+      );
+      if (!backendConfirmed) {
+        _lastPaywallResult = PaywallResult.error;
+        await _safeReportPaywallEvent(
+          source: "paywall_backend_conflict",
+          result: "ownership_conflict",
+          success: false,
+          userId: userId,
+          message: _revenueCatEntitlementLockMessage ?? _errorMessage,
+        );
+        return PaywallResult.error;
+      }
       return result;
     } on PlatformException catch (e) {
       final code = PurchasesErrorHelper.getErrorCode(e);
@@ -358,12 +384,26 @@ class RevenueCatService with ChangeNotifier {
     try {
       final info = await Purchases.restorePurchases();
       _updateCustomerInfo(info, source: "restore", userId: userId);
+      final backendConfirmed = await _confirmBackendSubscriptionState(
+        source: "restore",
+        userId: userId,
+      );
       final isActive =
           info
               .entitlements
               .all[RevenueCatConfig.entitlementYeniasyaPro]
               ?.isActive ==
           true;
+      if (!backendConfirmed) {
+        await _safeReportPaywallEvent(
+          source: "restore",
+          result: "ownership_conflict",
+          success: false,
+          userId: userId,
+          message: _revenueCatEntitlementLockMessage ?? _errorMessage,
+        );
+        return;
+      }
       if (!isActive) {
         _errorMessage = "Geri yüklenecek aktif abonelik bulunamadı.";
       }
@@ -411,6 +451,12 @@ class RevenueCatService with ChangeNotifier {
             customerInfo,
             source: "customer_center_restore",
             userId: userId,
+          );
+          unawaited(
+            _confirmBackendSubscriptionState(
+              source: "customer_center_restore",
+              userId: userId,
+            ),
           );
         },
         onRestoreFailed: (error) {
@@ -507,6 +553,7 @@ class RevenueCatService with ChangeNotifier {
     required int? userId,
     String? productIdentifier,
     String? expirationDate,
+    String? purchasePlatform,
     List<String>? activeSubscriptions,
   }) {
     final subscriptions = [...?activeSubscriptions]..sort();
@@ -519,6 +566,7 @@ class RevenueCatService with ChangeNotifier {
       userId?.toString() ?? "",
       productIdentifier ?? "",
       expirationDate ?? "",
+      purchasePlatform ?? "",
       subscriptions.join(","),
     ].join("|");
   }
@@ -549,6 +597,77 @@ class RevenueCatService with ChangeNotifier {
     return token != null && token.trim().isNotEmpty;
   }
 
+  bool _isRevenueCatOwnershipConflict(Object error) {
+    final message = error.toString().toLowerCase();
+    return message.contains("revenuecat_entitlement_locked") ||
+        message.contains("bu abonelik başka bir hesapta aktif") ||
+        message.contains("locked_to_other_user");
+  }
+
+  void _setRevenueCatOwnershipLock({required bool locked, String? message}) {
+    _revenueCatEntitlementLocked = locked;
+    _revenueCatEntitlementLockMessage = locked ? message : null;
+  }
+
+  Future<bool> _confirmBackendSubscriptionState({
+    required String source,
+    int? userId,
+  }) async {
+    final entitlement = _customerInfo
+        ?.entitlements
+        .all[RevenueCatConfig.entitlementYeniasyaPro];
+    final purchasePlatform = _purchasePlatformFromStore(entitlement?.store);
+    if (entitlement == null) {
+      _setRevenueCatOwnershipLock(locked: false);
+      return true;
+    }
+    if (!_hasBackendAuthToken()) {
+      return true;
+    }
+
+    try {
+      await _backendService.refreshSubscription(
+        source: source,
+        entitlementId: RevenueCatConfig.entitlementYeniasyaPro,
+        appUserId: _currentAppUserId,
+        expectedAppUserId: _expectedAppUserId,
+        identityMatched: isIdentityMatched,
+        userId: _resolvedBackendUserId(userId),
+        isActive: entitlement.isActive,
+        expirationDate: entitlement.expirationDate,
+        purchasePlatform: purchasePlatform,
+      );
+      _setRevenueCatOwnershipLock(locked: false);
+      return true;
+    } catch (e) {
+      if (_isRevenueCatOwnershipConflict(e)) {
+        final message =
+            "Bu abonelik başka bir hesapta aktif. Satın alan hesapla giriş yapın.";
+        _errorMessage = message;
+        _lastBackendWarning = message;
+        _lastBackendSyncAt = DateTime.now();
+        _lastBackendSyncSource = source;
+        _lastBackendSyncSuccess = false;
+        _lastBackendSyncError = e.toString();
+        _setRevenueCatOwnershipLock(locked: true, message: message);
+        notifyListeners();
+        return false;
+      }
+
+      _lastBackendSyncAt = DateTime.now();
+      _lastBackendSyncSource = source;
+      _lastBackendSyncSuccess = false;
+      _lastBackendSyncError = e.toString();
+      _lastBackendWarning =
+          "Abonelik durumu sunucudan doğrulanırken sorun oluştu.";
+      notifyListeners();
+      if (kDebugMode) {
+        debugPrint("RevenueCat backend confirmation warning: $e");
+      }
+      return true;
+    }
+  }
+
   Future<void> _refreshBackendSubscription({
     required AppUser user,
     required String source,
@@ -562,6 +681,9 @@ class RevenueCatService with ChangeNotifier {
       return;
     }
     try {
+      final entitlement = _customerInfo
+          ?.entitlements
+          .all[RevenueCatConfig.entitlementYeniasyaPro];
       await _backendService.refreshSubscription(
         source: source,
         entitlementId: RevenueCatConfig.entitlementYeniasyaPro,
@@ -569,13 +691,28 @@ class RevenueCatService with ChangeNotifier {
         expectedAppUserId: user.revenueCatUserId,
         identityMatched: true,
         userId: user.id,
+        purchasePlatform: _purchasePlatformFromStore(entitlement?.store),
       );
+      _setRevenueCatOwnershipLock(locked: false);
       _lastBackendSyncAt = DateTime.now();
       _lastBackendSyncSource = source;
       _lastBackendSyncSuccess = true;
       _lastBackendSyncError = null;
       _lastBackendWarning = null;
     } catch (e) {
+      if (_isRevenueCatOwnershipConflict(e)) {
+        final message =
+            "Bu abonelik başka bir hesapta aktif. Satın alan hesapla giriş yapın.";
+        _setRevenueCatOwnershipLock(locked: true, message: message);
+        _errorMessage = message;
+        _lastBackendWarning = message;
+        _lastBackendSyncAt = DateTime.now();
+        _lastBackendSyncSource = source;
+        _lastBackendSyncSuccess = false;
+        _lastBackendSyncError = e.toString();
+        notifyListeners();
+        return;
+      }
       if (kDebugMode) {
         debugPrint("RevenueCat backend refresh warning: $e");
       }
@@ -596,6 +733,7 @@ class RevenueCatService with ChangeNotifier {
     try {
       final entitlement =
           info.entitlements.all[RevenueCatConfig.entitlementYeniasyaPro];
+      final purchasePlatform = _purchasePlatformFromStore(entitlement?.store);
       final identityMatched = isIdentityMatched;
       final resolvedUserId = _resolvedBackendUserId(userId);
       if (!_hasBackendAuthToken()) {
@@ -613,6 +751,7 @@ class RevenueCatService with ChangeNotifier {
         userId: resolvedUserId,
         productIdentifier: entitlement?.productIdentifier,
         expirationDate: entitlement?.expirationDate,
+        purchasePlatform: purchasePlatform,
         activeSubscriptions: info.activeSubscriptions,
       );
       if (_shouldSkipBackendSync(syncFingerprint)) {
@@ -633,9 +772,11 @@ class RevenueCatService with ChangeNotifier {
         userId: resolvedUserId,
         productIdentifier: entitlement?.productIdentifier,
         expirationDate: entitlement?.expirationDate,
+        purchasePlatform: purchasePlatform,
         activeSubscriptions: info.activeSubscriptions,
         customerInfoRaw: _customerInfoSummary(info),
       );
+      _setRevenueCatOwnershipLock(locked: false);
       _lastBackendSyncAt = DateTime.now();
       _lastBackendSyncSource = source;
       _lastBackendSyncSuccess = true;
@@ -643,6 +784,22 @@ class RevenueCatService with ChangeNotifier {
       _lastBackendWarning = null;
       notifyListeners();
     } catch (e) {
+      if (_isRevenueCatOwnershipConflict(e)) {
+        final message =
+            "Bu abonelik başka bir hesapta aktif. Satın alan hesapla giriş yapın.";
+        _setRevenueCatOwnershipLock(locked: true, message: message);
+        _errorMessage = message;
+        _lastBackendWarning = message;
+        if (kDebugMode) {
+          debugPrint("RevenueCat backend sync warning: $e");
+        }
+        _lastBackendSyncAt = DateTime.now();
+        _lastBackendSyncSource = source;
+        _lastBackendSyncSuccess = false;
+        _lastBackendSyncError = e.toString();
+        notifyListeners();
+        return;
+      }
       if (kDebugMode) {
         debugPrint("RevenueCat backend sync warning: $e");
       }
@@ -733,6 +890,7 @@ class RevenueCatService with ChangeNotifier {
   Map<String, dynamic> _customerInfoSummary(CustomerInfo info) {
     final entitlement =
         info.entitlements.all[RevenueCatConfig.entitlementYeniasyaPro];
+    final purchasePlatform = _purchasePlatformFromStore(entitlement?.store);
     return <String, dynamic>{
       "appUserId": _currentAppUserId,
       "expectedAppUserId": _expectedAppUserId,
@@ -747,8 +905,32 @@ class RevenueCatService with ChangeNotifier {
         "willRenew": entitlement?.willRenew,
         "productIdentifier": entitlement?.productIdentifier,
         "expirationDate": entitlement?.expirationDate,
+        "store": entitlement?.store.name,
+        "purchasePlatform": purchasePlatform,
       },
+      "store": entitlement?.store.name,
+      "purchasePlatform": purchasePlatform,
     };
+  }
+
+  String? _purchasePlatformFromStore(Store? store) {
+    if (store == null) return null;
+    switch (store) {
+      case Store.appStore:
+      case Store.macAppStore:
+        return "apple";
+      case Store.playStore:
+        return "google_play";
+      case Store.stripe:
+      case Store.promotional:
+      case Store.unknownStore:
+      case Store.amazon:
+      case Store.rcBilling:
+      case Store.paddle:
+      case Store.testStore:
+      case Store.externalStore:
+        return null;
+    }
   }
 
   String _formatPurchasesPlatformError(PlatformException e) {

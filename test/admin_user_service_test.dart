@@ -49,6 +49,8 @@ class _FakeHasuraManager implements HasuraManager {
         "delete_email_verification_tokens": {"affected_rows": 1},
       if (query.contains("delete_password_reset_tokens"))
         "delete_password_reset_tokens": {"affected_rows": 1},
+      if (query.contains("user_content_access"))
+        "user_content_access": const [],
     };
   }
 }
@@ -119,6 +121,26 @@ void main() {
       expect(fakeHasura.lastVariables?["email"], contains("deleted_42_"));
       expect(fakeHasura.lastVariables?["password"], isNotNull);
       expect(fakeHasura.lastQuery, contains("is_active: false"));
+    },
+  );
+
+  test(
+    "AdminUserService.getAllAccess requests access channel columns",
+    () async {
+      final fakeHasura = _FakeHasuraManager();
+      final service = AdminUserService(hasura: fakeHasura);
+
+      final access = await service.getAllAccess(42);
+
+      expect(access, isEmpty);
+      expect(
+        fakeHasura.queries.any((query) => query.contains("grant_source")),
+        true,
+      );
+      expect(
+        fakeHasura.queries.any((query) => query.contains("purchase_platform")),
+        true,
+      );
     },
   );
 }

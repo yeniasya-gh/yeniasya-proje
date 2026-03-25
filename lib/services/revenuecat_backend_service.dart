@@ -25,6 +25,7 @@ class RevenueCatBackendService {
     String? expirationDate,
     List<String>? activeSubscriptions,
     Map<String, dynamic>? customerInfoRaw,
+    String? purchasePlatform,
   }) async {
     final payload = <String, dynamic>{
       "source": source,
@@ -42,6 +43,8 @@ class RevenueCatBackendService {
       if (activeSubscriptions != null)
         "activeSubscriptions": activeSubscriptions,
       if (customerInfoRaw != null) "customerInfo": customerInfoRaw,
+      if (purchasePlatform != null && purchasePlatform.isNotEmpty)
+        "purchasePlatform": purchasePlatform,
     };
     await _post(RevenueCatConfig.backendSyncPath, payload);
   }
@@ -85,6 +88,7 @@ class RevenueCatBackendService {
     int? userId,
     bool? isActive,
     String? expirationDate,
+    String? purchasePlatform,
   }) {
     final payload = <String, dynamic>{
       "source": source,
@@ -98,6 +102,8 @@ class RevenueCatBackendService {
       if (isActive != null) "isActive": isActive,
       if (expirationDate != null && expirationDate.isNotEmpty)
         "expirationDate": expirationDate,
+      if (purchasePlatform != null && purchasePlatform.isNotEmpty)
+        "purchasePlatform": purchasePlatform,
     };
     return _post(RevenueCatConfig.backendRefreshPath, payload);
   }
@@ -113,6 +119,7 @@ class RevenueCatBackendService {
     int? durationMonths,
     bool lifetime = false,
     String? platform,
+    String? purchasePlatform,
   }) {
     final payload = <String, dynamic>{
       "source": source,
@@ -129,6 +136,8 @@ class RevenueCatBackendService {
         "durationMonths": durationMonths,
       if (lifetime) "lifetime": true,
       if (platform != null && platform.isNotEmpty) "platform": platform,
+      if (purchasePlatform != null && purchasePlatform.isNotEmpty)
+        "purchasePlatform": purchasePlatform,
     };
     return _post(RevenueCatConfig.backendGrantPath, payload);
   }

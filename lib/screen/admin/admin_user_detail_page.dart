@@ -8,6 +8,7 @@ import '../../services/auth/auth_provider.dart';
 import '../../services/error/error_manager.dart';
 import '../../services/order_service.dart';
 import '../../utils/admin_user_detail_metrics.dart';
+import '../../utils/purchase_channel_labels.dart';
 import 'admin_loading_indicator.dart';
 
 class AdminUserDetailPage extends StatefulWidget {
@@ -324,6 +325,14 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
                     final expires = _formatDateShort(item["expires_at"]);
                     final status = _accessStatus(item);
                     final price = _formatPrice(item["purchase_price"]);
+                    final channelLabel =
+                        item["access_channel_label"]
+                                ?.toString()
+                                .trim()
+                                .isNotEmpty ==
+                            true
+                        ? item["access_channel_label"].toString()
+                        : PurchaseChannelLabels.accessChannelLabel(item);
                     final accessKey = item["id"]?.toString() ?? "";
                     final canRemove = item["is_active"] == true;
                     final isRemoving = _removingAccessKey == accessKey;
@@ -346,6 +355,10 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
                           ),
                           const SizedBox(height: 4),
                           Text("Başlangıç: $started  •  Bitiş: $expires"),
+                          if (channelLabel != "Bilinmiyor") ...[
+                            const SizedBox(height: 4),
+                            Text("Kaynak: $channelLabel"),
+                          ],
                         ],
                       ),
                       trailing: Column(
@@ -463,6 +476,10 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
                     final statusLabel = _statusLabel(
                       (order["status"] ?? "paid").toString(),
                     );
+                    final paymentChannel =
+                        PurchaseChannelLabels.paymentProviderLabel(
+                          order["payment_provider"],
+                        );
                     return ListTile(
                       contentPadding: EdgeInsets.zero,
                       title: Row(
@@ -476,6 +493,8 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text("Tarih: $created  •  Toplam: ₺$total"),
+                          const SizedBox(height: 4),
+                          Text("Ödeme Kanalı: $paymentChannel"),
                           if (items.isNotEmpty) ...[
                             const SizedBox(height: 6),
                             ...items.map((it) {

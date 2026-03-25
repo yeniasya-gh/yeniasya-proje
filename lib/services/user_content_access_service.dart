@@ -1,6 +1,12 @@
 import 'hasura_manager.dart';
 import 'cdn_authenticated_client.dart';
 
+bool _isMissingAccessChannelColumnError(Object error) {
+  final message = error.toString().toLowerCase();
+  return message.contains("purchase_platform") ||
+      message.contains("grant_source");
+}
+
 class UserContentAccessService {
   final _hasura = HasuraManager.instance;
   final _cdn = CdnAuthenticatedClient();
@@ -26,6 +32,15 @@ class UserContentAccessService {
             "started_at": i["started_at"],
             "expires_at": i["expires_at"],
             "purchase_price": i["purchase_price"],
+            if (_normalizeText(i["grant_source"] ?? i["source"]) != null)
+              "grant_source": _normalizeText(i["grant_source"] ?? i["source"]),
+            if (_normalizeText(
+                  i["purchase_platform"] ?? i["purchasePlatform"],
+                ) !=
+                null)
+              "purchase_platform": _normalizeText(
+                i["purchase_platform"] ?? i["purchasePlatform"],
+              ),
           },
         )
         .toList(growable: false);
@@ -104,7 +119,27 @@ class UserContentAccessService {
     required int userId,
     required String itemType,
   }) async {
-    const query = r'''
+    const queryWithChannel = r'''
+      query GetAccess($user_id: Int!, $item_type: access_item_type!) {
+        user_content_access(
+          where: {
+            user_id: {_eq: $user_id},
+            item_type: {_eq: $item_type},
+            is_active: {_eq: true}
+          }
+          order_by: {started_at: desc}
+        ) {
+          id
+          item_id
+          item_type
+          expires_at
+          started_at
+          grant_source
+          purchase_platform
+        }
+      }
+    ''';
+    const queryWithoutChannel = r'''
       query GetAccess($user_id: Int!, $item_type: access_item_type!) {
         user_content_access(
           where: {
@@ -123,10 +158,21 @@ class UserContentAccessService {
       }
     ''';
 
-    final data = await _hasura.graphQLRequest(
-      query: query,
-      variables: {"user_id": userId, "item_type": itemType},
-    );
+    Map<String, dynamic> data;
+    try {
+      data = await _hasura.graphQLRequest(
+        query: queryWithChannel,
+        variables: {"user_id": userId, "item_type": itemType},
+      );
+    } catch (error) {
+      if (!_isMissingAccessChannelColumnError(error)) {
+        rethrow;
+      }
+      data = await _hasura.graphQLRequest(
+        query: queryWithoutChannel,
+        variables: {"user_id": userId, "item_type": itemType},
+      );
+    }
 
     final entries = List<Map<String, dynamic>>.from(
       data["user_content_access"] ?? [],
@@ -142,7 +188,23 @@ class UserContentAccessService {
   Future<List<Map<String, dynamic>>> _getAllFromHasura({
     required int userId,
   }) async {
-    const query = r'''
+    const queryWithChannel = r'''
+      query GetAccessAll($user_id: Int!) {
+        user_content_access(
+          where: {user_id: {_eq: $user_id}, is_active: {_eq: true}},
+          order_by: {started_at: desc}
+        ) {
+          id
+          item_id
+          item_type
+          expires_at
+          started_at
+          grant_source
+          purchase_platform
+        }
+      }
+    ''';
+    const queryWithoutChannel = r'''
       query GetAccessAll($user_id: Int!) {
         user_content_access(
           where: {user_id: {_eq: $user_id}, is_active: {_eq: true}},
@@ -157,10 +219,21 @@ class UserContentAccessService {
       }
     ''';
 
-    final data = await _hasura.graphQLRequest(
-      query: query,
-      variables: {"user_id": userId},
-    );
+    Map<String, dynamic> data;
+    try {
+      data = await _hasura.graphQLRequest(
+        query: queryWithChannel,
+        variables: {"user_id": userId},
+      );
+    } catch (error) {
+      if (!_isMissingAccessChannelColumnError(error)) {
+        rethrow;
+      }
+      data = await _hasura.graphQLRequest(
+        query: queryWithoutChannel,
+        variables: {"user_id": userId},
+      );
+    }
 
     final entries = List<Map<String, dynamic>>.from(
       data["user_content_access"] ?? [],
@@ -288,7 +361,11 @@ class UserContentAccessService {
     }
 
     final newExpiry = existingExpiry.add(extensionDuration);
-    await _updateExistingEntryExpiry(existing: existing, expiresAt: newExpiry);
+    await _updateExistingEntryExpiry(
+      existing: existing,
+      expiresAt: newExpiry,
+      item: item,
+    );
     return true;
   }
 
@@ -531,10 +608,68 @@ class UserContentAccessService {
   Future<void> _updateAccessExpiry({
     required int? accessId,
     required DateTime expiresAt,
+    String? grantSource,
+    String? purchasePlatform,
   }) async {
     if (accessId == null) return;
 
-    const mutation = r'''
+    const mutationWithBoth = r'''
+      mutation UpdateAccessExpiry(
+        $id: Int!,
+        $expires_at: timestamptz!,
+        $grant_source: String,
+        $purchase_platform: String
+      ) {
+        update_user_content_access_by_pk(
+          pk_columns: {id: $id},
+          _set: {
+            expires_at: $expires_at,
+            grant_source: $grant_source,
+            purchase_platform: $purchase_platform
+          }
+        ) {
+          id
+          expires_at
+        }
+      }
+    ''';
+    const mutationWithGrantSource = r'''
+      mutation UpdateAccessExpiry(
+        $id: Int!,
+        $expires_at: timestamptz!,
+        $grant_source: String
+      ) {
+        update_user_content_access_by_pk(
+          pk_columns: {id: $id},
+          _set: {
+            expires_at: $expires_at,
+            grant_source: $grant_source
+          }
+        ) {
+          id
+          expires_at
+        }
+      }
+    ''';
+    const mutationWithPurchasePlatform = r'''
+      mutation UpdateAccessExpiry(
+        $id: Int!,
+        $expires_at: timestamptz!,
+        $purchase_platform: String
+      ) {
+        update_user_content_access_by_pk(
+          pk_columns: {id: $id},
+          _set: {
+            expires_at: $expires_at,
+            purchase_platform: $purchase_platform
+          }
+        ) {
+          id
+          expires_at
+        }
+      }
+    ''';
+    const mutationWithoutMetadata = r'''
       mutation UpdateAccessExpiry($id: Int!, $expires_at: timestamptz!) {
         update_user_content_access_by_pk(
           pk_columns: {id: $id},
@@ -546,8 +681,45 @@ class UserContentAccessService {
       }
     ''';
 
+    final variables = {
+      "id": accessId,
+      "expires_at": expiresAt.toIso8601String(),
+      "grant_source": grantSource,
+      "purchase_platform": purchasePlatform,
+    };
+
+    if (grantSource != null && purchasePlatform != null) {
+      await _hasura.graphQLRequest(
+        query: mutationWithBoth,
+        variables: variables,
+      );
+      return;
+    }
+    if (grantSource != null) {
+      await _hasura.graphQLRequest(
+        query: mutationWithGrantSource,
+        variables: {
+          "id": accessId,
+          "expires_at": expiresAt.toIso8601String(),
+          "grant_source": grantSource,
+        },
+      );
+      return;
+    }
+    if (purchasePlatform != null) {
+      await _hasura.graphQLRequest(
+        query: mutationWithPurchasePlatform,
+        variables: {
+          "id": accessId,
+          "expires_at": expiresAt.toIso8601String(),
+          "purchase_platform": purchasePlatform,
+        },
+      );
+      return;
+    }
+
     await _hasura.graphQLRequest(
-      query: mutation,
+      query: mutationWithoutMetadata,
       variables: {"id": accessId, "expires_at": expiresAt.toIso8601String()},
     );
   }
@@ -609,6 +781,7 @@ class UserContentAccessService {
   Future<void> _updateExistingEntryExpiry({
     required Map<String, dynamic> existing,
     required DateTime expiresAt,
+    Map<String, dynamic>? item,
   }) async {
     final source = (existing["source"] ?? "user_content_access").toString();
     if (source == "manual_newspaper") {
@@ -622,6 +795,10 @@ class UserContentAccessService {
     await _updateAccessExpiry(
       accessId: _asInt(existing["id"]),
       expiresAt: expiresAt,
+      grantSource: _normalizeText(item?["grant_source"] ?? item?["source"]),
+      purchasePlatform: _normalizeText(
+        item?["purchase_platform"] ?? item?["purchasePlatform"],
+      ),
     );
   }
 
@@ -639,6 +816,13 @@ class UserContentAccessService {
     if (value is int) return value;
     if (value == null) return null;
     return int.tryParse(value.toString());
+  }
+
+  String? _normalizeText(dynamic value) {
+    if (value == null) return null;
+    final text = value.toString().trim();
+    if (text.isEmpty) return null;
+    return text;
   }
 
   void _sortByStartDesc(List<Map<String, dynamic>> entries) {

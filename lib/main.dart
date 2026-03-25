@@ -64,7 +64,8 @@ class AppBootstrap extends StatefulWidget {
   State<AppBootstrap> createState() => _AppBootstrapState();
 }
 
-class _AppBootstrapState extends State<AppBootstrap> {
+class _AppBootstrapState extends State<AppBootstrap>
+    with WidgetsBindingObserver {
   bool _ready = false;
   String _status = "Uygulama hazırlanıyor";
   String? _lastRevenueCatIdentity;
@@ -87,6 +88,7 @@ class _AppBootstrapState extends State<AppBootstrap> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _ready = !_shouldGateHomeUntilBootstrap;
     _authProvider = context.read<AuthProvider>();
     unawaited(_bootstrap());
@@ -94,8 +96,17 @@ class _AppBootstrapState extends State<AppBootstrap> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _authProvider?.removeListener(_handleAuthChanged);
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+    final authProvider = _authProvider;
+    if (authProvider == null) return;
+    unawaited(authProvider.refreshUser());
   }
 
   Future<void> _bootstrap() async {
