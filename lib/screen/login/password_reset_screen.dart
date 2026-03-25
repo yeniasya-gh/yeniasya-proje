@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../home_responsive_screen.dart';
 import '../../services/auth/auth_provider.dart';
+import '../../utils/web_history.dart';
 
 class PasswordResetScreen extends StatefulWidget {
   final String? token;
@@ -23,6 +25,7 @@ class _PasswordResetScreenState extends State<PasswordResetScreen> {
   bool _submitting = false;
   bool _requestCompleted = false;
   bool _resetCompleted = false;
+  bool _successFlowHandled = false;
   bool _obscureNewPassword = true;
   bool _obscureConfirmPassword = true;
 
@@ -78,6 +81,45 @@ class _PasswordResetScreenState extends State<PasswordResetScreen> {
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
+
+    if (mounted && _resetCompleted && !_successFlowHandled) {
+      _successFlowHandled = true;
+      await _showSuccessDialogAndGoHome();
+    }
+  }
+
+  Future<void> _showSuccessDialogAndGoHome() async {
+    final shouldGoHome = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text("Şifreniz başarıyla değiştirildi"),
+          content: const Text(
+            "Yeni şifreniz kaydedildi. Ana sayfaya yönlendiriliyorsunuz.",
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text("Ana Sayfaya Git"),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (!mounted || shouldGoHome != true) return;
+    _goHome();
+  }
+
+  void _goHome() {
+    replaceBrowserPath("/");
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(
+        builder: (_) => HomeResponsiveScreen(initialUri: Uri(path: "/")),
+      ),
+      (route) => false,
+    );
   }
 
   void _showError(String message) {
@@ -213,11 +255,12 @@ class _PasswordResetScreenState extends State<PasswordResetScreen> {
     if (_resetCompleted) {
       return _statusCard(
         icon: Icons.verified_user_outlined,
-        title: "Şifre güncellendi",
+        title: "Şifreniz başarıyla değiştirildi",
         message:
-            "Şifreniz başarıyla güncellendi. Aynı bağlantı tekrar kullanılamaz.",
-        footer:
-            "Giriş ekranına dönüp yeni şifrenizle oturum açabilirsiniz.",
+            "Yeni şifreniz kaydedildi. Artık bu bağlantı tekrar kullanılamaz.",
+        footer: "Ana sayfaya dönüp yeni şifrenizle giriş yapabilirsiniz.",
+        actionLabel: "Ana Sayfaya Git",
+        onAction: _goHome,
       );
     }
 
@@ -253,9 +296,7 @@ class _PasswordResetScreenState extends State<PasswordResetScreen> {
                         : Icons.visibility_off_outlined,
                   ),
                   onPressed: () {
-                    setState(
-                      () => _obscureNewPassword = !_obscureNewPassword,
-                    );
+                    setState(() => _obscureNewPassword = !_obscureNewPassword);
                   },
                 ),
               ),
@@ -277,8 +318,7 @@ class _PasswordResetScreenState extends State<PasswordResetScreen> {
                   ),
                   onPressed: () {
                     setState(
-                      () => _obscureConfirmPassword =
-                          !_obscureConfirmPassword,
+                      () => _obscureConfirmPassword = !_obscureConfirmPassword,
                     );
                   },
                 ),
@@ -355,6 +395,8 @@ class _PasswordResetScreenState extends State<PasswordResetScreen> {
     required String title,
     required String message,
     String? footer,
+    String? actionLabel,
+    VoidCallback? onAction,
   }) {
     final canPop = Navigator.of(context).canPop();
     return _cardShell(
@@ -379,7 +421,20 @@ class _PasswordResetScreenState extends State<PasswordResetScreen> {
               style: const TextStyle(color: Colors.black54, height: 1.45),
             ),
           ],
-          if (canPop) ...[
+          if (actionLabel != null && onAction != null) ...[
+            const SizedBox(height: 18),
+            SizedBox(
+              height: 46,
+              child: ElevatedButton(
+                onPressed: onAction,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red,
+                  foregroundColor: Colors.white,
+                ),
+                child: Text(actionLabel),
+              ),
+            ),
+          ] else if (canPop) ...[
             const SizedBox(height: 18),
             OutlinedButton(
               onPressed: () => Navigator.of(context).pop(),

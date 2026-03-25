@@ -7,6 +7,7 @@ import '../../services/admin/admin_user_service.dart';
 import '../../services/auth/auth_provider.dart';
 import '../../services/error/error_manager.dart';
 import '../../services/order_service.dart';
+import '../../utils/admin_user_detail_metrics.dart';
 import 'admin_loading_indicator.dart';
 
 class AdminUserDetailPage extends StatefulWidget {
@@ -180,9 +181,9 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
   @override
   Widget build(BuildContext context) {
     final user = _resolvedUser;
-    final paidOrders = _orders
-        .where((o) => (o["status"] ?? "").toString().toLowerCase() == "paid")
-        .toList();
+    final visibleOrders = _buildVisibleOrders();
+    final orderStats = _buildOrderStats();
+    final totalPaid = (orderStats["totalPaid"] as num?)?.toDouble() ?? 0;
     final activeCount = _access.where(_isAccessCurrentlyActive).length;
     final passiveCount = _access.length - activeCount;
     final filteredAccess = _buildFilteredAccess();
@@ -291,7 +292,7 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
                         style: const TextStyle(height: 1.45),
                       ),
                       trailing: Text(
-                        item["count"]?.toString() ?? "0",
+                        "${item["count"] ?? 0}",
                         style: const TextStyle(
                           fontWeight: FontWeight.w700,
                           fontSize: 13,
@@ -318,6 +319,7 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
                     final itemSubtitle = item["item_subtitle"]
                         ?.toString()
                         .trim();
+                    final periodLabel = _accessPeriodLabel(item);
                     final started = _formatDateShort(item["started_at"]);
                     final expires = _formatDateShort(item["expires_at"]);
                     final status = _accessStatus(item);
@@ -337,6 +339,8 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
                               if (itemSubtitle != null &&
                                   itemSubtitle.isNotEmpty)
                                 itemSubtitle,
+                              if (periodLabel != null && periodLabel.isNotEmpty)
+                                "Süre: $periodLabel",
                               if (price != null) "Tutar: $price",
                             ].join("  •  "),
                           ),
@@ -438,21 +442,36 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
                   },
                 ),
                 const SizedBox(height: 18),
-                _sectionTitle("Başarılı Siparişler"),
-                _infoCard([_infoRow("Toplam", paidOrders.length.toString())]),
+                _sectionTitle("Siparişler"),
+                _infoCard([
+                  _infoRow("Toplam", orderStats["total"].toString()),
+                  _infoRow("Tamamlanan", orderStats["completed"].toString()),
+                  _infoRow("Bekleyen", orderStats["pending"].toString()),
+                  _infoRow("İptal/İade", orderStats["failed"].toString()),
+                  _infoRow("Toplam Tutar", "₺${totalPaid.toStringAsFixed(2)}"),
+                ]),
                 const SizedBox(height: 8),
                 _listCard(
-                  emptyText: "Başarılı sipariş bulunamadı.",
-                  items: paidOrders,
+                  emptyText: "Sipariş bulunamadı.",
+                  items: visibleOrders,
                   itemBuilder: (order) {
                     final id = order["id"]?.toString() ?? "-";
                     final total = order["total_paid"]?.toString() ?? "0";
                     final created = _formatDateShort(order["created_at"]);
                     final items = (order["order_items"] as List<dynamic>? ?? [])
                         .cast<Map<String, dynamic>>();
+                    final statusLabel = _statusLabel(
+                      (order["status"] ?? "paid").toString(),
+                    );
                     return ListTile(
                       contentPadding: EdgeInsets.zero,
-                      title: Text("Sipariş #$id"),
+                      title: Row(
+                        children: [
+                          Expanded(child: Text("Sipariş #$id")),
+                          const SizedBox(width: 8),
+                          _statusChip(statusLabel),
+                        ],
+                      ),
                       subtitle: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -652,20 +671,7 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
   }
 
   String _accessTypeLabel(String type) {
-    switch (type) {
-      case "book":
-        return "Kitap";
-      case "magazine":
-        return "E-dergi";
-      case "magazine_issue":
-        return "Dergi Sayısı";
-      case "newspaper_subscription":
-        return "Gazete Aboneliği";
-      case "ek":
-        return "Ek";
-      default:
-        return type;
-    }
+    return AdminUserDetailMetrics.accessTypeLabel(type);
   }
 
   List<Map<String, dynamic>> _buildFilteredAccess() {
@@ -700,38 +706,19 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
   List<Map<String, dynamic>> _buildContentSummary(
     List<Map<String, dynamic>> access,
   ) {
-    final grouped = <String, Map<String, dynamic>>{};
+    return AdminUserDetailMetrics.buildContentSummary(access);
+  }
 
-    for (final item in access) {
-      final type =
-          item["item_type_label"]?.toString() ??
-          _accessTypeLabel((item["item_type"] ?? "").toString());
-      final name = item["item_title"]?.toString().trim().isNotEmpty == true
-          ? item["item_title"].toString().trim()
-          : type;
-      final key = type;
-      final group = grouped.putIfAbsent(
-        key,
-        () => {"title": type, "names": <String>{}},
-      );
-      (group["names"] as Set<String>).add(name);
-    }
+  List<Map<String, dynamic>> _buildVisibleOrders() {
+    return AdminUserDetailMetrics.buildVisibleOrders(_orders);
+  }
 
-    final summary = grouped.values
-        .map(
-          (group) => {
-            "title": group["title"],
-            "names": ((group["names"] as Set<String>).toList()..sort()),
-            "count": (group["names"] as Set<String>).length,
-          },
-        )
-        .toList(growable: false);
-    summary.sort(
-      (a, b) => (a["title"]?.toString() ?? "").compareTo(
-        b["title"]?.toString() ?? "",
-      ),
-    );
-    return summary;
+  Map<String, dynamic> _buildOrderStats() {
+    return AdminUserDetailMetrics.buildOrderStats(_orders);
+  }
+
+  String? _accessPeriodLabel(Map<String, dynamic> item) {
+    return AdminUserDetailMetrics.accessPeriodLabel(item);
   }
 
   bool _isAccessCurrentlyActive(Map<String, dynamic> item) {
@@ -750,6 +737,59 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
       return const _AccessStatus("Süresi Dolmuş", Colors.orange);
     }
     return const _AccessStatus("Aktif", Colors.green);
+  }
+
+  String _statusLabel(String status) {
+    switch (status.toLowerCase()) {
+      case "pending":
+        return "Beklemede";
+      case "paid":
+        return "Ödendi";
+      case "success":
+        return "Başarılı";
+      case "completed":
+        return "Tamamlandı";
+      case "shipped":
+        return "Kargoda";
+      case "delivered":
+        return "Teslim Edildi";
+      case "canceled":
+        return "İptal";
+      case "refunded":
+        return "İade";
+      default:
+        return status;
+    }
+  }
+
+  Widget _statusChip(String status) {
+    final lower = status.toLowerCase();
+    final color = switch (lower) {
+      "ödendi" => Colors.green,
+      "başarılı" => Colors.green,
+      "tamamlandı" => Colors.green,
+      "teslim edildi" => Colors.green,
+      "beklemede" => Colors.orange,
+      "iptal" => Colors.red,
+      "iade" => Colors.deepOrange,
+      "kargoda" => Colors.blue,
+      _ => Colors.grey,
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        status,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          color: color,
+        ),
+      ),
+    );
   }
 
   DateTime? _parseDate(dynamic raw) {

@@ -22,6 +22,14 @@
           }
         },
         {
+          "client_id": "921079372710-poccakssurm7m69t1epgdtstt5ehk9jc.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.yeniasya.books",
+            "certificate_hash": "318eb52aed11349173d9450005580ef982ff7513"
+          }
+        },
+        {
           "client_id": "921079372710-psgg6du1ochgpof7q8f1pgbmhuqs3j0t.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {

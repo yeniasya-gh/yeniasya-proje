@@ -10,7 +10,8 @@ class CartProvider with ChangeNotifier {
 
   PromoCode? get appliedPromo => _promoCode;
 
-  double get totalPrice => _items.fold(0, (sum, item) => sum + item.price * item.quantity);
+  double get totalPrice =>
+      _items.fold(0, (sum, item) => sum + item.price * item.quantity);
 
   double get discountAmount {
     if (_promoCode == null) return 0;
@@ -25,16 +26,15 @@ class CartProvider with ChangeNotifier {
   }
 
   int _matchIndex(CartItem incoming) {
-    return _items.indexWhere(
-      (e) {
-        if (e.type != incoming.type) return false;
-        if (e.metadata?['productId'] != incoming.metadata?['productId']) return false;
-        if (e.type == CartItemType.magazine) {
-          return e.metadata?['magazineTypeId'] == incoming.metadata?['magazineTypeId'];
-        }
-        return true;
-      },
-    );
+    final incomingProductId = incoming.metadata?['productId'];
+    return _items.indexWhere((e) {
+      if (e.type != incoming.type) return false;
+      if (e.type == CartItemType.magazine) {
+        return e.metadata?['productId'] == incomingProductId;
+      }
+      if (e.metadata?['productId'] != incomingProductId) return false;
+      return true;
+    });
   }
 
   bool contains(CartItem incoming) => _matchIndex(incoming) >= 0;
