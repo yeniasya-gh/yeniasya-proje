@@ -8,6 +8,7 @@ import '../../services/revenuecat_service.dart';
 import '../register/register_bottom_sheet.dart';
 import '../register/social_register_bottom_sheet.dart';
 import '../home_responsive_screen.dart';
+import '../../utils/launch_uri.dart';
 import 'password_reset_screen.dart';
 import 'email_verification_screen.dart';
 import '../../main.dart';
@@ -46,17 +47,10 @@ class _LoginScreenState extends State<LoginScreen> {
     }
 
     if (kIsWeb) {
-      return const Icon(
-        Icons.apple,
-        color: Colors.black87,
-        size: 20,
-      );
+      return const Icon(Icons.apple, color: Colors.black87, size: 20);
     }
 
-    return const Icon(
-      FontAwesomeIcons.apple,
-      color: Colors.black87,
-    );
+    return const Icon(FontAwesomeIcons.apple, color: Colors.black87);
   }
 
   @override
@@ -73,7 +67,7 @@ class _LoginScreenState extends State<LoginScreen> {
     if (nav == null) return;
     nav.pushAndRemoveUntil(
       MaterialPageRoute(
-        builder: (_) => HomeResponsiveScreen(initialUri: Uri.base),
+        builder: (_) => HomeResponsiveScreen(initialUri: currentLaunchUri()),
       ),
       (route) => false,
     );
@@ -214,7 +208,8 @@ class _LoginScreenState extends State<LoginScreen> {
         if (nav.canPop()) return true;
         nav.pushAndRemoveUntil(
           MaterialPageRoute(
-            builder: (_) => HomeResponsiveScreen(initialUri: Uri.base),
+            builder: (_) =>
+                HomeResponsiveScreen(initialUri: currentLaunchUri()),
           ),
           (route) => false,
         );
@@ -389,10 +384,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                   onPressed: () {
                                     Navigator.of(context).push(
                                       MaterialPageRoute(
-                                        builder: (_) =>
-                                            PasswordResetScreen(
-                                              email: emailCtrl.text.trim(),
-                                            ),
+                                        builder: (_) => PasswordResetScreen(
+                                          email: emailCtrl.text.trim(),
+                                        ),
                                       ),
                                     );
                                   },

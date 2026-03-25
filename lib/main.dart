@@ -11,6 +11,7 @@ import '/services/auth/auth_provider.dart';
 import '/services/cart/cart_provider.dart';
 import '/services/access_provider.dart';
 import '/services/revenuecat_service.dart';
+import '/utils/launch_uri.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 
@@ -33,7 +34,7 @@ void main() {
     accessProvider.clear();
     rootNavigatorKey.currentState?.pushAndRemoveUntil(
       MaterialPageRoute(
-        builder: (_) => HomeResponsiveScreen(initialUri: Uri.base),
+        builder: (_) => HomeResponsiveScreen(initialUri: currentLaunchUri()),
       ),
       (route) => false,
     );
@@ -152,7 +153,7 @@ class _AppBootstrapState extends State<AppBootstrap> {
       },
       child: MyApp(
         home: _ready
-            ? HomeResponsiveScreen(initialUri: Uri.base)
+            ? HomeResponsiveScreen(initialUri: currentLaunchUri())
             : AppBootstrapScreen(status: _status),
       ),
     );
