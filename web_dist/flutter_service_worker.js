@@ -3,7 +3,7 @@ const MANIFEST = 'flutter-app-manifest';
 const TEMP = 'flutter-temp-cache';
 const CACHE_NAME = 'flutter-app-cache';
 
-const RESOURCES = {"flutter_bootstrap.js": "6ebe20fedac1462374d640419d22dd9a",
+const RESOURCES = {"flutter_bootstrap.js": "a15d5b6ab3e2f0d3a3b1080281be0544",
 "cerez-politikasi/index.html": "01022d2695fc5a1b3e39b36af87a7d53",
 "version.json": "112b57570a3f527b24c29e04e8ea0fcb",
 "splash/img/light-2x.png": "78988e7c4d052997e515d27c8d747e08",
