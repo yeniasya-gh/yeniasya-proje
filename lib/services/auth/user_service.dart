@@ -5,6 +5,8 @@ import '../../utils/hash_helper.dart';
 class UserService {
   final _hasura = HasuraManager.instance;
 
+  String _normalizeEmail(String email) => email.trim().toLowerCase();
+
   Future<AppUser> register({
     required String name,
     String? phone,
@@ -43,7 +45,7 @@ class UserService {
       variables: {
         "name": name,
         "phone": phone,
-        "email": email,
+        "email": _normalizeEmail(email),
         "password": hashedPassword,
       },
     );
@@ -64,10 +66,14 @@ class UserService {
     ) {
       users(
       where: {
-        email: { _eq: $email },
+        _or: [
+          {email: {_eq: $email}},
+          {email: {_ilike: $email}}
+        ],
         password: { _eq: $password },
         is_active: { _eq: true }
       },
+      order_by: [{email_verified_at: desc_nulls_last}, {id: asc}],
       limit: 1
     ) {
       id
@@ -87,7 +93,7 @@ class UserService {
 
     final data = await _hasura.graphQLRequest(
       query: query,
-      variables: {"email": email, "password": hashedPassword},
+      variables: {"email": _normalizeEmail(email), "password": hashedPassword},
     );
 
     final list = data["users"] as List;
@@ -99,7 +105,16 @@ class UserService {
   Future<AppUser?> getUserByEmail(String email) async {
     const String query = r'''
       query GetUserByEmail($email: String!) {
-        users(where: {email: {_eq: $email}}, limit: 1) {
+        users(
+          where: {
+            _or: [
+              {email: {_eq: $email}},
+              {email: {_ilike: $email}}
+            ]
+          },
+          order_by: [{email_verified_at: desc_nulls_last}, {id: asc}],
+          limit: 1
+        ) {
           id
           name
           phone
@@ -114,7 +129,7 @@ class UserService {
 
     final data = await _hasura.graphQLRequest(
       query: query,
-      variables: {"email": email},
+      variables: {"email": _normalizeEmail(email)},
     );
 
     final list = data["users"] as List<dynamic>? ?? [];

@@ -11,6 +11,7 @@ class _FakeAdminUserService extends AdminUserService {
   final List<Map<String, dynamic>> _users;
   int getAllUsersCalls = 0;
   int addUserCalls = 0;
+  int deleteUserCalls = 0;
 
   @override
   Future<List<Map<String, dynamic>>> getAllUsers() async {
@@ -45,6 +46,14 @@ class _FakeAdminUserService extends AdminUserService {
       "role_id": roleId,
       "role": roleId == 2 ? "Admin" : "User",
     });
+    return true;
+  }
+
+  @override
+  Future<bool> deleteUser(int id) async {
+    deleteUserCalls += 1;
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    _users.removeWhere((item) => item["id"] == id);
     return true;
   }
 }
@@ -94,5 +103,46 @@ void main() {
       find.text("Kullanıcı eklendi ve liste güncellendi."),
       findsOneWidget,
     );
+  });
+
+  testWidgets("Kullanıcı silme önce onay ister", (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1600, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final fakeService = _FakeAdminUserService([
+      {
+        "id": 1,
+        "name": "Silinecek Kullanıcı",
+        "email": "silinecek@example.com",
+        "phone": "05550000000",
+        "role_id": 1,
+        "role": "User",
+      },
+    ]);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: AdminUsersPage(adminService: fakeService)),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final deleteButton = find.byIcon(Icons.delete).first;
+    await tester.tap(deleteButton);
+    await tester.pumpAndSettle();
+
+    expect(find.text("Kullanıcı silinsin mi?"), findsOneWidget);
+    expect(fakeService.deleteUserCalls, 0);
+    expect(find.textContaining("Bağlı siparişler"), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(ElevatedButton, "Sil"));
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(fakeService.deleteUserCalls, 1);
+    expect(find.text("Silinecek Kullanıcı"), findsNothing);
+    expect(find.text("silinecek@example.com"), findsNothing);
+    expect(find.text("Kullanıcı silindi"), findsOneWidget);
+    expect(find.byType(AlertDialog), findsNothing);
   });
 }

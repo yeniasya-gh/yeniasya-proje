@@ -108,20 +108,56 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
   }
 
   // ❌ Kullanıcı sil
-  void _deleteUser(int id) async {
+  Future<void> _deleteUser(int id) async {
     if (!mounted) return;
     final messenger = ScaffoldMessenger.of(context);
     try {
       final ok = await _adminService.deleteUser(id);
       if (!mounted) return;
       if (ok) {
-        _loadUsers();
+        await _loadUsers();
         messenger.showSnackBar(
           const SnackBar(content: Text("Kullanıcı silindi")),
         );
+      } else {
+        await _showError("Kullanıcı silinemedi.");
       }
     } catch (e) {
-      _showError("Kullanıcı silinemedi:\n$e");
+      await _showError("Kullanıcı silinemedi:\n$e");
+    }
+  }
+
+  Future<void> _confirmDeleteUser(Map<String, dynamic> user) async {
+    final userId = user["id"];
+    if (userId == null) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text("Kullanıcı silinsin mi?"),
+        content: Text(
+          "${user["name"] ?? "Bu kullanıcı"} silinecek.\n"
+          "Bağlı siparişler, adresler, erişimler, bildirimler, yorumlar ve kayıtlar da silinecek.",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text("Vazgeç"),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text("Sil"),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      final parsedUserId = _asInt(userId);
+      if (parsedUserId == null) return;
+      await _deleteUser(parsedUserId);
     }
   }
 
@@ -983,7 +1019,7 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
                                     Icons.delete,
                                     color: Colors.red,
                                   ),
-                                  onPressed: () => _deleteUser(u["id"]),
+                                  onPressed: () => _confirmDeleteUser(u),
                                 ),
                               ],
                             ),

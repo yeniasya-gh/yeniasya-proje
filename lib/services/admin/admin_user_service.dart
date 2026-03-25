@@ -194,15 +194,120 @@ class AdminUserService {
 
   /// Kullanıcı sil
   Future<bool> deleteUser(int id) async {
-    const String mutation = r'''
+    const hardDeleteMutation = r'''
       mutation DeleteUser($id: bigint!) {
         delete_users_by_pk(id: $id) { id }
       }
     ''';
 
-    await _hasura.graphQLRequest(query: mutation, variables: {"id": id});
+    try {
+      await _deleteUserRelatedData(id);
 
-    return true;
+      final hardDeleteData = await _hasura.graphQLRequest(
+        query: hardDeleteMutation,
+        variables: {"id": id},
+      );
+      if (hardDeleteData["delete_users_by_pk"] != null) {
+        return true;
+      }
+    } catch (_) {
+      // İlişkili kayıtlar veya ek kısıtlar nedeniyle hard delete başarısız olabilir.
+    }
+
+    // Son çare: hesabı anonimize edip pasifleştir.
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final deletedEmail = "deleted_${id}_$now@yeniasya.local";
+    final deletedPassword = HashHelper.hashPassword("deleted_${id}_$now");
+
+    const softDeleteMutation = r'''
+      mutation DeactivateUser(
+        $id: bigint!,
+        $name: String!,
+        $email: String!,
+        $password: String!
+      ) {
+        update_users_by_pk(
+          pk_columns: {id: $id},
+          _set: {
+            name: $name,
+            email: $email,
+            phone: null,
+            password: $password,
+            is_active: false,
+            email_verified_at: null,
+            firebase_token: null
+          }
+        ) {
+          id
+        }
+      }
+    ''';
+
+    final softDeleteData = await _hasura.graphQLRequest(
+      query: softDeleteMutation,
+      variables: {
+        "id": id,
+        "name": "Silinmiş Hesap",
+        "email": deletedEmail,
+        "password": deletedPassword,
+      },
+    );
+
+    return softDeleteData["update_users_by_pk"] != null;
+  }
+
+  Future<void> _deleteUserRelatedData(int userId) async {
+    const mutation = r'''
+      mutation DeleteUserRelatedData($user_id: bigint!) {
+        delete_order_items(
+          where: {order: {user_id: {_eq: $user_id}}}
+        ) {
+          affected_rows
+        }
+        delete_orders(where: {user_id: {_eq: $user_id}}) {
+          affected_rows
+        }
+        delete_notifications(where: {user_id: {_eq: $user_id}}) {
+          affected_rows
+        }
+        delete_contact_messages(where: {user_id: {_eq: $user_id}}) {
+          affected_rows
+        }
+        delete_product_reviews(where: {user_id: {_eq: $user_id}}) {
+          affected_rows
+        }
+        delete_user_access_audit_log(
+          where: {
+            _or: [
+              {user_id: {_eq: $user_id}},
+              {actor_user_id: {_eq: $user_id}}
+            ]
+          }
+        ) {
+          affected_rows
+        }
+        delete_user_addresses(where: {user_id: {_eq: $user_id}}) {
+          affected_rows
+        }
+        delete_user_content_access(where: {user_id: {_eq: $user_id}}) {
+          affected_rows
+        }
+        delete_manual_newspaper_users(where: {user_id: {_eq: $user_id}}) {
+          affected_rows
+        }
+        delete_email_verification_tokens(where: {user_id: {_eq: $user_id}}) {
+          affected_rows
+        }
+        delete_password_reset_tokens(where: {user_id: {_eq: $user_id}}) {
+          affected_rows
+        }
+      }
+    ''';
+
+    await _hasura.graphQLRequest(
+      query: mutation,
+      variables: {"user_id": userId},
+    );
   }
 
   Future<List<Map<String, dynamic>>> getActiveAccess(int userId) async {

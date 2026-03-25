@@ -618,7 +618,7 @@ class AuthProvider with ChangeNotifier {
 
       final prefs = await SharedPreferences.getInstance();
       if (rememberMe) {
-        await prefs.setString("saved_email", email);
+        await prefs.setString("saved_email", email.trim().toLowerCase());
       } else {
         await prefs.remove("saved_email");
       }
@@ -630,7 +630,7 @@ class AuthProvider with ChangeNotifier {
         _errorMessage = "E-posta veya şifre hatalı.";
       } else if (msg.contains("EMAIL_NOT_VERIFIED")) {
         _needsEmailVerification = true;
-        _verificationEmailHint = email.trim();
+        _verificationEmailHint = email.trim().toLowerCase();
         _errorMessage =
             "Hesabınızı onaylayın. E-posta adresinize gönderilen bağlantı ile hesabınızı aktifleştirin.";
       } else {
@@ -660,14 +660,14 @@ class AuthProvider with ChangeNotifier {
       );
       _isLoggedIn = false;
       _user = null;
-      _verificationEmailHint = email.trim();
+      _verificationEmailHint = email.trim().toLowerCase();
       _needsEmailVerification = false;
       notifyListeners();
       return true;
     } catch (e) {
       _isLoggedIn = false;
       _user = null;
-      _verificationEmailHint = email.trim();
+      _verificationEmailHint = email.trim().toLowerCase();
       _needsEmailVerification = false;
       _errorMessage = e.toString().replaceFirst("Exception:", "").trim();
 
@@ -750,7 +750,7 @@ class AuthProvider with ChangeNotifier {
 
   Future<void> requestEmailVerification({required String email}) async {
     await _authApi.requestEmailVerification(email: email);
-    _verificationEmailHint = email.trim();
+    _verificationEmailHint = email.trim().toLowerCase();
     notifyListeners();
   }
 

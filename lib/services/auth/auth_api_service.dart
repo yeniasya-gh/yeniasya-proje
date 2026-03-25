@@ -10,6 +10,8 @@ class AuthApiService {
   final String _baseUrl;
   final http.Client _client;
 
+  String _normalizeEmail(String email) => email.trim().toLowerCase();
+
   Future<Map<String, dynamic>> register({
     required String name,
     required String email,
@@ -27,7 +29,7 @@ class AuthApiService {
       headers: headers,
       body: jsonEncode({
         "name": name,
-        "email": email,
+        "email": _normalizeEmail(email),
         "password": password,
         if (phone != null) "phone": phone,
       }),
@@ -56,7 +58,7 @@ class AuthApiService {
     final resp = await _client.post(
       uri,
       headers: headers,
-      body: jsonEncode({"email": email, "password": password}),
+      body: jsonEncode({"email": _normalizeEmail(email), "password": password}),
     );
 
     Map<String, dynamic>? payload;
@@ -103,7 +105,7 @@ class AuthApiService {
       uri,
       headers: headers,
       body: jsonEncode({
-        "email": email,
+        "email": _normalizeEmail(email),
         "provider": provider,
         if (name != null && name.trim().isNotEmpty) "name": name.trim(),
         if (phone != null && phone.trim().isNotEmpty) "phone": phone.trim(),
@@ -151,7 +153,7 @@ class AuthApiService {
       uri,
       headers: headers,
       body: jsonEncode({
-        "email": email,
+        "email": _normalizeEmail(email),
         "name": name,
         "provider": provider,
         if (phone != null && phone.trim().isNotEmpty) "phone": phone.trim(),
@@ -196,7 +198,7 @@ class AuthApiService {
     final resp = await _client.post(
       uri,
       headers: const {"content-type": "application/json"},
-      body: jsonEncode({"email": email.trim()}),
+      body: jsonEncode({"email": _normalizeEmail(email)}),
     );
 
     if (resp.statusCode >= 200 && resp.statusCode < 300) {
@@ -211,7 +213,7 @@ class AuthApiService {
     final resp = await _client.post(
       uri,
       headers: const {"content-type": "application/json"},
-      body: jsonEncode({"email": email.trim()}),
+      body: jsonEncode({"email": _normalizeEmail(email)}),
     );
 
     if (resp.statusCode >= 200 && resp.statusCode < 300) {
