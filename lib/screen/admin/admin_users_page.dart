@@ -10,6 +10,7 @@ import '../../services/admin/admin_ek_service.dart';
 import '../../services/admin/admin_user_access_audit_service.dart';
 import '../../services/auth/auth_provider.dart';
 import '../../services/user_content_access_service.dart';
+import 'admin_passive_users_page.dart';
 import 'admin_user_detail_page.dart';
 
 class AdminUsersPage extends StatefulWidget {
@@ -148,7 +149,7 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text("Sil"),
+            child: const Text("Pasife Al"),
           ),
         ],
       ),
@@ -165,6 +166,18 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => AdminUserDetailPage(user: user)),
+    );
+  }
+
+  void _openPassiveUsersPage() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AdminPassiveUsersPage(
+          adminService: _adminService,
+          auditService: _auditService,
+        ),
+      ),
     );
   }
 
@@ -914,21 +927,40 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // ÜST BAR
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        Wrap(
+          alignment: WrapAlignment.spaceBetween,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 16,
+          runSpacing: 12,
           children: [
             const Text(
               "Kullanıcı Yönetimi",
               style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
             ),
-            ElevatedButton.icon(
-              icon: const Icon(Icons.add, color: Colors.white),
-              label: const Text(
-                "Kullanıcı Ekle",
-                style: TextStyle(color: Colors.white),
-              ),
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-              onPressed: _showAddUserDialog,
+            Wrap(
+              spacing: 12,
+              runSpacing: 8,
+              alignment: WrapAlignment.end,
+              children: [
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.person_off),
+                  label: const Text("Pasif Kullanıcılar"),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.red,
+                    side: const BorderSide(color: Colors.red),
+                  ),
+                  onPressed: _openPassiveUsersPage,
+                ),
+                ElevatedButton.icon(
+                  icon: const Icon(Icons.add, color: Colors.white),
+                  label: const Text(
+                    "Kullanıcı Ekle",
+                    style: TextStyle(color: Colors.white),
+                  ),
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                  onPressed: _showAddUserDialog,
+                ),
+              ],
             ),
           ],
         ),
@@ -1020,6 +1052,7 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
                                     color: Colors.red,
                                   ),
                                   onPressed: () => _confirmDeleteUser(u),
+                                  tooltip: "Pasife Al",
                                 ),
                               ],
                             ),

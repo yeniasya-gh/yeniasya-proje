@@ -2,6 +2,11 @@ import '../../models/app_user.dart';
 import '../hasura_manager.dart';
 import '../../utils/hash_helper.dart';
 
+bool _isMissingDeactivatedAtColumnError(Object error) {
+  final message = error.toString().toLowerCase();
+  return message.contains("deactivated_at");
+}
+
 class UserService {
   final _hasura = HasuraManager.instance;
 
@@ -253,7 +258,32 @@ class UserService {
     final deletedEmail = "deleted_${id}_$now@yeniasya.local";
     final deletedPassword = HashHelper.hashPassword("deleted_${id}_$now");
 
-    const softDeleteMutation = r'''
+    const softDeleteMutationWithDeactivatedAt = r'''
+      mutation DeactivateAccount(
+        $id: bigint!,
+        $name: String!,
+        $email: String!,
+        $password: String!,
+        $deactivated_at: timestamptz!
+      ) {
+        update_users_by_pk(
+          pk_columns: {id: $id},
+          _set: {
+            name: $name,
+            email: $email,
+            phone: null,
+            password: $password,
+            is_active: false,
+            deactivated_at: $deactivated_at,
+            firebase_token: null
+          }
+        ) {
+          id
+        }
+      }
+    ''';
+
+    const softDeleteMutationWithoutDeactivatedAt = r'''
       mutation DeactivateAccount(
         $id: bigint!,
         $name: String!,
@@ -276,15 +306,32 @@ class UserService {
       }
     ''';
 
-    final fallbackData = await _hasura.graphQLRequest(
-      query: softDeleteMutation,
-      variables: {
-        "id": id,
-        "name": "Silinmiş Hesap",
-        "email": deletedEmail,
-        "password": deletedPassword,
-      },
-    );
+    Map<String, dynamic> fallbackData;
+    try {
+      fallbackData = await _hasura.graphQLRequest(
+        query: softDeleteMutationWithDeactivatedAt,
+        variables: {
+          "id": id,
+          "name": "Silinmiş Hesap",
+          "email": deletedEmail,
+          "password": deletedPassword,
+          "deactivated_at": DateTime.now().toUtc().toIso8601String(),
+        },
+      );
+    } catch (error) {
+      if (!_isMissingDeactivatedAtColumnError(error)) {
+        rethrow;
+      }
+      fallbackData = await _hasura.graphQLRequest(
+        query: softDeleteMutationWithoutDeactivatedAt,
+        variables: {
+          "id": id,
+          "name": "Silinmiş Hesap",
+          "email": deletedEmail,
+          "password": deletedPassword,
+        },
+      );
+    }
 
     return fallbackData["update_users_by_pk"] != null;
   }

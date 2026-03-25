@@ -51,6 +51,34 @@ class _FakeHasuraManager implements HasuraManager {
         "delete_password_reset_tokens": {"affected_rows": 1},
       if (query.contains("user_content_access"))
         "user_content_access": const [],
+      if (query.contains("is_active: {_eq: false}"))
+        "users": [
+          {
+            "id": 77,
+            "name": "Pasif Kullanıcı",
+            "email": "pasif@example.com",
+            "phone": "05550000000",
+            "role_id": 1,
+            "is_active": false,
+            "deactivated_at": "2026-03-25T10:00:00Z",
+            "email_verified_at": "2026-03-24T10:00:00Z",
+            "role": {"name": "User"},
+          },
+        ],
+      if (query.contains("deactivated_at"))
+        "users_by_pk": {
+          "id": 1,
+          "name": "Silinmiş Hesap",
+          "email": "deleted@example.local",
+          "phone": null,
+          "role_id": 1,
+          "role": {"name": "User"},
+          "avatar_url": null,
+          "payUniqe": null,
+          "is_active": false,
+          "email_verified_at": null,
+          "deactivated_at": "2026-03-25T10:00:00Z",
+        },
     };
   }
 }
@@ -102,6 +130,7 @@ void main() {
     expect(fakeHasura.queries[1], contains("update_users_by_pk"));
     expect(fakeHasura.lastQuery, contains("update_users_by_pk"));
     expect(fakeHasura.lastQuery, contains("is_active: false"));
+    expect(fakeHasura.lastQuery, contains("deactivated_at"));
   });
 
   test(
@@ -121,6 +150,7 @@ void main() {
       expect(fakeHasura.lastVariables?["email"], contains("deleted_42_"));
       expect(fakeHasura.lastVariables?["password"], isNotNull);
       expect(fakeHasura.lastQuery, contains("is_active: false"));
+      expect(fakeHasura.lastQuery, contains("deactivated_at"));
     },
   );
 
@@ -139,6 +169,30 @@ void main() {
       );
       expect(
         fakeHasura.queries.any((query) => query.contains("purchase_platform")),
+        true,
+      );
+    },
+  );
+
+  test(
+    "AdminUserService.getPassiveUsers requests deactivated_at and returns passive users",
+    () async {
+      final fakeHasura = _FakeHasuraManager();
+      final service = AdminUserService(hasura: fakeHasura);
+
+      final passiveUsers = await service.getPassiveUsers();
+
+      expect(passiveUsers, isNotEmpty);
+      expect(passiveUsers.first["is_active"], false);
+      expect(passiveUsers.first["deactivated_at"], isNotNull);
+      expect(
+        fakeHasura.queries.any((query) => query.contains("deactivated_at")),
+        true,
+      );
+      expect(
+        fakeHasura.queries.any(
+          (query) => query.contains("is_active: {_eq: false}"),
+        ),
         true,
       );
     },

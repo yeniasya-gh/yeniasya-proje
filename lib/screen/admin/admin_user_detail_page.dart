@@ -125,9 +125,12 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
+        scrollable: true,
         title: const Text("Erişimi Kaldır"),
-        content: Text(
-          "$itemTitle erişimini kaldırmak istediğinize emin misiniz? Bu işlem kullanıcı tarafındaki erişimi pasife çevirir.",
+        content: SingleChildScrollView(
+          child: Text(
+            "$itemTitle erişimini kaldırmak istediğinize emin misiniz? Bu işlem kullanıcı tarafındaki erişimi pasife çevirir.",
+          ),
         ),
         actions: [
           TextButton(
@@ -235,6 +238,9 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
                   _infoRow("Telefon", user["phone"] ?? "-"),
                   _infoRow("Rol", _roleLabel(user)),
                   _infoRow("Durum", _userActiveLabel(user)),
+                  if (user["deactivated_at"] != null ||
+                      user["is_active"] == false)
+                    _infoRow("Pasife Alınma", _deactivationLabel(user)),
                   _infoRow("E-posta Onayı", _emailVerificationLabel(user)),
                   _infoRow("Pay ID", _displayValue(user["payUniqe"])),
                   _infoRow("Avatar", _displayValue(user["avatar_url"])),
@@ -867,6 +873,14 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
       return "Doğrulanmamış";
     }
     return _formatDateShort(verifiedAt);
+  }
+
+  String _deactivationLabel(Map<String, dynamic> user) {
+    final deactivatedAt = user["deactivated_at"];
+    if (deactivatedAt == null || deactivatedAt.toString().trim().isEmpty) {
+      return "Pasife alınma tarihi bulunamadı";
+    }
+    return _formatDateShort(deactivatedAt);
   }
 
   String _sectionLabel(String key) {

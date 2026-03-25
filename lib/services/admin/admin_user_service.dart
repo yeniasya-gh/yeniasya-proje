@@ -8,6 +8,11 @@ bool _isMissingAccessChannelColumnError(Object error) {
       message.contains("grant_source");
 }
 
+bool _isMissingDeactivatedAtColumnError(Object error) {
+  final message = error.toString().toLowerCase();
+  return message.contains("deactivated_at");
+}
+
 class AdminUserService {
   AdminUserService({HasuraManager? hasura})
     : _hasura = hasura ?? HasuraManager.instance;
@@ -65,7 +70,27 @@ class AdminUserService {
   }
 
   Future<Map<String, dynamic>?> getUserDetail(int userId) async {
-    const query = r'''
+    const queryWithDeactivatedAt = r'''
+      query GetAdminUserDetail($id: bigint!) {
+        users_by_pk(id: $id) {
+          id
+          name
+          email
+          phone
+          role_id
+          role {
+            id
+            name
+          }
+          avatar_url
+          payUniqe
+          is_active
+          email_verified_at
+          deactivated_at
+        }
+      }
+    ''';
+    const queryWithoutDeactivatedAt = r'''
       query GetAdminUserDetail($id: bigint!) {
         users_by_pk(id: $id) {
           id
@@ -85,10 +110,21 @@ class AdminUserService {
       }
     ''';
 
-    final data = await _hasura.graphQLRequest(
-      query: query,
-      variables: {"id": userId.toString()},
-    );
+    Map<String, dynamic> data;
+    try {
+      data = await _hasura.graphQLRequest(
+        query: queryWithDeactivatedAt,
+        variables: {"id": userId.toString()},
+      );
+    } catch (error) {
+      if (!_isMissingDeactivatedAtColumnError(error)) {
+        rethrow;
+      }
+      data = await _hasura.graphQLRequest(
+        query: queryWithoutDeactivatedAt,
+        variables: {"id": userId.toString()},
+      );
+    }
     final user = data["users_by_pk"] as Map<String, dynamic>?;
     if (user == null) return null;
 
@@ -103,7 +139,73 @@ class AdminUserService {
       "payUniqe": user["payUniqe"],
       "is_active": user["is_active"],
       "email_verified_at": user["email_verified_at"],
+      "deactivated_at": user["deactivated_at"],
     };
+  }
+
+  Future<List<Map<String, dynamic>>> getPassiveUsers() async {
+    const queryWithDeactivatedAt = r'''
+      query GetPassiveUsers {
+        users(
+          where: {is_active: {_eq: false}},
+          order_by: [{deactivated_at: desc_nulls_last}, {id: desc}]
+        ) {
+          id
+          name
+          email
+          phone
+          role_id
+          is_active
+          deactivated_at
+          email_verified_at
+          role { id name }
+        }
+      }
+    ''';
+    const queryWithoutDeactivatedAt = r'''
+      query GetPassiveUsers {
+        users(
+          where: {is_active: {_eq: false}},
+          order_by: {id: desc}
+        ) {
+          id
+          name
+          email
+          phone
+          role_id
+          is_active
+          email_verified_at
+          role { id name }
+        }
+      }
+    ''';
+
+    Map<String, dynamic> data;
+    try {
+      data = await _hasura.graphQLRequest(query: queryWithDeactivatedAt);
+    } catch (error) {
+      if (!_isMissingDeactivatedAtColumnError(error)) {
+        rethrow;
+      }
+      data = await _hasura.graphQLRequest(query: queryWithoutDeactivatedAt);
+    }
+
+    final List users = data["users"] ?? const [];
+    return users
+        .map<Map<String, dynamic>>((u) {
+          return {
+            "id": u["id"],
+            "name": u["name"],
+            "email": u["email"],
+            "phone": u["phone"],
+            "role_id": u["role_id"],
+            "is_active": u["is_active"] == true,
+            "role": u["role"]?["name"] ?? "User",
+            "deactivated_at": u["deactivated_at"],
+            "email_verified_at": u["email_verified_at"],
+          };
+        })
+        .toList(growable: false);
   }
 
   Future<bool> addUser({
@@ -217,7 +319,34 @@ class AdminUserService {
     final deletedEmail = "deleted_${id}_$now@yeniasya.local";
     final deletedPassword = HashHelper.hashPassword("deleted_${id}_$now");
 
-    const softDeleteMutation = r'''
+    const softDeleteMutationWithDeactivatedAt = r'''
+      mutation DeactivateUser(
+        $id: bigint!,
+        $name: String!,
+        $email: String!,
+        $password: String!,
+        $deactivated_at: timestamptz!
+      ) {
+        update_users_by_pk(
+          pk_columns: {id: $id},
+        _set: {
+          name: $name,
+          email: $email,
+          phone: null,
+          password: $password,
+          is_active: false,
+          deactivated_at: $deactivated_at,
+          email_verified_at: null,
+          firebase_token: null
+        }
+      ) {
+        id
+        is_active
+      }
+    }
+    ''';
+
+    const softDeleteMutationWithoutDeactivatedAt = r'''
       mutation DeactivateUser(
         $id: bigint!,
         $name: String!,
@@ -242,15 +371,32 @@ class AdminUserService {
     }
     ''';
 
-    final softDeleteData = await _hasura.graphQLRequest(
-      query: softDeleteMutation,
-      variables: {
-        "id": id,
-        "name": "Silinmiş Hesap",
-        "email": deletedEmail,
-        "password": deletedPassword,
-      },
-    );
+    Map<String, dynamic> softDeleteData;
+    try {
+      softDeleteData = await _hasura.graphQLRequest(
+        query: softDeleteMutationWithDeactivatedAt,
+        variables: {
+          "id": id,
+          "name": "Silinmiş Hesap",
+          "email": deletedEmail,
+          "password": deletedPassword,
+          "deactivated_at": DateTime.now().toUtc().toIso8601String(),
+        },
+      );
+    } catch (error) {
+      if (!_isMissingDeactivatedAtColumnError(error)) {
+        rethrow;
+      }
+      softDeleteData = await _hasura.graphQLRequest(
+        query: softDeleteMutationWithoutDeactivatedAt,
+        variables: {
+          "id": id,
+          "name": "Silinmiş Hesap",
+          "email": deletedEmail,
+          "password": deletedPassword,
+        },
+      );
+    }
 
     return softDeleteData["update_users_by_pk"] != null;
   }
