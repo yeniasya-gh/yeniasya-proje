@@ -24,14 +24,21 @@ class AuthProvider with ChangeNotifier {
   bool _needsEmailVerification = false;
   String? _verificationEmailHint;
   Timer? _expiryTimer;
+  Timer? _sessionMonitorTimer;
+  bool _sessionMonitorBusy = false;
+  AuthLogoutReason? _lastLogoutReason;
 
-  Future<void> Function()? onLogout;
+  Future<void> Function(AuthLogoutReason reason)? onLogout;
 
   AppUser? get user => _user;
   bool get isLoggedIn => _isLoggedIn;
   String? get errorMessage => _errorMessage;
   bool get needsEmailVerification => _needsEmailVerification;
   String? get verificationEmailHint => _verificationEmailHint;
+  AuthLogoutReason? get lastLogoutReason => _lastLogoutReason;
+  bool get shouldForceLoginScreen =>
+      _lastLogoutReason == AuthLogoutReason.sessionRevoked ||
+      _lastLogoutReason == AuthLogoutReason.accountDeleted;
 
   static const keyUserJson = "session_user_json";
 
@@ -106,6 +113,7 @@ class AuthProvider with ChangeNotifier {
     bool clearSavedUser = true,
     bool notify = true,
   }) async {
+    _cancelSessionMonitor();
     final prefs = await SharedPreferences.getInstance();
     if (clearSavedUser) {
       await prefs.remove(keyUserJson);
@@ -125,6 +133,7 @@ class AuthProvider with ChangeNotifier {
     _errorMessage = null;
     _needsEmailVerification = false;
     _verificationEmailHint = null;
+    _lastLogoutReason = null;
     _scheduleExpiry(expiresAt);
     if (notify) notifyListeners();
   }
@@ -180,6 +189,7 @@ class AuthProvider with ChangeNotifier {
       _verificationEmailHint = null;
 
       _scheduleExpiry(expiresAt);
+      _scheduleSessionMonitor();
       notifyListeners();
 
       try {
@@ -187,7 +197,11 @@ class AuthProvider with ChangeNotifier {
       } catch (e) {
         if (_isSessionInvalidError(e)) {
           debugPrint("🔴 [Auth] stored session revoked during loadSession: $e");
-          await logout();
+          await logout(
+            bootstrapGuest: false,
+            reason: AuthLogoutReason.sessionRevoked,
+            message: "Oturumunuz sonlandırıldı. Lütfen tekrar giriş yapın.",
+          );
           return;
         }
       }
@@ -244,6 +258,31 @@ class AuthProvider with ChangeNotifier {
     });
   }
 
+  void _cancelSessionMonitor() {
+    _sessionMonitorTimer?.cancel();
+    _sessionMonitorTimer = null;
+    _sessionMonitorBusy = false;
+  }
+
+  void _scheduleSessionMonitor() {
+    _cancelSessionMonitor();
+    if (!_isLoggedIn || _user == null) return;
+
+    _sessionMonitorTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (!_isLoggedIn || _user == null || _sessionMonitorBusy) return;
+      _sessionMonitorBusy = true;
+      unawaited(() async {
+        try {
+          await refreshUser();
+        } catch (e) {
+          debugPrint("🔴 [Auth] session monitor refresh failed: $e");
+        } finally {
+          _sessionMonitorBusy = false;
+        }
+      }());
+    });
+  }
+
   Future<SocialLoginResult> _completeSocialLogin({
     required String provider,
     required String email,
@@ -272,12 +311,14 @@ class AuthProvider with ChangeNotifier {
       _user = user;
       await _saveSession(user: user, expiresAt: expiresAt);
       _scheduleExpiry(expiresAt);
+      _scheduleSessionMonitor();
       await NotificationService().registerDeviceToken(
         userId: user.id,
         forceRefresh: true,
       );
       _needsEmailVerification = false;
       _verificationEmailHint = null;
+      _lastLogoutReason = null;
       _errorMessage = null;
       notifyListeners();
       return SocialLoginResult(user: user);
@@ -586,12 +627,14 @@ class AuthProvider with ChangeNotifier {
       _user = user;
       await _saveSession(user: user, expiresAt: expiresAt);
       _scheduleExpiry(expiresAt);
+      _scheduleSessionMonitor();
       await NotificationService().registerDeviceToken(
         userId: user.id,
         forceRefresh: true,
       );
       _needsEmailVerification = false;
       _verificationEmailHint = null;
+      _lastLogoutReason = null;
       _errorMessage = null;
       notifyListeners();
       return user;
@@ -600,6 +643,7 @@ class AuthProvider with ChangeNotifier {
       _user = null;
       _needsEmailVerification = false;
       _verificationEmailHint = null;
+      _lastLogoutReason = null;
       _errorMessage = e.toString().replaceFirst("Exception:", "").trim();
       notifyListeners();
       return null;
@@ -687,6 +731,7 @@ class AuthProvider with ChangeNotifier {
       _user = null;
       _verificationEmailHint = email.trim().toLowerCase();
       _needsEmailVerification = false;
+      _lastLogoutReason = null;
       _errorMessage = e.toString().replaceFirst("Exception:", "").trim();
 
       notifyListeners();
@@ -694,19 +739,25 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
-  Future<void> logout({bool bootstrapGuest = true}) async {
+  Future<void> logout({
+    bool bootstrapGuest = true,
+    AuthLogoutReason reason = AuthLogoutReason.manual,
+    String? message,
+  }) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(keyUserJson);
     await _clearUserLocalState(prefs);
     _expiryTimer?.cancel();
     _expiryTimer = null;
+    _cancelSessionMonitor();
     await AuthTokenStore.clear();
 
     _user = null;
     _isLoggedIn = false;
-    _errorMessage = null;
+    _errorMessage = message;
     _needsEmailVerification = false;
     _verificationEmailHint = null;
+    _lastLogoutReason = reason;
 
     if (bootstrapGuest) {
       try {
@@ -716,7 +767,7 @@ class AuthProvider with ChangeNotifier {
       }
     }
     if (onLogout != null) {
-      await onLogout!.call();
+      await onLogout!.call(reason);
     }
     notifyListeners();
   }
@@ -730,7 +781,11 @@ class AuthProvider with ChangeNotifier {
     } catch (e) {
       if (_isSessionInvalidError(e)) {
         debugPrint("🔴 [Auth] refreshUser detected revoked session: $e");
-        await logout();
+        await logout(
+          bootstrapGuest: false,
+          reason: AuthLogoutReason.sessionRevoked,
+          message: "Oturumunuz sonlandırıldı. Lütfen tekrar giriş yapın.",
+        );
         return;
       }
       rethrow;
@@ -764,11 +819,42 @@ class AuthProvider with ChangeNotifier {
   }) async {
     final current = _user;
     if (current == null) return false;
-    return _userService.changePassword(
-      id: current.id,
-      currentPassword: currentPassword,
-      newPassword: newPassword,
-    );
+
+    try {
+      final data = await _authApi.changePassword(
+        currentPassword: currentPassword,
+        newPassword: newPassword,
+      );
+      final token = _tokenFromPayload(data);
+      final expiresAt = _expiresAtFromPayload(data);
+      final userPayload =
+          data["user"] as Map<String, dynamic>? ??
+          (data["data"] is Map<String, dynamic>
+              ? Map<String, dynamic>.from(data["data"] as Map)
+              : null);
+      final updatedUser = userPayload != null
+          ? AppUser.fromAuthJson(userPayload)
+          : current;
+
+      if (token == null || token.isEmpty) {
+        throw Exception("Token alınamadı.");
+      }
+
+      await AuthTokenStore.save(token: token, expiresAt: expiresAt);
+      await _saveSession(user: updatedUser, expiresAt: expiresAt);
+      await _setCurrentUser(updatedUser);
+      _scheduleExpiry(expiresAt);
+      _scheduleSessionMonitor();
+      return true;
+    } catch (e) {
+      final msg = e.toString();
+      if (msg.contains("INVALID_CURRENT_PASSWORD") ||
+          msg.contains("Mevcut şifre hatalı") ||
+          msg.toLowerCase().contains("current password")) {
+        return false;
+      }
+      rethrow;
+    }
   }
 
   Future<void> requestPasswordReset({required String email}) {
@@ -815,7 +901,11 @@ class AuthProvider with ChangeNotifier {
         notifyListeners();
         return false;
       }
-      await logout();
+      await logout(
+        bootstrapGuest: false,
+        reason: AuthLogoutReason.accountDeleted,
+        message: "Hesabınız silindi. Tekrar giriş yapabilirsiniz.",
+      );
       return true;
     } catch (e) {
       _errorMessage = e.toString().replaceFirst("Exception:", "").trim();
@@ -830,12 +920,16 @@ class AuthProvider with ChangeNotifier {
     _errorMessage = null;
     _needsEmailVerification = false;
     _verificationEmailHint = null;
+    _lastLogoutReason = null;
     final expiresAt =
         AuthTokenStore.expiresAt ?? DateTime.now().add(const Duration(days: 1));
     await _saveSession(user: user, expiresAt: expiresAt);
+    _scheduleSessionMonitor();
     notifyListeners();
   }
 }
+
+enum AuthLogoutReason { manual, sessionRevoked, accountDeleted }
 
 class SocialDraft {
   final String email;

@@ -8,6 +8,7 @@ import '../../services/auth/auth_provider.dart';
 import '../../services/error/error_manager.dart';
 import '../../services/order_service.dart';
 import '../../utils/admin_user_detail_metrics.dart';
+import '../../utils/order_item_visual.dart';
 import '../../utils/purchase_channel_labels.dart';
 import 'admin_loading_indicator.dart';
 
@@ -510,7 +511,37 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
                                   it["line_total"]?.toString() ??
                                   it["unit_price"]?.toString() ??
                                   "-";
-                              return Text("• $title x$qty (₺$line)");
+                              final type = (it["product_type"] ?? "")
+                                  .toString()
+                                  .trim();
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 8),
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Container(
+                                      width: 36,
+                                      height: 48,
+                                      margin: const EdgeInsets.only(right: 10),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFEDEDED),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      clipBehavior: Clip.antiAlias,
+                                      child: orderItemThumbnail(
+                                        it,
+                                        width: 36,
+                                        height: 48,
+                                      ),
+                                    ),
+                                    Expanded(
+                                      child: Text(
+                                        "• $title x$qty (₺$line)${type.isNotEmpty ? " • ${_orderItemTypeLabel(type)}" : ""}",
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
                             }),
                           ],
                         ],
@@ -784,6 +815,25 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
         return "İade";
       default:
         return status;
+    }
+  }
+
+  String _orderItemTypeLabel(String type) {
+    switch (type.toLowerCase()) {
+      case "book":
+        return "Kitap";
+      case "magazine":
+        return "Dergi";
+      case "magazine_issue":
+        return "Dergi Sayısı";
+      case "newspaper":
+      case "newspaper_subscription":
+        return "E-Gazete";
+      case "supplement":
+      case "ek":
+        return "Ek";
+      default:
+        return type;
     }
   }
 

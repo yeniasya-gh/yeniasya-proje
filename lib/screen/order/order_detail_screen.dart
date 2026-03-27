@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../services/order_service.dart';
 import '../../services/error/error_manager.dart';
-import '../../utils/safe_image.dart';
+import '../../utils/order_item_visual.dart';
 import '../../utils/purchase_channel_labels.dart';
 
 class OrderDetailScreen extends StatefulWidget {
@@ -93,7 +93,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         borderRadius: BorderRadius.circular(14),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 8,
             offset: const Offset(0, 4),
           ),
@@ -198,7 +198,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         borderRadius: BorderRadius.circular(14),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 8,
             offset: const Offset(0, 4),
           ),
@@ -214,7 +214,6 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           const SizedBox(height: 8),
           ...items.map((i) {
             final type = _typeLabel(i["product_type"]);
-            final img = i["metadata"]?["image_url"]?.toString();
             final price = (i["line_total"] ?? i["unit_price"] ?? 0).toString();
             return Padding(
               padding: const EdgeInsets.symmetric(vertical: 8.0),
@@ -229,13 +228,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                       borderRadius: BorderRadius.circular(8),
                     ),
                     clipBehavior: Clip.antiAlias,
-                    child: safeImage(
-                      img,
-                      width: 56,
-                      height: 72,
-                      fit: BoxFit.cover,
-                      fallbackIcon: Icons.broken_image,
-                    ),
+                    child: orderItemThumbnail(i, width: 56, height: 72),
                   ),
                   Expanded(
                     child: Column(

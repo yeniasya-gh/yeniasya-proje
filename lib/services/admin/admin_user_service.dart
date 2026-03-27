@@ -13,6 +13,17 @@ bool _isMissingDeactivatedAtColumnError(Object error) {
   return message.contains("deactivated_at");
 }
 
+bool _isAccessRemovalFallbackError(Object error) {
+  final message = error.toString().toLowerCase();
+  return message.contains("update_user_content_access") ||
+      message.contains("update_manual_newspaper_users") ||
+      message.contains("permission denied") ||
+      message.contains("not found") ||
+      message.contains("constraint") ||
+      message.contains("mutation") ||
+      message.contains("graphql");
+}
+
 class AdminUserService {
   AdminUserService({HasuraManager? hasura})
     : _hasura = hasura ?? HasuraManager.instance;
@@ -180,32 +191,29 @@ class AdminUserService {
       }
     ''';
 
-    Map<String, dynamic> data;
     try {
-      data = await _hasura.graphQLRequest(query: queryWithDeactivatedAt);
+      final data = await _hasura.graphQLRequest(query: queryWithDeactivatedAt);
+      return _mapPassiveUsers(data);
     } catch (error) {
       if (!_isMissingDeactivatedAtColumnError(error)) {
-        rethrow;
+        try {
+          final fallbackData = await _hasura.graphQLRequest(
+            query: queryWithoutDeactivatedAt,
+          );
+          return _mapPassiveUsers(fallbackData);
+        } catch (_) {
+          return _getPassiveUsersFromAllUsers();
+        }
       }
-      data = await _hasura.graphQLRequest(query: queryWithoutDeactivatedAt);
+      try {
+        final data = await _hasura.graphQLRequest(
+          query: queryWithoutDeactivatedAt,
+        );
+        return _mapPassiveUsers(data);
+      } catch (_) {
+        return _getPassiveUsersFromAllUsers();
+      }
     }
-
-    final List users = data["users"] ?? const [];
-    return users
-        .map<Map<String, dynamic>>((u) {
-          return {
-            "id": u["id"],
-            "name": u["name"],
-            "email": u["email"],
-            "phone": u["phone"],
-            "role_id": u["role_id"],
-            "is_active": u["is_active"] == true,
-            "role": u["role"]?["name"] ?? "User",
-            "deactivated_at": u["deactivated_at"],
-            "email_verified_at": u["email_verified_at"],
-          };
-        })
-        .toList(growable: false);
   }
 
   Future<bool> addUser({
@@ -579,21 +587,42 @@ class AdminUserService {
   }
 
   Future<void> deactivateAccessEntry(Map<String, dynamic> entry) async {
-    final source = (entry["source"] ?? "").toString();
+    final source = _resolveAccessSource(entry);
     if (source == "manual_newspaper") {
       final manualId = _asInt(entry["source_id"]) ?? _asInt(entry["id"]);
       if (manualId == null) {
         throw Exception("Manuel erişim kaydı bulunamadı.");
       }
-      await _deactivateManualNewspaperAccess(manualId);
+      await _toggleManualNewspaperAccess(manualId);
       return;
     }
 
-    final accessId = _asInt(entry["id"]);
+    final accessId = _asInt(entry["id"]) ?? _asInt(entry["source_id"]);
     if (accessId == null) {
       throw Exception("Erişim kaydı bulunamadı.");
     }
-    await _deactivateUserContentAccess(accessId);
+    await _toggleUserContentAccess(accessId);
+  }
+
+  String _resolveAccessSource(Map<String, dynamic> entry) {
+    final source = (entry["source"] ?? entry["access_source"] ?? "")
+        .toString()
+        .trim()
+        .toLowerCase();
+    if (source.isNotEmpty) {
+      return source;
+    }
+
+    if (_asInt(entry["source_id"]) != null) {
+      return "manual_newspaper";
+    }
+
+    final idText = entry["id"]?.toString().trim() ?? "";
+    if (idText.startsWith("manual_")) {
+      return "manual_newspaper";
+    }
+
+    return "";
   }
 
   Future<List<Map<String, dynamic>>> _getManualNewspaperAccess(
@@ -647,15 +676,65 @@ class AdminUserService {
     }
   }
 
-  Future<void> _deactivateUserContentAccess(int id) async {
+  Future<void> _toggleUserContentAccess(int id) async {
     const mutation = r'''
       mutation DeactivateUserContentAccess($id: bigint!) {
-        update_user_content_access_by_pk(
-          pk_columns: {id: $id},
+        update_user_content_access(
+          where: {id: {_eq: $id}},
           _set: {is_active: false}
         ) {
-          id
-          is_active
+          affected_rows
+        }
+      }
+    ''';
+
+    try {
+      final data = await _hasura.graphQLRequest(
+        query: mutation,
+        variables: {"id": id.toString()},
+      );
+      final affected =
+          data["update_user_content_access"]?["affected_rows"] as int? ?? 0;
+      if (affected > 0) return;
+      throw Exception("Erişim pasife çekilemedi.");
+    } catch (error) {
+      if (!_isAccessRemovalFallbackError(error)) rethrow;
+      await _deleteUserContentAccess(id);
+    }
+  }
+
+  Future<void> _toggleManualNewspaperAccess(int id) async {
+    const mutation = r'''
+      mutation DeactivateManualNewspaperAccess($id: bigint!) {
+        update_manual_newspaper_users(
+          where: {id: {_eq: $id}},
+          _set: {is_active: false}
+        ) {
+          affected_rows
+        }
+      }
+    ''';
+
+    try {
+      final data = await _hasura.graphQLRequest(
+        query: mutation,
+        variables: {"id": id.toString()},
+      );
+      final affected =
+          data["update_manual_newspaper_users"]?["affected_rows"] as int? ?? 0;
+      if (affected > 0) return;
+      throw Exception("Manuel erişim pasife çekilemedi.");
+    } catch (error) {
+      if (!_isAccessRemovalFallbackError(error)) rethrow;
+      await _deleteManualNewspaperAccess(id);
+    }
+  }
+
+  Future<void> _deleteUserContentAccess(int id) async {
+    const mutation = r'''
+      mutation DeleteUserContentAccess($id: bigint!) {
+        delete_user_content_access(where: {id: {_eq: $id}}) {
+          affected_rows
         }
       }
     ''';
@@ -666,15 +745,11 @@ class AdminUserService {
     );
   }
 
-  Future<void> _deactivateManualNewspaperAccess(int id) async {
+  Future<void> _deleteManualNewspaperAccess(int id) async {
     const mutation = r'''
-      mutation DeactivateManualNewspaperAccess($id: bigint!) {
-        update_manual_newspaper_users_by_pk(
-          pk_columns: {id: $id},
-          _set: {is_active: false}
-        ) {
-          id
-          is_active
+      mutation DeleteManualNewspaperAccess($id: bigint!) {
+        delete_manual_newspaper_users(where: {id: {_eq: $id}}) {
+          affected_rows
         }
       }
     ''';
@@ -683,6 +758,47 @@ class AdminUserService {
       query: mutation,
       variables: {"id": id.toString()},
     );
+  }
+
+  List<Map<String, dynamic>> _mapPassiveUsers(Map<String, dynamic> data) {
+    final List users = data["users"] ?? const [];
+    return users
+        .where((u) => u["is_active"] == false)
+        .map<Map<String, dynamic>>((u) {
+          return {
+            "id": u["id"],
+            "name": u["name"],
+            "email": u["email"],
+            "phone": u["phone"],
+            "role_id": u["role_id"],
+            "is_active": u["is_active"] == true,
+            "role": u["role"]?["name"] ?? "User",
+            "deactivated_at": u["deactivated_at"],
+            "email_verified_at": u["email_verified_at"],
+          };
+        })
+        .toList(growable: false);
+  }
+
+  Future<List<Map<String, dynamic>>> _getPassiveUsersFromAllUsers() async {
+    const queryWithDeactivatedAt = r'''
+      query GetPassiveUsersFallback {
+        users(order_by: {id: desc}) {
+          id
+          name
+          email
+          phone
+          role_id
+          is_active
+          deactivated_at
+          email_verified_at
+          role { id name }
+        }
+      }
+    ''';
+
+    final data = await _hasura.graphQLRequest(query: queryWithDeactivatedAt);
+    return _mapPassiveUsers(data);
   }
 
   Future<List<Map<String, dynamic>>> _enrichAccessRecords(

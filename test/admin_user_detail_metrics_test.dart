@@ -31,13 +31,15 @@ void main() {
 
       expect(summary, hasLength(2));
 
-      final magazine = summary.firstWhere((item) => item["title"] == "E-dergi");
+      final magazine = summary.firstWhere(
+        (item) => item["title"] == "Haftalık Dergi",
+      );
       expect(magazine["count"], 2);
       expect((magazine["names"] as List<String>).join(" | "), contains("1 ay"));
       expect((magazine["names"] as List<String>).join(" | "), contains("3 ay"));
 
       final newspaper = summary.firstWhere(
-        (item) => item["title"] == "Gazete Aboneliği",
+        (item) => item["title"] == "Günlük Gazete",
       );
       expect(newspaper["count"], 1);
       expect((newspaper["names"] as List<String>).first, contains("Premium"));

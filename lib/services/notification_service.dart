@@ -99,10 +99,18 @@ class NotificationService {
   }
 
   Future<List<Map<String, dynamic>>> getUserNotifications(int userId) async {
+    return getUserNotificationsFiltered(userId);
+  }
+
+  Future<List<Map<String, dynamic>>> getUserNotificationsFiltered(
+    int userId, {
+    bool? isRead,
+  }) async {
     const query = r'''
-      query GetUserNotifications($user_id: bigint!) {
-        notifications(where: {user_id: {_eq: $user_id}}, order_by: {created_at: desc}) {
+      query GetUserNotifications($where: notifications_bool_exp!) {
+        notifications(where: $where, order_by: {created_at: desc}) {
           id
+          user_id
           title
           body
           created_at
@@ -110,9 +118,15 @@ class NotificationService {
         }
       }
     ''';
+    final where = <String, dynamic>{
+      "user_id": {"_eq": userId},
+    };
+    if (isRead != null) {
+      where["is_read"] = {"_eq": isRead};
+    }
     final data = await _hasura.graphQLRequest(
       query: query,
-      variables: {"user_id": userId},
+      variables: {"where": where},
     );
     return List<Map<String, dynamic>>.from(data["notifications"] ?? []);
   }
@@ -122,6 +136,7 @@ class NotificationService {
       query GetNotificationDetail($id: Int!) {
         notifications_by_pk(id: $id) {
           id
+          user_id
           title
           body
           created_at
@@ -136,10 +151,62 @@ class NotificationService {
     return data["notifications_by_pk"] as Map<String, dynamic>?;
   }
 
+  Future<List<Map<String, dynamic>>> getAdminNotifications({
+    String? search,
+    bool? isRead,
+    int limit = 200,
+  }) async {
+    const query = r'''
+      query GetAdminNotifications($where: notifications_bool_exp!, $limit: Int!) {
+        notifications(where: $where, order_by: {created_at: desc}, limit: $limit) {
+          id
+          user_id
+          title
+          body
+          created_at
+          is_read
+        }
+      }
+    ''';
+
+    final filters = <Map<String, dynamic>>[{}];
+    if (search != null && search.trim().isNotEmpty) {
+      final q = search.trim();
+      filters.add({
+        "_or": [
+          {
+            "title": {"_ilike": "%$q%"},
+          },
+          {
+            "body": {"_ilike": "%$q%"},
+          },
+        ],
+      });
+    }
+    if (isRead != null) {
+      filters.add({
+        "is_read": {"_eq": isRead},
+      });
+    }
+
+    final where = filters.length == 1
+        ? <String, dynamic>{}
+        : {"_and": filters.where((item) => item.isNotEmpty).toList()};
+
+    final data = await _hasura.graphQLRequest(
+      query: query,
+      variables: {"where": where, "limit": limit},
+    );
+    return List<Map<String, dynamic>>.from(data["notifications"] ?? const []);
+  }
+
   Future<Map<String, dynamic>> sendNotification({
     required String title,
     required String body,
     int? userId,
+    List<int>? userIds,
+    bool persist = true,
+    bool dryRun = false,
   }) async {
     final jwt = AuthTokenStore.token?.trim();
     if (jwt == null || jwt.isEmpty) {
@@ -149,9 +216,11 @@ class NotificationService {
     final payload = <String, dynamic>{
       "title": title,
       "body": body,
-      if (userId != null) "userId": userId,
-      "persist": true,
-      "dryRun": false,
+      if (userIds != null && userIds.isNotEmpty) "userIds": userIds,
+      if ((userIds == null || userIds.isEmpty) && userId != null)
+        "userId": userId,
+      "persist": persist,
+      "dryRun": dryRun,
     };
     final response = await _http
         .post(
@@ -191,5 +260,38 @@ class NotificationService {
     }
 
     return decoded;
+  }
+
+  Future<void> markNotificationRead({
+    required int id,
+    required bool isRead,
+  }) async {
+    const mutation = r'''
+      mutation UpdateNotificationRead($id: Int!, $is_read: Boolean!) {
+        update_notifications_by_pk(
+          pk_columns: {id: $id},
+          _set: {is_read: $is_read}
+        ) {
+          id
+        }
+      }
+    ''';
+
+    await _hasura.graphQLRequest(
+      query: mutation,
+      variables: {"id": id, "is_read": isRead},
+    );
+  }
+
+  Future<void> deleteNotification(int id) async {
+    const mutation = r'''
+      mutation DeleteNotification($id: Int!) {
+        delete_notifications_by_pk(id: $id) {
+          id
+        }
+      }
+    ''';
+
+    await _hasura.graphQLRequest(query: mutation, variables: {"id": id});
   }
 }

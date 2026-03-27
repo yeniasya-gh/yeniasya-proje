@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../services/order_service.dart';
 import '../../services/auth/auth_provider.dart';
 import '../../services/error/error_manager.dart';
+import '../../utils/order_item_visual.dart';
 import '../../utils/purchase_channel_labels.dart';
 import 'order_detail_screen.dart';
 
@@ -82,6 +83,10 @@ class _OrderListScreenState extends State<OrderListScreen> {
     final paymentChannel = PurchaseChannelLabels.paymentProviderLabel(
       order["payment_provider"],
     );
+    final orderItems = List<Map<String, dynamic>>.from(
+      order["order_items"] ?? const [],
+    );
+    final firstItem = orderItems.isNotEmpty ? orderItems.first : null;
 
     return InkWell(
       onTap: () {
@@ -100,7 +105,7 @@ class _OrderListScreenState extends State<OrderListScreen> {
           borderRadius: BorderRadius.circular(14),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.05),
+              color: Colors.black.withValues(alpha: 0.05),
               blurRadius: 8,
               offset: const Offset(0, 4),
             ),
@@ -110,44 +115,83 @@ class _OrderListScreenState extends State<OrderListScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  "Sipariş #$id",
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 4,
-                  ),
+                  width: 44,
+                  height: 56,
+                  margin: const EdgeInsets.only(right: 12),
                   decoration: BoxDecoration(
-                    color: Colors.blue.shade50,
-                    borderRadius: BorderRadius.circular(10),
+                    color: const Color(0xFFE0E0E0),
+                    borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Text(
-                    _statusLabel(status),
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.blue,
-                    ),
+                  clipBehavior: Clip.antiAlias,
+                  child: firstItem != null
+                      ? orderItemThumbnail(firstItem, width: 44, height: 56)
+                      : Center(
+                          child: Icon(
+                            _fallbackOrderIcon(order),
+                            color: Colors.black54,
+                          ),
+                        ),
+                ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              "Sipariş #$id",
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.blue.shade50,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Text(
+                              _statusLabel(status),
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.blue,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        date,
+                        style: const TextStyle(
+                          color: Colors.black54,
+                          fontSize: 13,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        "Ödeme Kanalı: $paymentChannel",
+                        style: const TextStyle(
+                          color: Colors.black54,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
-            ),
-            const SizedBox(height: 6),
-            Text(
-              date,
-              style: const TextStyle(color: Colors.black54, fontSize: 13),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              "Ödeme Kanalı: $paymentChannel",
-              style: const TextStyle(color: Colors.black54, fontSize: 13),
             ),
             const SizedBox(height: 8),
             Row(
@@ -200,5 +244,15 @@ class _OrderListScreenState extends State<OrderListScreen> {
     if (dt == null) return raw.toString();
     String two(int v) => v.toString().padLeft(2, '0');
     return "${two(dt.hour)}:${two(dt.minute)} ${two(dt.day)}.${two(dt.month)}.${dt.year}";
+  }
+
+  IconData _fallbackOrderIcon(Map<String, dynamic> order) {
+    final items = List<Map<String, dynamic>>.from(
+      order["order_items"] ?? const [],
+    );
+    if (items.isNotEmpty) {
+      return orderItemFallbackIcon(items.first);
+    }
+    return Icons.receipt_long_outlined;
   }
 }

@@ -303,6 +303,33 @@ class AuthApiService {
     );
   }
 
+  Future<Map<String, dynamic>> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    final uri = Uri.parse("$_baseUrl/auth/me/password");
+    final resp = await _client.post(
+      uri,
+      headers: _authorizedJsonHeaders(),
+      body: jsonEncode({
+        "currentPassword": currentPassword,
+        "newPassword": newPassword,
+      }),
+    );
+
+    if (resp.statusCode < 200 || resp.statusCode >= 300) {
+      final message = _responseMessage(resp);
+      throw Exception(
+        message.isNotEmpty ? message : "Şifre güncellenemedi.",
+      );
+    }
+
+    final decoded = jsonDecode(resp.body);
+    if (decoded is Map<String, dynamic>) return decoded;
+    if (decoded is Map) return Map<String, dynamic>.from(decoded);
+    throw Exception("Şifre güncellenemedi.");
+  }
+
   Future<Map<String, dynamic>> getNewspaperViewInfo({
     required DateTime date,
     bool preferLocal = false,

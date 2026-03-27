@@ -25,10 +25,18 @@ class AdminUserDetailMetrics {
       final type =
           item["item_type_label"]?.toString() ??
           accessTypeLabel((item["item_type"] ?? "").toString());
+      final channel = item["access_channel_label"]?.toString().trim() ?? "";
+      final titleBase = item["item_title"]?.toString().trim().isNotEmpty == true
+          ? item["item_title"].toString().trim()
+          : type;
+      final title = channel.isNotEmpty && channel != "Bilinmiyor"
+          ? "$titleBase • $channel"
+          : titleBase;
+      final key = [type, channel, titleBase].join("::");
       final name = accessDisplayLabel(item, fallbackType: type);
       final group = grouped.putIfAbsent(
-        type,
-        () => {"title": type, "names": <String>[], "count": 0},
+        key,
+        () => {"title": title, "names": <String>[], "count": 0},
       );
       group["count"] = (group["count"] as int) + 1;
       (group["names"] as List<String>).add(name);

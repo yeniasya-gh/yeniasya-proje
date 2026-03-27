@@ -49,7 +49,13 @@ class _FakeHasuraManager implements HasuraManager {
         "delete_email_verification_tokens": {"affected_rows": 1},
       if (query.contains("delete_password_reset_tokens"))
         "delete_password_reset_tokens": {"affected_rows": 1},
-      if (query.contains("user_content_access"))
+      if (query.contains("update_user_content_access"))
+        "update_user_content_access": {"affected_rows": 1},
+      if (query.contains("update_manual_newspaper_users"))
+        "update_manual_newspaper_users": {"affected_rows": 1},
+      if (query.contains("query GetUserAccess") ||
+          query.contains("query GetUserAccessAll") ||
+          query.contains("user_content_access"))
         "user_content_access": const [],
       if (query.contains("is_active: {_eq: false}"))
         "users": [
@@ -195,6 +201,40 @@ void main() {
         ),
         true,
       );
+    },
+  );
+
+  test(
+    "AdminUserService.deactivateAccessEntry deactivates user content access rows",
+    () async {
+      final fakeHasura = _FakeHasuraManager();
+      final service = AdminUserService(hasura: fakeHasura);
+
+      await service.deactivateAccessEntry({
+        "id": 99,
+        "item_type": "book",
+        "item_id": 12,
+        "source": "user_content_access",
+      });
+
+      expect(fakeHasura.queries.last, contains("update_user_content_access"));
+      expect(fakeHasura.lastVariables?["id"], "99");
+    },
+  );
+
+  test(
+    "AdminUserService.deactivateAccessEntry deactivates manual newspaper rows even when source is inferred",
+    () async {
+      final fakeHasura = _FakeHasuraManager();
+      final service = AdminUserService(hasura: fakeHasura);
+
+      await service.deactivateAccessEntry({"id": "manual_77", "source_id": 77});
+
+      expect(
+        fakeHasura.queries.last,
+        contains("update_manual_newspaper_users"),
+      );
+      expect(fakeHasura.lastVariables?["id"], "77");
     },
   );
 }

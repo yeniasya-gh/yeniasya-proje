@@ -134,6 +134,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
     final payableTotal = cart.totalAfterDiscount;
     final promo = cart.appliedPromo;
     final discountAmount = cart.discountAmount;
+    final navigator = Navigator.of(context);
     try {
       setState(() => _loading = true);
       final user = context.read<AuthProvider>().user;
@@ -269,8 +270,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         return;
       }
 
-      final result = await Navigator.push<PaymentResult>(
-        context,
+      final result = await navigator.push<PaymentResult>(
         MaterialPageRoute(
           builder: (_) => PaymentWebViewScreen(
             payload: redirectPayload,
@@ -346,6 +346,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
   }) async {
     setState(() => _loading = true);
     String? mailWarning;
+    final authProvider = context.read<AuthProvider>();
+    final accessProvider = context.read<AccessProvider>();
+    final navigator = Navigator.of(context);
     try {
       final directAccessItems = accessItems
           .where((item) => item["item_type"] != "newspaper_subscription")
@@ -377,7 +380,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
       }
 
       try {
-        final user = context.read<AuthProvider>().user;
+        final user = authProvider.user;
         if (user != null) {
           await MailManager.instance.sendOrderSummary(
             to: user.email,
@@ -396,18 +399,16 @@ class _PaymentScreenState extends State<PaymentScreen> {
       }
 
       if (mounted) {
-        final access = context.read<AccessProvider>();
         final uid = int.tryParse(widget.userId);
         if (uid != null) {
-          await access.load(uid);
+          await accessProvider.load(uid);
         }
       }
 
       cart.clear();
 
       if (!mounted) return;
-      Navigator.pushAndRemoveUntil(
-        context,
+      navigator.pushAndRemoveUntil(
         MaterialPageRoute(
           builder: (_) => OrderSuccessScreen(
             orderId: orderId.toString(),
@@ -465,6 +466,19 @@ class _PaymentScreenState extends State<PaymentScreen> {
       final rawProductId = item.metadata?["productId"];
       final parsedProductId = int.tryParse(rawProductId?.toString() ?? "");
       final orderType = _orderProductType(item.type);
+      final metadata = <String, dynamic>{
+        ...?item.metadata,
+        if (item.imageUrl.trim().isNotEmpty) ...{
+          "image_url": item.imageUrl,
+          "imageUrl": item.imageUrl,
+          "photo_url": item.imageUrl,
+          "photoUrl": item.imageUrl,
+          "cover_url": item.imageUrl,
+          "coverUrl": item.imageUrl,
+          "cover_image_url": item.imageUrl,
+          "coverImageUrl": item.imageUrl,
+        },
+      };
       return {
         "product_type": orderType,
         "product_id": parsedProductId ?? 0,
@@ -472,7 +486,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         "unit_price": item.price,
         "quantity": item.quantity,
         "line_total": item.price * item.quantity,
-        "metadata": item.metadata,
+        "metadata": metadata,
       };
     }).toList();
   }
@@ -756,7 +770,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         borderRadius: BorderRadius.circular(14),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 8,
             offset: const Offset(0, 4),
           ),
@@ -854,7 +868,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         borderRadius: BorderRadius.circular(14),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 8,
             offset: const Offset(0, 4),
           ),
@@ -1036,7 +1050,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         borderRadius: BorderRadius.circular(14),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 8,
             offset: const Offset(0, 4),
           ),
@@ -1128,7 +1142,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
   }
 
   Widget _cardForm() {
-    InputDecoration _inputDecoration(String label, {IconData? icon}) {
+    InputDecoration inputDecoration(String label, {IconData? icon}) {
       return InputDecoration(
         labelText: label,
         prefixIcon: icon != null
@@ -1162,7 +1176,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         borderRadius: BorderRadius.circular(14),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 8,
             offset: const Offset(0, 4),
           ),
@@ -1180,7 +1194,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
             const SizedBox(height: 12),
             TextFormField(
               controller: _cardHolderCtrl,
-              decoration: _inputDecoration(
+              decoration: inputDecoration(
                 "Kart Üzerindeki İsim",
                 icon: Icons.person_outline,
               ),
@@ -1195,7 +1209,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 _CardNumberFormatter(),
                 LengthLimitingTextInputFormatter(19),
               ],
-              decoration: _inputDecoration(
+              decoration: inputDecoration(
                 "Kart Numarası",
                 icon: Icons.credit_card,
               ),
@@ -1212,7 +1226,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 Expanded(
                   child: TextFormField(
                     controller: _expiryCtrl,
-                    decoration: _inputDecoration("AA/YY", icon: Icons.event),
+                    decoration: inputDecoration("AA/YY", icon: Icons.event),
                     keyboardType: TextInputType.number,
                     inputFormatters: [
                       _ExpiryFormatter(),
@@ -1228,7 +1242,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 Expanded(
                   child: TextFormField(
                     controller: _cvvCtrl,
-                    decoration: _inputDecoration(
+                    decoration: inputDecoration(
                       "CVV",
                       icon: Icons.lock_outline,
                     ),
@@ -1261,7 +1275,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
               const SizedBox(height: 6),
               TextFormField(
                 controller: _cardNameCtrl,
-                decoration: _inputDecoration(
+                decoration: inputDecoration(
                   "Kart Adı",
                   icon: Icons.bookmark_outline,
                 ),

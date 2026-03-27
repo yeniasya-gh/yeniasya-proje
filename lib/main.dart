@@ -6,6 +6,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_web_plugins/url_strategy.dart';
 import 'package:provider/provider.dart';
 import '/screen/home_responsive_screen.dart';
+import '/screen/login/login_screen.dart';
 import '/screen/splash/splash_screen.dart';
 import '/services/auth/auth_provider.dart';
 import '/services/cart/cart_provider.dart';
@@ -31,10 +32,21 @@ void main() {
   final revenueCatService = RevenueCatService();
 
   // Link logout cleanup
-  authProvider.onLogout = () async {
+  authProvider.onLogout = (reason) async {
     cartProvider.clear();
     accessProvider.clear();
-    rootNavigatorKey.currentState?.pushAndRemoveUntil(
+    final navigator = rootNavigatorKey.currentState;
+    final shouldShowLogin =
+        reason == AuthLogoutReason.sessionRevoked ||
+        reason == AuthLogoutReason.accountDeleted;
+    if (navigator != null && shouldShowLogin) {
+      navigator.pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+        (route) => false,
+      );
+      return;
+    }
+    navigator?.pushAndRemoveUntil(
       MaterialPageRoute(
         builder: (_) => HomeResponsiveScreen(initialUri: launchUri),
       ),
@@ -161,6 +173,7 @@ class _AppBootstrapState extends State<AppBootstrap>
 
   @override
   Widget build(BuildContext context) {
+    final authProvider = context.watch<AuthProvider>();
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
       onTap: () {
@@ -168,7 +181,9 @@ class _AppBootstrapState extends State<AppBootstrap>
       },
       child: MyApp(
         home: _ready
-            ? HomeResponsiveScreen(initialUri: widget.initialUri)
+            ? (authProvider.shouldForceLoginScreen
+                  ? const LoginScreen()
+                  : HomeResponsiveScreen(initialUri: widget.initialUri))
             : AppBootstrapScreen(status: _status),
       ),
     );

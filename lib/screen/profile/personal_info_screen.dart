@@ -165,9 +165,16 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
       _newPasswordCtrl.clear();
       _confirmPasswordCtrl.clear();
       if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Şifreniz başarıyla değiştirildi.")),
+        );
+      }
+    } catch (e) {
+      final parsed = ErrorManager.parseGraphQLError(e.toString());
+      if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(const SnackBar(content: Text("Şifre güncellendi.")));
+        ).showSnackBar(SnackBar(content: Text(parsed)));
       }
     } finally {
       if (mounted) setState(() => _savingPassword = false);
