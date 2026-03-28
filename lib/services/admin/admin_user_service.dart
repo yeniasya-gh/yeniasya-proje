@@ -411,7 +411,7 @@ class AdminUserService {
 
   Future<void> _deleteUserRelatedData(int userId) async {
     const mutation = r'''
-      mutation DeleteUserRelatedData($user_id: bigint!) {
+      mutation DeleteUserRelatedData($user_id: Int!) {
         delete_order_items(
           where: {order: {user_id: {_eq: $user_id}}}
         ) {
@@ -678,7 +678,7 @@ class AdminUserService {
 
   Future<void> _toggleUserContentAccess(int id) async {
     const mutation = r'''
-      mutation DeactivateUserContentAccess($id: bigint!) {
+      mutation DeactivateUserContentAccess($id: Int!) {
         update_user_content_access(
           where: {id: {_eq: $id}},
           _set: {is_active: false}
@@ -691,7 +691,7 @@ class AdminUserService {
     try {
       final data = await _hasura.graphQLRequest(
         query: mutation,
-        variables: {"id": id.toString()},
+        variables: {"id": id},
       );
       final affected =
           data["update_user_content_access"]?["affected_rows"] as int? ?? 0;
@@ -732,7 +732,7 @@ class AdminUserService {
 
   Future<void> _deleteUserContentAccess(int id) async {
     const mutation = r'''
-      mutation DeleteUserContentAccess($id: bigint!) {
+      mutation DeleteUserContentAccess($id: Int!) {
         delete_user_content_access(where: {id: {_eq: $id}}) {
           affected_rows
         }
@@ -741,7 +741,7 @@ class AdminUserService {
 
     await _hasura.graphQLRequest(
       query: mutation,
-      variables: {"id": id.toString()},
+      variables: {"id": id},
     );
   }
 
@@ -850,7 +850,9 @@ class AdminUserService {
                   magazineName,
                 if (issueTitle.isNotEmpty) issueTitle,
               ].join(" • ");
-              normalized["item_subtitle"] = issue?["publish_date"]?.toString();
+              normalized["item_subtitle"] =
+                  issue?["added_at"]?.toString() ??
+                  issue?["created_at"]?.toString();
               break;
             case "newspaper_subscription":
               final subscriptionType = itemId == null
@@ -968,7 +970,7 @@ class AdminUserService {
         magazine_issue(where: {id: {_in: $ids}}) {
           id
           issue_number
-          publish_date
+          added_at
           magazine {
             id
             name

@@ -25,19 +25,24 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   }
 
   Future<void> _load() async {
+    if (!mounted) return;
     setState(() => _loading = true);
     try {
       final detail = await _orderService.getOrderDetail(widget.orderId);
+      if (!mounted) return;
       setState(() => _order = detail);
     } catch (e) {
       final parsed = ErrorManager.parseGraphQLError(e.toString());
       if (mounted) {
-        ScaffoldMessenger.of(
+        ScaffoldMessenger.maybeOf(
           context,
-        ).showSnackBar(SnackBar(content: Text(parsed)));
+        )?.showSnackBar(SnackBar(content: Text(parsed)));
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _loading = false);
       }
     }
-    setState(() => _loading = false);
   }
 
   @override
@@ -189,7 +194,13 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   }
 
   Widget _itemsCard() {
-    final items = List<Map<String, dynamic>>.from(_order?["order_items"] ?? []);
+    final rawItems = _order?["order_items"];
+    final items = rawItems is List
+        ? rawItems
+              .whereType<Map>()
+              .map((item) => Map<String, dynamic>.from(item))
+              .toList(growable: false)
+        : <Map<String, dynamic>>[];
 
     return Container(
       padding: const EdgeInsets.all(16),

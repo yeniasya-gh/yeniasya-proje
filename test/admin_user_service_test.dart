@@ -218,7 +218,7 @@ void main() {
       });
 
       expect(fakeHasura.queries.last, contains("update_user_content_access"));
-      expect(fakeHasura.lastVariables?["id"], "99");
+      expect(fakeHasura.lastVariables?["id"], 99);
     },
   );
 
