@@ -119,6 +119,8 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
   bool _homeLoadFailed = false;
   bool _openingArchivedNewspaper = false;
   AuthProvider? _authListener;
+  int? _lastObservedAuthUserId;
+  bool? _lastObservedAuthLoggedIn;
   DateTime? _newsSelectedDate;
 
   int _showcaseItemLimit(bool isWeb) => isWeb ? 10 : 6;
@@ -570,6 +572,14 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
   void _onAuthChange() {
     final auth = _authListener;
     if (auth == null) return;
+    final currentUserId = auth.user?.id;
+    final currentLoggedIn = auth.isLoggedIn;
+    if (_lastObservedAuthUserId == currentUserId &&
+        _lastObservedAuthLoggedIn == currentLoggedIn) {
+      return;
+    }
+    _lastObservedAuthUserId = currentUserId;
+    _lastObservedAuthLoggedIn = currentLoggedIn;
     if (auth.isLoggedIn) {
       _loadData();
       _loadAccessIfNeeded();
@@ -1144,7 +1154,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     if (!mounted) return;
 
     if (result.name == "purchased" || result.name == "restored") {
-      await access.load(user.id);
+      await access.load(user.id, force: true);
       if (!mounted) return;
       messenger.showSnackBar(
         const SnackBar(content: Text("Abonelik başarıyla aktif edildi.")),
@@ -1152,7 +1162,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
       return;
     }
     if (result.name == "notPresented" && rc.isYeniasyaProActive) {
-      await access.load(user.id);
+      await access.load(user.id, force: true);
       if (!mounted) return;
       messenger.showSnackBar(
         const SnackBar(content: Text("Aboneliğiniz zaten aktif.")),

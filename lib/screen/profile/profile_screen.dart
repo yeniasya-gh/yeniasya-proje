@@ -12,6 +12,7 @@ import '../../services/revenuecat_service.dart';
 import '../../services/user_content_access_service.dart';
 import '../../utils/app_user_avatar.dart';
 import '../../utils/route_guard.dart';
+import '../../utils/purchase_channel_labels.dart';
 import '../address/address_list_screen.dart';
 import '../admin/admin_panel_screen.dart';
 import '../order/order_list_screen.dart';
@@ -505,7 +506,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     if (result.name == "purchased" || result.name == "restored") {
       _showInfo("Abonelik başarıyla aktif edildi.");
-      unawaited(context.read<AccessProvider>().load(user.id));
+      unawaited(context.read<AccessProvider>().load(user.id, force: true));
       return;
     }
     if (result.name == "notPresented" && rc.isYeniasyaProActive) {
@@ -539,7 +540,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
     if (rc.isYeniasyaProActive) {
       _showInfo("Abonelik geri yüklendi.");
-      unawaited(context.read<AccessProvider>().load(user.id));
+      unawaited(context.read<AccessProvider>().load(user.id, force: true));
     } else {
       _showInfo(
         rc.errorMessage ?? "Geri yüklenecek aktif abonelik bulunamadı.",
@@ -935,9 +936,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
         final book = await _bookService.getBookById(itemId as int);
         final title = book?["title"]?.toString() ?? "Kitap #$itemId";
         final url = book?["book_url"]?.toString();
+        final subtitle = _accessSubtitle(entry, fallback: "Kitap");
         return _AccessItem(
           title: title,
-          subtitle: "Kitap",
+          subtitle: subtitle,
           onTap: (url == null || url.isEmpty)
               ? null
               : () {
@@ -959,9 +961,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
         final magName = issue?["magazine"]?["name"]?.toString() ?? "Dergi";
         final issueNumber = issue?["issue_number"]?.toString() ?? "#$itemId";
         final url = issue?["file_url"]?.toString();
+        final subtitle = _accessSubtitle(entry, fallback: "Dergi Sayısı");
         return _AccessItem(
           title: "$magName - $issueNumber",
-          subtitle: "Dergi Sayısı",
+          subtitle: subtitle,
           onTap: (url == null || url.isEmpty)
               ? null
               : () {
@@ -983,18 +986,52 @@ class _ProfileScreenState extends State<ProfileScreen> {
         final name = mag?["name"]?.toString() ?? "Dergi #$itemId";
         return _AccessItem(
           title: name,
-          subtitle: "Dergi aboneliği",
+          subtitle: _accessSubtitle(entry, fallback: "Dergi aboneliği"),
           onTap: () => _openMagazineIssues(itemId, name),
         );
       case "newspaper_subscription":
         return _AccessItem(
           title: "Gazete aboneliği",
-          subtitle: "Abonelik aktif",
+          subtitle: _accessSubtitle(entry, fallback: "Abonelik aktif"),
           onTap: null,
         );
       default:
         return _AccessItem(title: "Bilinmeyen içerik");
     }
+  }
+
+  String _accessSubtitle(
+    Map<String, dynamic> entry, {
+    required String fallback,
+  }) {
+    final parts = <String>[];
+    final expiresAt = _parseDateTime(entry["expires_at"]);
+    if (expiresAt != null) {
+      parts.add("Bitiş Tarihi: ${_formatDateShort(expiresAt)}");
+    }
+
+    final channel = PurchaseChannelLabels.accessChannelLabel(entry);
+    if (channel != "Bilinmiyor") {
+      parts.add("Kanal: $channel");
+    }
+
+    if (parts.isEmpty) return fallback;
+    return parts.join(" • ");
+  }
+
+  DateTime? _parseDateTime(dynamic raw) {
+    if (raw == null) return null;
+    try {
+      return DateTime.tryParse(raw.toString());
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String _formatDateShort(DateTime date) {
+    final local = date.toLocal();
+    String two(int v) => v.toString().padLeft(2, "0");
+    return "${two(local.day)}.${two(local.month)}.${local.year}";
   }
 
   Future<void> _openMagazineIssues(int magazineId, String name) async {

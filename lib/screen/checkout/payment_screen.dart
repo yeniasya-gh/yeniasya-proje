@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -8,6 +9,7 @@ import '../../services/auth/auth_token_store.dart';
 import 'package:flutter/services.dart';
 import '../../services/order_service.dart';
 import '../../services/error/error_manager.dart';
+import '../../services/error/app_error_reporter.dart';
 import '../../services/cart/cart_provider.dart';
 import '../../services/access_provider.dart';
 import '../../models/cart_item.dart';
@@ -227,6 +229,23 @@ class _PaymentScreenState extends State<PaymentScreen> {
         }
 
         if (!immediateResult.success) {
+          unawaited(
+            AppErrorReporter.instance.reportMessage(
+              service: "PaymentScreen",
+              operation: "web_payment_result",
+              message:
+                  immediateResult.errorMsg ??
+                  immediateResult.message ??
+                  "Ödeme tamamlanamadı.",
+              payload: {
+                "success": immediateResult.success,
+                "responseCode": immediateResult.responseCode,
+                "responseMsg": immediateResult.responseMsg,
+                "errorCode": immediateResult.errorCode,
+                "errorMsg": immediateResult.errorMsg,
+              },
+            ),
+          );
           if (mounted) {
             setState(() => _loading = false);
             final msg =
@@ -281,6 +300,21 @@ class _PaymentScreenState extends State<PaymentScreen> {
       );
 
       if (result == null || !result.success) {
+        unawaited(
+          AppErrorReporter.instance.reportMessage(
+            service: "PaymentScreen",
+            operation: "native_payment_result",
+            message:
+                result?.errorMsg ?? result?.message ?? "Ödeme tamamlanamadı.",
+            payload: {
+              "success": result?.success,
+              "responseCode": result?.responseCode,
+              "responseMsg": result?.responseMsg,
+              "errorCode": result?.errorCode,
+              "errorMsg": result?.errorMsg,
+            },
+          ),
+        );
         if (mounted) {
           setState(() => _loading = false);
           final msg =
@@ -323,6 +357,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
       if (mounted) {
         setState(() => _loading = false);
         if (e is PaymentSessionException) {
+          unawaited(
+            AppErrorReporter.instance.reportMessage(
+              service: "PaymentScreen",
+              operation: "payment_session_exception",
+              message: e.message,
+            ),
+          );
           ScaffoldMessenger.of(
             context,
           ).showSnackBar(SnackBar(content: Text(e.message)));
@@ -457,6 +498,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
       );
       return true;
     } catch (e) {
+      unawaited(
+        AppErrorReporter.instance.reportException(
+          service: "PaymentScreen",
+          operation: "syncNewspaperSubscriptionWithRevenueCat",
+          error: e,
+        ),
+      );
       return false;
     }
   }

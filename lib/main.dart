@@ -12,58 +12,74 @@ import '/services/auth/auth_provider.dart';
 import '/services/cart/cart_provider.dart';
 import '/services/access_provider.dart';
 import '/services/revenuecat_service.dart';
+import '/services/error/app_error_reporter.dart';
 import '/utils/launch_uri.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 
 final GlobalKey<NavigatorState> rootNavigatorKey = GlobalKey<NavigatorState>();
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   if (kIsWeb) {
     usePathUrlStrategy();
   }
-  final launchUri = currentLaunchUri();
-  debugPrint("Launch URI: $launchUri");
+  AppErrorReporter.instance.attachGlobalHandlers();
+  runZonedGuarded(
+    () {
+      final launchUri = currentLaunchUri();
+      debugPrint("Launch URI: $launchUri");
 
-  final authProvider = AuthProvider();
-  final cartProvider = CartProvider();
-  final accessProvider = AccessProvider();
-  final revenueCatService = RevenueCatService();
+      final authProvider = AuthProvider();
+      final cartProvider = CartProvider();
+      final accessProvider = AccessProvider();
+      final revenueCatService = RevenueCatService();
 
-  // Link logout cleanup
-  authProvider.onLogout = (reason) async {
-    cartProvider.clear();
-    accessProvider.clear();
-    final navigator = rootNavigatorKey.currentState;
-    final shouldShowLogin =
-        reason == AuthLogoutReason.sessionRevoked ||
-        reason == AuthLogoutReason.accountDeleted;
-    if (navigator != null && shouldShowLogin) {
-      navigator.pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const LoginScreen()),
-        (route) => false,
+      // Link logout cleanup
+      authProvider.onLogout = (reason) async {
+        cartProvider.clear();
+        accessProvider.clear();
+        final navigator = rootNavigatorKey.currentState;
+        final shouldShowLogin =
+            reason == AuthLogoutReason.sessionRevoked ||
+            reason == AuthLogoutReason.accountDeleted;
+        if (navigator != null && shouldShowLogin) {
+          navigator.pushAndRemoveUntil(
+            MaterialPageRoute(builder: (_) => const LoginScreen()),
+            (route) => false,
+          );
+          return;
+        }
+        navigator?.pushAndRemoveUntil(
+          MaterialPageRoute(
+            builder: (_) => HomeResponsiveScreen(initialUri: launchUri),
+          ),
+          (route) => false,
+        );
+      };
+
+      runApp(
+        MultiProvider(
+          providers: [
+            ChangeNotifierProvider.value(value: authProvider),
+            ChangeNotifierProvider.value(value: cartProvider),
+            ChangeNotifierProvider.value(value: accessProvider),
+            ChangeNotifierProvider.value(value: revenueCatService),
+          ],
+          child: AppBootstrap(initialUri: launchUri),
+        ),
       );
-      return;
-    }
-    navigator?.pushAndRemoveUntil(
-      MaterialPageRoute(
-        builder: (_) => HomeResponsiveScreen(initialUri: launchUri),
-      ),
-      (route) => false,
-    );
-  };
-
-  runApp(
-    MultiProvider(
-      providers: [
-        ChangeNotifierProvider.value(value: authProvider),
-        ChangeNotifierProvider.value(value: cartProvider),
-        ChangeNotifierProvider.value(value: accessProvider),
-        ChangeNotifierProvider.value(value: revenueCatService),
-      ],
-      child: AppBootstrap(initialUri: launchUri),
-    ),
+    },
+    (error, stack) {
+      unawaited(
+        AppErrorReporter.instance.reportException(
+          service: "AppBootstrap",
+          operation: "runZonedGuarded",
+          error: error,
+          stackTrace: stack,
+        ),
+      );
+    },
   );
 }
 
@@ -131,6 +147,7 @@ class _AppBootstrapState extends State<AppBootstrap>
 
     unawaited(_initializeFirebaseSafely());
     await authProvider.loadSession();
+    unawaited(AppErrorReporter.instance.flushPending());
 
     final user = authProvider.user;
     _lastRevenueCatIdentity = authProvider.isLoggedIn && user != null
@@ -154,6 +171,14 @@ class _AppBootstrapState extends State<AppBootstrap>
     } catch (error, stackTrace) {
       debugPrint("Firebase initialize failed: $error");
       debugPrintStack(stackTrace: stackTrace);
+      unawaited(
+        AppErrorReporter.instance.reportException(
+          service: "AppBootstrap",
+          operation: "Firebase.initializeApp",
+          error: error,
+          stackTrace: stackTrace,
+        ),
+      );
     }
   }
 

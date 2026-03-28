@@ -1,7 +1,20 @@
+import 'dart:async';
+
+import 'app_error_reporter.dart';
+
 class ErrorManager {
   static String parseGraphQLError(String errorMessage) {
     final msg = errorMessage.toLowerCase();
     final cleaned = errorMessage.replaceFirst("Exception: ", "").trim();
+
+    unawaited(
+      AppErrorReporter.instance.reportMessage(
+        service: "App/ErrorManager",
+        operation: "parseGraphQLError",
+        message: cleaned,
+        payload: {"raw": errorMessage},
+      ),
+    );
 
     const passThroughMarkers = [
       "yükleme başarısız",
@@ -25,7 +38,9 @@ class ErrorManager {
 
     // 📌 Unique violation - phone
     if (msg.contains("users_phone_key") ||
-        msg.contains("duplicate key value violates unique constraint \"users_phone_key\"")) {
+        msg.contains(
+          "duplicate key value violates unique constraint \"users_phone_key\"",
+        )) {
       return "Bu telefon numarası zaten kayıtlı.";
     }
 
@@ -40,7 +55,8 @@ class ErrorManager {
     }
 
     // 📌 NOT NULL violation
-    if (msg.contains("null value") && msg.contains("violates not-null constraint")) {
+    if (msg.contains("null value") &&
+        msg.contains("violates not-null constraint")) {
       return "Zorunlu alanlardan biri boş bırakılamaz.";
     }
 

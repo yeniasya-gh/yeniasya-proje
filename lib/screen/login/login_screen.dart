@@ -419,18 +419,20 @@ class _LoginScreenState extends State<LoginScreen> {
                                 onPressed: isButtonEnabled
                                     ? () async {
                                         setState(() => isLoading = true);
-                                        await auth.login(
-                                          emailCtrl.text.trim(),
-                                          passwordCtrl.text.trim(),
-                                          rememberMe: rememberMe,
-                                        );
-                                        if (auth.isLoggedIn) {
-                                          await _primePostLoginState();
-                                        }
-                                        setState(() => isLoading = false);
-
-                                        if (auth.isLoggedIn) {
-                                          _goHome();
+                                        try {
+                                          await auth.login(
+                                            emailCtrl.text.trim(),
+                                            passwordCtrl.text.trim(),
+                                            rememberMe: rememberMe,
+                                          );
+                                          if (auth.isLoggedIn) {
+                                            await _primePostLoginState();
+                                            _goHome();
+                                          }
+                                        } finally {
+                                          if (mounted) {
+                                            setState(() => isLoading = false);
+                                          }
                                         }
                                       }
                                     : null,

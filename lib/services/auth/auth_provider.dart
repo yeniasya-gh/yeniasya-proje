@@ -11,6 +11,7 @@ import '../../models/app_user.dart';
 import 'auth_api_service.dart';
 import 'auth_token_store.dart';
 import 'user_service.dart';
+import '../error/app_error_reporter.dart';
 import '../notification_service.dart';
 import '../secure_file_service.dart';
 
@@ -127,6 +128,7 @@ class AuthProvider with ChangeNotifier {
     final expiresAt = _expiresAtFromPayload(data);
 
     await AuthTokenStore.save(token: token, expiresAt: expiresAt);
+    unawaited(AppErrorReporter.instance.flushPending());
 
     _user = null;
     _isLoggedIn = false;
@@ -231,6 +233,7 @@ class AuthProvider with ChangeNotifier {
   }) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(keyUserJson, jsonEncode(user.toJson()));
+    unawaited(AppErrorReporter.instance.flushPending());
   }
 
   Future<void> _clearUserLocalState(SharedPreferences prefs) async {
@@ -777,7 +780,11 @@ class AuthProvider with ChangeNotifier {
     if (current == null) return;
     try {
       final updatedJson = await _authApi.getMe();
-      await _setCurrentUser(AppUser.fromAuthJson(updatedJson));
+      final updatedUser = AppUser.fromAuthJson(updatedJson);
+      if (_sameUser(current, updatedUser)) {
+        return;
+      }
+      await _setCurrentUser(updatedUser);
     } catch (e) {
       if (_isSessionInvalidError(e)) {
         debugPrint("🔴 [Auth] refreshUser detected revoked session: $e");
@@ -926,6 +933,17 @@ class AuthProvider with ChangeNotifier {
     await _saveSession(user: user, expiresAt: expiresAt);
     _scheduleSessionMonitor();
     notifyListeners();
+  }
+
+  bool _sameUser(AppUser left, AppUser right) {
+    return left.id == right.id &&
+        left.name == right.name &&
+        left.email == right.email &&
+        left.phone == right.phone &&
+        left.roleId == right.roleId &&
+        left.roleName == right.roleName &&
+        left.payUniqe == right.payUniqe &&
+        left.avatarUrl == right.avatarUrl;
   }
 }
 

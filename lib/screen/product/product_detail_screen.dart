@@ -174,7 +174,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     if (!mounted) return;
 
     if (result.name == "purchased" || result.name == "restored") {
-      await access.load(user.id);
+      await access.load(user.id, force: true);
       if (!mounted) return;
       messenger.showSnackBar(
         const SnackBar(content: Text("Abonelik başarıyla aktif edildi.")),
@@ -182,7 +182,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       return;
     }
     if (result.name == "notPresented" && rc.isYeniasyaProActive) {
-      await access.load(user.id);
+      await access.load(user.id, force: true);
       if (!mounted) return;
       messenger.showSnackBar(
         const SnackBar(content: Text("Aboneliğiniz zaten aktif.")),

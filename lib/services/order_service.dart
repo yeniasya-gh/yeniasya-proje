@@ -100,6 +100,8 @@ class OrderService {
         order_items(where: {order_id: {_in: $order_ids}}) {
           id
           order_id
+          product_id
+          ek_id
           title
           quantity
           unit_price
@@ -138,15 +140,25 @@ class OrderService {
   Future<Map<String, dynamic>?> getOrderDetail(int id) async {
     if (_cdn.hasToken) {
       try {
-        return await _getOrderDetailFromCdn(id);
+        final detail = await _getOrderDetailFromCdn(id);
+        if (detail != null) {
+          return detail;
+        }
       } catch (error) {
-        if (!_cdn.shouldFallbackToHasura(error)) {
+        if (!_shouldFallbackToHasuraForOrderDetail(error)) {
           rethrow;
         }
       }
     }
 
     return _getOrderDetailFromHasura(id);
+  }
+
+  bool _shouldFallbackToHasuraForOrderDetail(Object error) {
+    if (error is CdnRequestException && error.statusCode == 404) {
+      return true;
+    }
+    return _cdn.shouldFallbackToHasura(error);
   }
 
   Future<Map<String, dynamic>?> _getOrderDetailFromHasura(int id) async {
@@ -172,6 +184,8 @@ class OrderService {
           unit_price
           line_total
           product_type
+          product_id
+          ek_id
           metadata
         }
       }
@@ -197,6 +211,8 @@ class OrderService {
           unit_price
           line_total
           product_type
+          product_id
+          ek_id
           metadata
         }
       }

@@ -53,6 +53,7 @@ IconData orderItemFallbackIcon(Map<String, dynamic> item) {
   switch (productType) {
     case "book":
       return Icons.menu_book_outlined;
+    case "magazine_one":
     case "magazine":
     case "magazine_issue":
       return Icons.newspaper_outlined;

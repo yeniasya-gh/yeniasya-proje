@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../config/revenuecat_config.dart';
 import '../../helpers/payment_web_pending_store.dart';
+import '../../services/error/app_error_reporter.dart';
 import '../../services/access_provider.dart';
 import '../../services/auth/auth_provider.dart';
 import '../../services/cart/cart_provider.dart';
@@ -75,6 +77,23 @@ class _PaymentWebReturnScreenState extends State<PaymentWebReturnScreen> {
 
       await PaymentWebPendingStore.clear();
       if (!mounted) return;
+      if (!result.success) {
+        unawaited(
+          AppErrorReporter.instance.reportMessage(
+            service: "PaymentWebReturnScreen",
+            operation: "processReturn",
+            message: result.message ?? "Ödeme tamamlanamadı.",
+            payload: {
+              "responseCode": result.responseCode,
+              "responseMsg": result.responseMsg,
+              "errorCode": result.errorCode,
+              "errorMsg": result.errorMsg,
+              "merchantPaymentId": result.merchantPaymentId,
+              "approved": result.approved,
+            },
+          ),
+        );
+      }
       setState(() {
         _loading = false;
         _message = result.success
@@ -106,6 +125,9 @@ class _PaymentWebReturnScreenState extends State<PaymentWebReturnScreen> {
 
   Future<String?> _finalizeOrder(PendingWebPayment pending) async {
     String? mailWarning;
+    final authUser = context.read<AuthProvider>().user;
+    final access = context.read<AccessProvider>();
+    final cart = context.read<CartProvider>();
 
     final directAccessItems = pending.accessItems
         .where((item) => item["item_type"] != "newspaper_subscription")
@@ -139,11 +161,10 @@ class _PaymentWebReturnScreenState extends State<PaymentWebReturnScreen> {
     }
 
     try {
-      final user = context.read<AuthProvider>().user;
-      if (user != null) {
+      if (authUser != null) {
         await MailManager.instance.sendOrderSummary(
-          to: user.email,
-          name: user.name,
+          to: authUser.email,
+          name: authUser.name,
           orderId: pending.orderId.toString(),
           total: pending.payableTotal,
           items: pending.itemsPayload,
@@ -157,13 +178,12 @@ class _PaymentWebReturnScreenState extends State<PaymentWebReturnScreen> {
       }
     }
 
-    final access = context.read<AccessProvider>();
     final uid = int.tryParse(pending.userId);
     if (uid != null) {
-      await access.load(uid);
+      await access.load(uid, force: true);
     }
 
-    context.read<CartProvider>().clear();
+    cart.clear();
     return mailWarning;
   }
 
@@ -195,6 +215,18 @@ class _PaymentWebReturnScreenState extends State<PaymentWebReturnScreen> {
       );
       return true;
     } catch (_) {
+      unawaited(
+        AppErrorReporter.instance.reportMessage(
+          service: "PaymentWebReturnScreen",
+          operation: "syncNewspaperSubscriptionWithRevenueCat",
+          message: "RevenueCat sync failed.",
+          payload: {
+            "userId": pending.userId,
+            "expiresAt": expiresAt,
+            "purchasePlatform": "paratika",
+          },
+        ),
+      );
       return false;
     }
   }

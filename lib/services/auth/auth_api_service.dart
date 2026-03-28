@@ -68,6 +68,11 @@ class AuthApiService {
       payload = null;
     }
 
+    if (resp.statusCode == 429) {
+      throw Exception(
+        "Çok fazla giriş denemesi yapıldı. Lütfen biraz sonra tekrar deneyin.",
+      );
+    }
     if (resp.statusCode == 401) {
       throw Exception("INVALID_CREDENTIALS");
     }

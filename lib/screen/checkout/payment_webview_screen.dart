@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../../services/auth/auth_token_store.dart';
+import '../../services/error/app_error_reporter.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 import '../../services/payment_service.dart';
@@ -321,6 +322,22 @@ class _PaymentWebViewScreenState extends State<PaymentWebViewScreen> {
     _completed = true;
     _awaitingResult = false;
     _pollTimer?.cancel();
+    if (!result.success) {
+      unawaited(
+        AppErrorReporter.instance.reportMessage(
+          service: "PaymentWebViewScreen",
+          operation: "finishWithResult",
+          message: result.message ?? "Ödeme başarısız.",
+          payload: {
+            "responseCode": result.responseCode,
+            "responseMsg": result.responseMsg,
+            "errorCode": result.errorCode,
+            "errorMsg": result.errorMsg,
+            "approved": result.approved,
+          },
+        ),
+      );
+    }
     _log(
       "finish result -> success=${result.success} responseCode=${result.responseCode} errorCode=${result.errorCode} message=${result.message}",
     );

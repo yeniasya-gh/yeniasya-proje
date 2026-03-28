@@ -3,6 +3,10 @@ import '../../services/order_service.dart';
 import '../../services/error/error_manager.dart';
 import '../../utils/order_item_visual.dart';
 import '../../utils/purchase_channel_labels.dart';
+import '../../services/admin/admin_book_service.dart';
+import '../../services/admin/admin_magazine_service.dart';
+import '../../services/admin/admin_newspaper_service.dart';
+import '../../services/ek_service.dart';
 
 class OrderDetailScreen extends StatefulWidget {
   final int orderId;
@@ -15,6 +19,10 @@ class OrderDetailScreen extends StatefulWidget {
 
 class _OrderDetailScreenState extends State<OrderDetailScreen> {
   final _orderService = OrderService();
+  final _bookService = AdminBookService();
+  final _magazineService = AdminMagazineService();
+  final _newspaperService = AdminNewspaperService();
+  final _ekService = EkService();
   bool _loading = true;
   Map<String, dynamic>? _order;
 
@@ -30,7 +38,9 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     try {
       final detail = await _orderService.getOrderDetail(widget.orderId);
       if (!mounted) return;
-      setState(() => _order = detail);
+      final hydrated = await _hydrateOrderDetail(detail);
+      if (!mounted) return;
+      setState(() => _order = hydrated);
     } catch (e) {
       final parsed = ErrorManager.parseGraphQLError(e.toString());
       if (mounted) {
@@ -43,6 +53,116 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         setState(() => _loading = false);
       }
     }
+  }
+
+  Future<Map<String, dynamic>?> _hydrateOrderDetail(
+    Map<String, dynamic>? detail,
+  ) async {
+    if (detail == null) return null;
+    final rawItems = detail["order_items"];
+    final items = rawItems is List
+        ? rawItems
+              .whereType<Map>()
+              .map((item) => Map<String, dynamic>.from(item))
+              .toList(growable: false)
+        : <Map<String, dynamic>>[];
+    if (items.isEmpty) return detail;
+
+    final hydrated = await Future.wait(items.map(_hydrateOrderItem));
+    return {
+      ...detail,
+      "order_items": hydrated,
+    };
+  }
+
+  Future<Map<String, dynamic>> _hydrateOrderItem(
+    Map<String, dynamic> item,
+  ) async {
+    if ((orderItemImageUrl(item) ?? "").isNotEmpty) return item;
+
+    final type = _itemType(item);
+    final productId = _itemProductId(item);
+    if (productId == null) return item;
+
+    String? imageUrl;
+    try {
+      switch (type) {
+        case "book":
+          final book = await _bookService.getBookById(productId);
+          imageUrl = book?["cover_url"]?.toString();
+          break;
+        case "magazine":
+          final magazine = await _magazineService.getMagazineById(productId);
+          imageUrl = magazine?["cover_image_url"]?.toString();
+          break;
+        case "magazine_issue":
+        case "magazine_one":
+          final issue = await _magazineService.getIssueById(productId);
+          imageUrl =
+              issue?["photo_url"]?.toString() ??
+              issue?["file_url"]?.toString();
+          break;
+        case "newspaper":
+        case "newspaper_subscription":
+          final newspaper = await _newspaperService.getById(productId);
+          imageUrl =
+              newspaper?["image_url"]?.toString() ??
+              newspaper?["file_url"]?.toString();
+          break;
+        case "ek":
+          final ek = await _ekService.getEk(productId);
+          imageUrl = ek?["photo_url"]?.toString();
+          break;
+      }
+    } catch (_) {
+      imageUrl = null;
+    }
+
+    final normalized = imageUrl == null ? "" : imageUrl.trim();
+    if (normalized.isEmpty) return item;
+
+    return {
+      ...item,
+      "image_url": normalized,
+      "imageUrl": normalized,
+      "photo_url": normalized,
+      "photoUrl": normalized,
+      "cover_url": normalized,
+      "coverUrl": normalized,
+      "cover_image_url": normalized,
+      "coverImageUrl": normalized,
+      "thumbnail_url": normalized,
+      "thumbnailUrl": normalized,
+    };
+  }
+
+  String _itemType(Map<String, dynamic> item) {
+    return (item["product_type"] ?? item["type"] ?? "")
+        .toString()
+        .trim()
+        .toLowerCase();
+  }
+
+  int? _itemProductId(Map<String, dynamic> item) {
+    final metadata = item["metadata"] as Map<String, dynamic>? ?? const {};
+    final candidates = [
+      item["product_id"],
+      item["productId"],
+      item["ek_id"],
+      metadata["product_id"],
+      metadata["productId"],
+      metadata["item_id"],
+      metadata["id"],
+      metadata["ek_id"],
+    ];
+    for (final candidate in candidates) {
+      if (candidate == null) continue;
+      if (candidate is int) return candidate;
+      if (candidate is num) return candidate.toInt();
+      final parsed = int.tryParse(candidate.toString());
+      if (parsed != null) return parsed;
+    }
+    return null;
   }
 
   @override
@@ -312,15 +432,22 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   }
 
   String _typeLabel(dynamic raw) {
-    switch ((raw ?? "").toString()) {
+    final normalized = (raw ?? "").toString().trim().toLowerCase();
+    switch (normalized) {
       case "book":
         return "Kitap";
       case "magazine":
-        return "Dergi";
       case "magazine_issue":
-        return "Dergi Sayısı";
+      case "magazine_one":
+        return "Dergi";
+      case "supplement":
+      case "ek":
+        return "Ek";
+      case "newspaper":
       case "newspaper_subscription":
         return "Gazete";
+      case "book_bundle":
+        return "Kitap Paketi";
       default:
         return raw?.toString() ?? "-";
     }

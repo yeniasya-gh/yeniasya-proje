@@ -4,6 +4,11 @@ import 'user_content_access_service.dart';
 
 class AccessProvider extends ChangeNotifier {
   final _service = UserContentAccessService();
+  Future<void>? _loadInFlight;
+  int? _loadInFlightUserId;
+  int? _lastLoadedUserId;
+  DateTime? _lastLoadedAt;
+  static const Duration _reloadCooldown = Duration(seconds: 4);
 
   bool _loading = false;
   bool get loading => _loading;
@@ -62,7 +67,46 @@ class AccessProvider extends ChangeNotifier {
     return map[null];
   }
 
-  Future<void> load(int userId) async {
+  Future<void> load(int userId, {bool force = false}) async {
+    final now = DateTime.now();
+    if (!force &&
+        _lastLoadedUserId == userId &&
+        _lastLoadedAt != null &&
+        now.difference(_lastLoadedAt!) < _reloadCooldown) {
+      return;
+    }
+
+    final inFlight = _loadInFlight;
+    if (inFlight != null) {
+      if (_loadInFlightUserId == userId && !force) {
+        return inFlight;
+      }
+      await inFlight;
+      final refreshedNow = DateTime.now();
+      if (!force &&
+          _lastLoadedUserId == userId &&
+          _lastLoadedAt != null &&
+          refreshedNow.difference(_lastLoadedAt!) < _reloadCooldown) {
+        return;
+      }
+    }
+
+    final loadFuture = _loadInternal(userId);
+    _loadInFlight = loadFuture;
+    _loadInFlightUserId = userId;
+    try {
+      await loadFuture;
+      _lastLoadedUserId = userId;
+      _lastLoadedAt = DateTime.now();
+    } finally {
+      if (identical(_loadInFlight, loadFuture)) {
+        _loadInFlight = null;
+        _loadInFlightUserId = null;
+      }
+    }
+  }
+
+  Future<void> _loadInternal(int userId) async {
     _loading = true;
     notifyListeners();
     try {
@@ -108,6 +152,10 @@ class AccessProvider extends ChangeNotifier {
   }
 
   void clear() {
+    _loadInFlight = null;
+    _loadInFlightUserId = null;
+    _lastLoadedUserId = null;
+    _lastLoadedAt = null;
     for (final key in _access.keys) {
       _access[key]!.clear();
       _expires[key]!.clear();
