@@ -29,7 +29,8 @@ void main() {
         'purchase_platform': 'paratika',
         'grant_source': 'checkout',
       };
-      final manual = {'source': 'manual_newspaper'};
+      final manualOld = {'source': 'manual_newspaper', 'status': 'old'};
+      final manualNew = {'source': 'manual_newspaper', 'status': 'new'};
 
       expect(PurchaseChannelLabels.accessChannelLabel(google), 'Google Play');
       expect(PurchaseChannelLabels.accessChannelLabel(apple), 'Apple');
@@ -37,7 +38,14 @@ void main() {
         PurchaseChannelLabels.accessChannelLabel(paratika),
         'Paratika (Sanal POS)',
       );
-      expect(PurchaseChannelLabels.accessChannelLabel(manual), 'Manuel');
+      expect(
+        PurchaseChannelLabels.accessChannelLabel(manualOld),
+        'Manuel (Eski)',
+      );
+      expect(
+        PurchaseChannelLabels.accessChannelLabel(manualNew),
+        'Manuel (Yeni)',
+      );
     });
 
     test('maps payment provider labels', () {
@@ -50,6 +58,31 @@ void main() {
         'Google Play',
       );
       expect(PurchaseChannelLabels.paymentProviderLabel('apple'), 'Apple');
+    });
+
+    test('maps order channel labels', () {
+      expect(
+        PurchaseChannelLabels.orderChannelLabel({
+          'payment_provider': 'paratika',
+        }),
+        'Web',
+      );
+      expect(
+        PurchaseChannelLabels.orderChannelLabel({'payment_provider': 'apple'}),
+        'iOS / Apple',
+      );
+      expect(
+        PurchaseChannelLabels.orderChannelLabel({
+          'payment_provider': 'google_play',
+        }),
+        'Android / Google Play',
+      );
+      expect(
+        PurchaseChannelLabels.orderChannelLabel({
+          'merchant_payment_id': 'MP-123',
+        }),
+        'Web',
+      );
     });
   });
 }

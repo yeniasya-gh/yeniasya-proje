@@ -316,67 +316,37 @@ class AdminUserService {
 
   /// Kullanıcı sil
   Future<bool> deleteUser(int id) async {
-    try {
-      await _deleteUserRelatedData(id);
-    } catch (_) {
-      // İlişkili kayıt temizliği başarısız olsa da hesabı pasife almayı dene.
-    }
-
-    // Kullanıcıyı pasifleştirip anonimleştir.
-    final now = DateTime.now().millisecondsSinceEpoch;
-    final deletedEmail = "deleted_${id}_$now@yeniasya.local";
-    final deletedPassword = HashHelper.hashPassword("deleted_${id}_$now");
-
     const softDeleteMutationWithDeactivatedAt = r'''
       mutation DeactivateUser(
         $id: bigint!,
-        $name: String!,
-        $email: String!,
-        $password: String!,
         $deactivated_at: timestamptz!
       ) {
         update_users_by_pk(
           pk_columns: {id: $id},
-        _set: {
-          name: $name,
-          email: $email,
-          phone: null,
-          password: $password,
-          is_active: false,
-          deactivated_at: $deactivated_at,
-          email_verified_at: null,
-          firebase_token: null
+          _set: {
+            is_active: false,
+            deactivated_at: $deactivated_at
+          }
+        ) {
+          id
+          is_active
+          deactivated_at
         }
-      ) {
-        id
-        is_active
       }
-    }
     ''';
 
     const softDeleteMutationWithoutDeactivatedAt = r'''
-      mutation DeactivateUser(
-        $id: bigint!,
-        $name: String!,
-        $email: String!,
-        $password: String!
-      ) {
+      mutation DeactivateUser($id: bigint!) {
         update_users_by_pk(
           pk_columns: {id: $id},
-        _set: {
-          name: $name,
-          email: $email,
-          phone: null,
-          password: $password,
-          is_active: false,
-          email_verified_at: null,
-          firebase_token: null
+          _set: {
+            is_active: false
+          }
+        ) {
+          id
+          is_active
         }
-      ) {
-        id
-        is_active
       }
-    }
     ''';
 
     Map<String, dynamic> softDeleteData;
@@ -385,9 +355,6 @@ class AdminUserService {
         query: softDeleteMutationWithDeactivatedAt,
         variables: {
           "id": id,
-          "name": "Silinmiş Hesap",
-          "email": deletedEmail,
-          "password": deletedPassword,
           "deactivated_at": DateTime.now().toUtc().toIso8601String(),
         },
       );
@@ -397,70 +364,11 @@ class AdminUserService {
       }
       softDeleteData = await _hasura.graphQLRequest(
         query: softDeleteMutationWithoutDeactivatedAt,
-        variables: {
-          "id": id,
-          "name": "Silinmiş Hesap",
-          "email": deletedEmail,
-          "password": deletedPassword,
-        },
+        variables: {"id": id},
       );
     }
 
     return softDeleteData["update_users_by_pk"] != null;
-  }
-
-  Future<void> _deleteUserRelatedData(int userId) async {
-    const mutation = r'''
-      mutation DeleteUserRelatedData($user_id: Int!) {
-        delete_order_items(
-          where: {order: {user_id: {_eq: $user_id}}}
-        ) {
-          affected_rows
-        }
-        delete_orders(where: {user_id: {_eq: $user_id}}) {
-          affected_rows
-        }
-        delete_notifications(where: {user_id: {_eq: $user_id}}) {
-          affected_rows
-        }
-        delete_contact_messages(where: {user_id: {_eq: $user_id}}) {
-          affected_rows
-        }
-        delete_product_reviews(where: {user_id: {_eq: $user_id}}) {
-          affected_rows
-        }
-        delete_user_access_audit_log(
-          where: {
-            _or: [
-              {user_id: {_eq: $user_id}},
-              {actor_user_id: {_eq: $user_id}}
-            ]
-          }
-        ) {
-          affected_rows
-        }
-        delete_user_addresses(where: {user_id: {_eq: $user_id}}) {
-          affected_rows
-        }
-        delete_user_content_access(where: {user_id: {_eq: $user_id}}) {
-          affected_rows
-        }
-        delete_manual_newspaper_users(where: {user_id: {_eq: $user_id}}) {
-          affected_rows
-        }
-        delete_email_verification_tokens(where: {user_id: {_eq: $user_id}}) {
-          affected_rows
-        }
-        delete_password_reset_tokens(where: {user_id: {_eq: $user_id}}) {
-          affected_rows
-        }
-      }
-    ''';
-
-    await _hasura.graphQLRequest(
-      query: mutation,
-      variables: {"user_id": userId},
-    );
   }
 
   Future<List<Map<String, dynamic>>> getActiveAccess(int userId) async {
@@ -638,6 +546,7 @@ class AdminUserService {
           starts_at
           ends_at
           is_active
+          status
           note
         }
       }
@@ -663,6 +572,7 @@ class AdminUserService {
               "is_active": row["is_active"] == true,
               "purchase_price": null,
               "source": "manual_newspaper",
+              "status": row["status"],
               "note": row["note"],
             },
           )
@@ -739,10 +649,7 @@ class AdminUserService {
       }
     ''';
 
-    await _hasura.graphQLRequest(
-      query: mutation,
-      variables: {"id": id},
-    );
+    await _hasura.graphQLRequest(query: mutation, variables: {"id": id});
   }
 
   Future<void> _deleteManualNewspaperAccess(int id) async {

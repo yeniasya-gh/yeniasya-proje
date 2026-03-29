@@ -484,9 +484,7 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
                       (order["status"] ?? "paid").toString(),
                     );
                     final paymentChannel =
-                        PurchaseChannelLabels.paymentProviderLabel(
-                          order["payment_provider"],
-                        );
+                        PurchaseChannelLabels.orderChannelLabel(order);
                     return ListTile(
                       contentPadding: EdgeInsets.zero,
                       title: Row(

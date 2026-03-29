@@ -35,10 +35,22 @@ class AuthApiService {
       }),
     );
 
+    Map<String, dynamic>? payload;
+    try {
+      payload = jsonDecode(resp.body) as Map<String, dynamic>;
+    } catch (_) {
+      payload = null;
+    }
+
+    if (resp.statusCode == 409 &&
+        payload?["code"]?.toString() == "OLD_MANUAL_NEWSPAPER_ACCOUNT") {
+      throw Exception("OLD_MANUAL_NEWSPAPER_ACCOUNT");
+    }
+
     if (resp.statusCode < 200 || resp.statusCode >= 300) {
       throw Exception(_registerError(resp));
     }
-    final data = jsonDecode(resp.body) as Map<String, dynamic>;
+    final data = payload ?? (jsonDecode(resp.body) as Map<String, dynamic>);
     if (data["ok"] != true) {
       throw Exception(data["message"]?.toString() ?? "Register failed");
     }

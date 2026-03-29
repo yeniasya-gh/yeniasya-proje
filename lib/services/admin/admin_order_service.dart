@@ -2,7 +2,9 @@ import '../hasura_manager.dart';
 
 bool _isMissingPaymentProviderColumnError(Object error) {
   final message = error.toString().toLowerCase();
-  return message.contains("payment_provider");
+  return message.contains("payment_provider") ||
+      message.contains("merchant_payment_id") ||
+      message.contains("payment_session_token");
 }
 
 class AdminOrderService {
@@ -17,6 +19,8 @@ class AdminOrderService {
           status
           created_at
           payment_provider
+          merchant_payment_id
+          payment_session_token
           user_id
           user {
             id
@@ -26,7 +30,25 @@ class AdminOrderService {
         }
       }
     ''';
-    const queryWithoutProvider = r'''
+    const queryWithMerchantOnly = r'''
+      query GetAllOrders {
+        orders(order_by: {created_at: desc}) {
+          id
+          total_paid
+          status
+          created_at
+          merchant_payment_id
+          payment_session_token
+          user_id
+          user {
+            id
+            name
+            email
+          }
+        }
+      }
+    ''';
+    const queryWithoutChannel = r'''
       query GetAllOrders {
         orders(order_by: {created_at: desc}) {
           id
@@ -50,7 +72,14 @@ class AdminOrderService {
       if (!_isMissingPaymentProviderColumnError(error)) {
         rethrow;
       }
-      data = await _hasura.graphQLRequest(query: queryWithoutProvider);
+      try {
+        data = await _hasura.graphQLRequest(query: queryWithMerchantOnly);
+      } catch (merchantError) {
+        if (!_isMissingPaymentProviderColumnError(merchantError)) {
+          rethrow;
+        }
+        data = await _hasura.graphQLRequest(query: queryWithoutChannel);
+      }
     }
     return List<Map<String, dynamic>>.from(data["orders"] ?? []);
   }

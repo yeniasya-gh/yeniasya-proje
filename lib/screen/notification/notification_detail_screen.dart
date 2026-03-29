@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../services/notification_service.dart';
 import '../../services/error/error_manager.dart';
+import '../../utils/notification_date_formatter.dart';
 
 class NotificationDetailScreen extends StatefulWidget {
   final int notificationId;
@@ -126,7 +127,12 @@ class _NotificationDetailScreenState extends State<NotificationDetailScreen> {
   Widget build(BuildContext context) {
     final title = _data?['title'] ?? '';
     final body = _data?['body'] ?? '';
-    final date = _data?['created_at']?.toString() ?? '';
+    final dateOnly = formatNotificationDateOnly(
+      _data?['created_at']?.toString(),
+    );
+    final timeOnly = formatNotificationTimeOnly(
+      _data?['created_at']?.toString(),
+    );
     final isRead = _data?['is_read'] == true;
 
     return Scaffold(
@@ -155,47 +161,176 @@ class _NotificationDetailScreenState extends State<NotificationDetailScreen> {
       body: SafeArea(
         child: _loading
             ? const Center(child: CircularProgressIndicator())
-            : Padding(
-                padding: const EdgeInsets.all(16.0),
+            : SingleChildScrollView(
+                padding: const EdgeInsets.all(16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (!isRead)
-                      Container(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.orange.shade50,
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: const Text(
-                          "Okunmadı",
-                          style: TextStyle(
-                            color: Colors.orange,
-                            fontWeight: FontWeight.w600,
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: const Color(0xFFE5E7EB)),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Color(0x0A000000),
+                            blurRadius: 16,
+                            offset: Offset(0, 6),
                           ),
-                        ),
+                        ],
                       ),
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Container(
+                                width: 48,
+                                height: 48,
+                                decoration: BoxDecoration(
+                                  color: isRead
+                                      ? const Color(0xFFEFFAF3)
+                                      : const Color(0xFFFFF0EC),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(
+                                  isRead
+                                      ? Icons.notifications_none_outlined
+                                      : Icons.notifications_active_outlined,
+                                  color: isRead
+                                      ? const Color(0xFF16A34A)
+                                      : const Color(0xFFE74C3C),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    if (!isRead)
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 10,
+                                          vertical: 4,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFFFF0EC),
+                                          borderRadius: BorderRadius.circular(
+                                            999,
+                                          ),
+                                        ),
+                                        child: const Text(
+                                          "Okunmadı",
+                                          style: TextStyle(
+                                            color: Color(0xFFE74C3C),
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                      ),
+                                    const SizedBox(height: 10),
+                                    Text(
+                                      title,
+                                      style: const TextStyle(
+                                        fontSize: 21,
+                                        height: 1.2,
+                                        fontWeight: FontWeight.w800,
+                                        color: Color(0xFF111827),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              _metaChip(
+                                icon: Icons.schedule_outlined,
+                                label: dateOnly,
+                                background: const Color(0xFFF8FAFC),
+                                foreground: const Color(0xFF4B5563),
+                                border: const Color(0xFFE5E7EB),
+                              ),
+                              _metaChip(
+                                icon: Icons.event_note_outlined,
+                                label: timeOnly,
+                                background: const Color(0xFFF8FAFC),
+                                foreground: const Color(0xFF4B5563),
+                                border: const Color(0xFFE5E7EB),
+                              ),
+                              _metaChip(
+                                icon: isRead
+                                    ? Icons.mark_email_read_outlined
+                                    : Icons.mark_email_unread_outlined,
+                                label: isRead ? "Okundu" : "Okunmadı",
+                                background: isRead
+                                    ? const Color(0xFFEFFAF3)
+                                    : const Color(0xFFFFF0EC),
+                                foreground: isRead
+                                    ? const Color(0xFF16A34A)
+                                    : const Color(0xFFE74C3C),
+                                border: isRead
+                                    ? const Color(0xFFBFE8CB)
+                                    : const Color(0xFFF3C0B6),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 18),
+                          const Divider(height: 1),
+                          const SizedBox(height: 16),
+                          SelectableText(
+                            body,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              height: 1.7,
+                              color: Color(0xFF374151),
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(date, style: const TextStyle(color: Colors.black54)),
-                    const SizedBox(height: 16),
-                    Text(
-                      body,
-                      style: const TextStyle(fontSize: 16, height: 1.5),
                     ),
                   ],
                 ),
               ),
+      ),
+    );
+  }
+
+  Widget _metaChip({
+    required IconData icon,
+    required String label,
+    required Color background,
+    required Color foreground,
+    required Color border,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 15, color: foreground),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              color: foreground,
+              fontSize: 11.5,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -139,7 +139,7 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
         title: const Text("Kullanıcı pasif hale getirilsin mi?"),
         content: Text(
           "${user["name"] ?? "Bu kullanıcı"} pasif hale getirilecek.\n"
-          "Aktif kullanıcı listesinden gizlenecek ve giriş yapamayacak.",
+          "Kayıt verileri korunacak, aktif kullanıcı listesinden gizlenecek ve giriş yapamayacak.",
         ),
         actions: [
           TextButton(

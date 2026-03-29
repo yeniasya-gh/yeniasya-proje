@@ -69,10 +69,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     if (items.isEmpty) return detail;
 
     final hydrated = await Future.wait(items.map(_hydrateOrderItem));
-    return {
-      ...detail,
-      "order_items": hydrated,
-    };
+    return {...detail, "order_items": hydrated};
   }
 
   Future<Map<String, dynamic>> _hydrateOrderItem(
@@ -99,8 +96,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         case "magazine_one":
           final issue = await _magazineService.getIssueById(productId);
           imageUrl =
-              issue?["photo_url"]?.toString() ??
-              issue?["file_url"]?.toString();
+              issue?["photo_url"]?.toString() ?? issue?["file_url"]?.toString();
           break;
         case "newspaper":
         case "newspaper_subscription":
@@ -207,8 +203,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
               ) ??
               0;
     final promoPercent = _order?["promo_discount_percent"];
-    final paymentChannel = PurchaseChannelLabels.paymentProviderLabel(
-      _order?["payment_provider"],
+    final paymentChannel = PurchaseChannelLabels.orderChannelLabel(
+      Map<String, dynamic>.from(_order ?? <String, dynamic>{}),
     );
 
     return Container(

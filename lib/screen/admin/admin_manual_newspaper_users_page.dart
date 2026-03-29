@@ -54,6 +54,12 @@ class _AdminManualNewspaperUsersPageState
         _parseDate(initial?["ends_at"]) ??
         DateTime.now().add(const Duration(days: 30));
     bool isActive = initial?["is_active"] as bool? ?? true;
+    String status =
+        (initial?["status"]?.toString().trim().toLowerCase() ?? "new")
+            .replaceAll("eski", "old");
+    if (status != "old") {
+      status = "new";
+    }
     final noteCtrl = TextEditingController(
       text: initial?["note"]?.toString() ?? "",
     );
@@ -261,6 +267,27 @@ class _AdminManualNewspaperUsersPageState
                     onChanged: (v) => setSheetState(() => isActive = v),
                   ),
                   const SizedBox(height: 8),
+                  DropdownButtonFormField<String>(
+                    value: status,
+                    decoration: const InputDecoration(
+                      labelText: "Kayıt Tipi",
+                    ),
+                    items: const [
+                      DropdownMenuItem(
+                        value: "new",
+                        child: Text("Yeni (admin)"),
+                      ),
+                      DropdownMenuItem(
+                        value: "old",
+                        child: Text("Eski (import)"),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      if (value == null) return;
+                      setSheetState(() => status = value);
+                    },
+                  ),
+                  const SizedBox(height: 8),
                   TextField(
                     controller: noteCtrl,
                     maxLines: 2,
@@ -301,6 +328,7 @@ class _AdminManualNewspaperUsersPageState
                             startsAt: startsAt,
                             endsAt: endsAt,
                             isActive: isActive,
+                            status: status,
                             note: noteCtrl.text,
                           );
                           await _load();
@@ -447,6 +475,9 @@ class _AdminManualNewspaperUsersPageState
                         final endsAt = _parseDate(item["ends_at"]);
                         final isActive = item["is_active"] == true;
                         final note = (item["note"] ?? "").toString().trim();
+                        final recordStatus = _statusLabel(
+                          (item["status"] ?? "new").toString(),
+                        );
                         final now = DateTime.now();
                         final expired = endsAt == null
                             ? false
@@ -496,6 +527,8 @@ class _AdminManualNewspaperUsersPageState
                                             color: Colors.black54,
                                           ),
                                         ),
+                                        const SizedBox(height: 6),
+                                        _statusChip(recordStatus),
                                       ],
                                     ),
                                   ),
@@ -605,6 +638,32 @@ class _AdminManualNewspaperUsersPageState
   DateTime? _parseDate(dynamic value) {
     if (value == null) return null;
     return DateTime.tryParse(value.toString());
+  }
+
+  String _statusLabel(String value) {
+    final normalized = value.trim().toLowerCase();
+    if (normalized == "old" || normalized == "eski") return "Eski";
+    return "Yeni";
+  }
+
+  Widget _statusChip(String label) {
+    final isOld = label == "Eski";
+    final color = isOld ? Colors.orange : Colors.green;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontWeight: FontWeight.w700,
+          fontSize: 12,
+        ),
+      ),
+    );
   }
 
   static String _formatDate(DateTime value) {

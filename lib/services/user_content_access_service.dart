@@ -282,6 +282,7 @@ class UserContentAccessService {
           starts_at
           ends_at
           is_active
+          status
           note
         }
       }
@@ -306,6 +307,7 @@ class UserContentAccessService {
               "expires_at": row["ends_at"],
               "is_active": row["is_active"] == true,
               "source": "manual_newspaper",
+              "status": row["status"],
               "note": row["note"],
             },
           )
@@ -475,6 +477,7 @@ class UserContentAccessService {
           starts_at
           ends_at
           is_active
+          status
           note
         }
       }
@@ -499,6 +502,7 @@ class UserContentAccessService {
         "is_active": row["is_active"] == true,
         "note": row["note"],
         "source": "manual_newspaper",
+        "status": row["status"],
       };
     } catch (e) {
       final msg = e.toString().toLowerCase();

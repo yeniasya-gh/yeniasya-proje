@@ -34,7 +34,9 @@ class _CartScreenState extends State<CartScreen> {
     final cart = context.read<CartProvider>();
     final code = _promoCtrl.text.trim();
     if (code.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Lütfen bir kod girin.")));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("Lütfen bir kod girin.")));
       return;
     }
 
@@ -51,7 +53,10 @@ class _CartScreenState extends State<CartScreen> {
         return;
       }
       cart.applyPromo(promo);
-      setState(() => _promoMessage = "${promo.code} kodu uygulandı (%${promo.discountPercent.toStringAsFixed(0)}).");
+      setState(
+        () => _promoMessage =
+            "${promo.code} kodu uygulandı (%${promo.discountPercent.toStringAsFixed(0)}).",
+      );
     } catch (e) {
       cart.clearPromo();
       final parsed = ErrorManager.parseGraphQLError(e.toString());
@@ -68,6 +73,7 @@ class _CartScreenState extends State<CartScreen> {
     final horizontalPadding = isWeb ? 80.0 : 16.0;
 
     return Scaffold(
+      resizeToAvoidBottomInset: true,
       backgroundColor: Colors.white,
       appBar: AppBar(
         backgroundColor: Colors.white,
@@ -75,10 +81,7 @@ class _CartScreenState extends State<CartScreen> {
         centerTitle: true,
         title: const Text(
           "Sepetim",
-          style: TextStyle(
-            color: Colors.black87,
-            fontWeight: FontWeight.w600,
-          ),
+          style: TextStyle(color: Colors.black87, fontWeight: FontWeight.w600),
         ),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.black87),
@@ -88,41 +91,53 @@ class _CartScreenState extends State<CartScreen> {
 
       body: cart.items.isEmpty
           ? const Center(child: Text("Sepetiniz boş"))
-          : SingleChildScrollView(
-              child: Padding(
-                padding: EdgeInsets.symmetric(
-                  horizontal: horizontalPadding,
-                  vertical: 16,
-                ).copyWith(bottom: 120),
-                child: Column(
-                  children: [
-                    ...cart.items.map((item) => Padding(
+          : GestureDetector(
+              behavior: HitTestBehavior.translucent,
+              onTap: () => FocusScope.of(context).unfocus(),
+              child: SingleChildScrollView(
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
+                child: Padding(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: horizontalPadding,
+                    vertical: 16,
+                  ).copyWith(bottom: 120),
+                  child: Column(
+                    children: [
+                      ...cart.items.map(
+                        (item) => Padding(
                           padding: const EdgeInsets.only(bottom: 12),
                           child: _cartItem(
                             item: item,
                             onRemove: () => cart.remove(item.id),
                           ),
-                        )),
-                  ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
       bottomNavigationBar: cart.items.isEmpty
           ? null
-          : SafeArea(
-              minimum: EdgeInsets.symmetric(
-                horizontal: horizontalPadding,
-                vertical: 12,
+          : AnimatedPadding(
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOut,
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(context).viewInsets.bottom,
               ),
-              child: _checkoutSummary(context, cart),
+              child: SafeArea(
+                minimum: EdgeInsets.symmetric(
+                  horizontal: horizontalPadding,
+                  vertical: 12,
+                ),
+                child: _checkoutSummary(context, cart),
+              ),
             ),
     );
   }
 
-  Widget _cartItem({
-    required CartItem item,
-    required VoidCallback onRemove,
-  }) {
+  Widget _cartItem({required CartItem item, required VoidCallback onRemove}) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -150,7 +165,10 @@ class _CartScreenState extends State<CartScreen> {
               children: [
                 Text(
                   item.title,
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
                 const SizedBox(height: 4),
                 Text(
@@ -182,7 +200,7 @@ class _CartScreenState extends State<CartScreen> {
                 onPressed: onRemove,
               ),
             ],
-          )
+          ),
         ],
       ),
     );
@@ -232,7 +250,10 @@ class _CartScreenState extends State<CartScreen> {
                         },
                   child: const Text(
                     "Kaldır",
-                    style: TextStyle(color: Colors.black87, fontWeight: FontWeight.w600),
+                    style: TextStyle(
+                      color: Colors.black87,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 )
               else
@@ -246,7 +267,10 @@ class _CartScreenState extends State<CartScreen> {
                         )
                       : const Text(
                           "Uygula",
-                          style: TextStyle(color: Colors.red, fontWeight: FontWeight.w600),
+                          style: TextStyle(
+                            color: Colors.red,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                 ),
             ],
@@ -257,7 +281,9 @@ class _CartScreenState extends State<CartScreen> {
               child: Row(
                 children: [
                   Chip(
-                    label: Text("${applied.code}  -  %${applied.discountPercent.toStringAsFixed(0)} indirim"),
+                    label: Text(
+                      "${applied.code}  -  %${applied.discountPercent.toStringAsFixed(0)} indirim",
+                    ),
                     backgroundColor: const Color(0xFFE8F5E9),
                   ),
                 ],
@@ -268,7 +294,11 @@ class _CartScreenState extends State<CartScreen> {
               padding: const EdgeInsets.only(top: 6.0),
               child: Text(
                 _promoMessage!,
-                style: TextStyle(color: _promoMessage!.toLowerCase().contains("uygulandı") ? Colors.green : Colors.red),
+                style: TextStyle(
+                  color: _promoMessage!.toLowerCase().contains("uygulandı")
+                      ? Colors.green
+                      : Colors.red,
+                ),
               ),
             ),
         ],
@@ -322,10 +352,16 @@ class _CartScreenState extends State<CartScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text("İndirim", style: TextStyle(fontWeight: FontWeight.w500)),
+                  const Text(
+                    "İndirim",
+                    style: TextStyle(fontWeight: FontWeight.w500),
+                  ),
                   Text(
                     discount > 0 ? "-₺${discount.toStringAsFixed(2)}" : "₺0.00",
-                    style: const TextStyle(color: Colors.green, fontWeight: FontWeight.w600),
+                    style: const TextStyle(
+                      color: Colors.green,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ],
               ),
@@ -355,7 +391,11 @@ class _CartScreenState extends State<CartScreen> {
                   onPressed: () {
                     if (!auth.isLoggedIn) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text("Ödemeye devam etmek için giriş yapmalısınız.")),
+                        const SnackBar(
+                          content: Text(
+                            "Ödemeye devam etmek için giriş yapmalısınız.",
+                          ),
+                        ),
                       );
                       return;
                     }

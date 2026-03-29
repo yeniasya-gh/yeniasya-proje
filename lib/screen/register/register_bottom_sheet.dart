@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:flutter/services.dart';
 import '../../utils/phone_formatter.dart';
+import '../login/password_reset_screen.dart';
 
 class RegisterBottomSheet extends StatefulWidget {
   const RegisterBottomSheet({super.key});
@@ -157,6 +158,24 @@ class _RegisterBottomSheetState extends State<RegisterBottomSheet> {
                                 backgroundColor: Colors.green,
                                 textColor: Colors.white,
                                 fontSize: 14,
+                              );
+                            } else if (auth.errorMessage != null &&
+                                auth.errorMessage!
+                                    .contains("OLD_MANUAL_NEWSPAPER_ACCOUNT")) {
+                              final navigator = Navigator.of(
+                                context,
+                                rootNavigator: true,
+                              );
+                              final normalizedEmail = emailCtrl.text
+                                  .trim()
+                                  .toLowerCase();
+                              Navigator.pop(context);
+                              navigator.push(
+                                MaterialPageRoute(
+                                  builder: (_) => PasswordResetScreen(
+                                    email: normalizedEmail,
+                                  ),
+                                ),
                               );
                             }
                           },

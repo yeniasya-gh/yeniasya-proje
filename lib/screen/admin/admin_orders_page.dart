@@ -118,7 +118,7 @@ class _AdminOrdersPageState extends State<AdminOrdersPage> {
                               DataColumn(label: Text("#")),
                               DataColumn(label: Text("Kullanıcı")),
                               DataColumn(label: Text("Tutar")),
-                              DataColumn(label: Text("Kanal")),
+                              DataColumn(label: Text("Ödeme Kanalı")),
                               DataColumn(label: Text("Durum")),
                               DataColumn(label: Text("Tarih")),
                               DataColumn(label: Text("Detay")),
@@ -130,9 +130,7 @@ class _AdminOrdersPageState extends State<AdminOrdersPage> {
                                   o["user"]?["email"] ??
                                   "-";
                               final paymentChannel =
-                                  PurchaseChannelLabels.paymentProviderLabel(
-                                    o["payment_provider"],
-                                  );
+                                  PurchaseChannelLabels.orderChannelLabel(o);
                               return DataRow(
                                 cells: [
                                   DataCell(Text(o["id"]?.toString() ?? "")),

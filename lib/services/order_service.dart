@@ -3,7 +3,9 @@ import 'cdn_authenticated_client.dart';
 
 bool _isMissingPaymentProviderColumnError(Object error) {
   final message = error.toString().toLowerCase();
-  return message.contains("payment_provider");
+  return message.contains("payment_provider") ||
+      message.contains("merchant_payment_id") ||
+      message.contains("payment_session_token");
 }
 
 class OrderService {
@@ -36,6 +38,8 @@ class OrderService {
           total_paid
           status
           payment_provider
+          merchant_payment_id
+          payment_session_token
           promo_code_id
           promo_code
           promo_discount_percent
@@ -44,7 +48,23 @@ class OrderService {
         }
       }
     ''';
-    const queryWithoutProvider = r'''
+    const queryWithMerchantOnly = r'''
+      query GetOrders($user_id: bigint!) {
+        orders(where: {user_id: {_eq: $user_id}}, order_by: {created_at: desc}) {
+          id
+          total_paid
+          status
+          merchant_payment_id
+          payment_session_token
+          promo_code_id
+          promo_code
+          promo_discount_percent
+          promo_discount_amount
+          created_at
+        }
+      }
+    ''';
+    const queryWithoutChannel = r'''
       query GetOrders($user_id: bigint!) {
         orders(where: {user_id: {_eq: $user_id}}, order_by: {created_at: desc}) {
           id
@@ -69,10 +89,20 @@ class OrderService {
       if (!_isMissingPaymentProviderColumnError(error)) {
         rethrow;
       }
-      data = await _hasura.graphQLRequest(
-        query: queryWithoutProvider,
-        variables: {"user_id": userId},
-      );
+      try {
+        data = await _hasura.graphQLRequest(
+          query: queryWithMerchantOnly,
+          variables: {"user_id": userId},
+        );
+      } catch (merchantError) {
+        if (!_isMissingPaymentProviderColumnError(merchantError)) {
+          rethrow;
+        }
+        data = await _hasura.graphQLRequest(
+          query: queryWithoutChannel,
+          variables: {"user_id": userId},
+        );
+      }
     }
 
     return List<Map<String, dynamic>>.from(data["orders"] ?? []);
@@ -170,6 +200,8 @@ class OrderService {
           status
           created_at
           payment_provider
+          merchant_payment_id
+          payment_session_token
           delivery_address_id
           billing_address_id
           promo_code_id
@@ -190,7 +222,36 @@ class OrderService {
         }
       }
     ''';
-    const queryWithoutProvider = r'''
+    const queryWithMerchantOnly = r'''
+      query GetOrderDetail($id: bigint!) {
+        orders_by_pk(id: $id) {
+          id
+          total_paid
+          status
+          created_at
+          merchant_payment_id
+          payment_session_token
+          delivery_address_id
+          billing_address_id
+          promo_code_id
+          promo_code
+          promo_discount_percent
+          promo_discount_amount
+        }
+        order_items(where: {order_id: {_eq: $id}}) {
+          id
+          title
+          quantity
+          unit_price
+          line_total
+          product_type
+          product_id
+          ek_id
+          metadata
+        }
+      }
+    ''';
+    const queryWithoutChannel = r'''
       query GetOrderDetail($id: bigint!) {
         orders_by_pk(id: $id) {
           id
@@ -228,10 +289,20 @@ class OrderService {
       if (!_isMissingPaymentProviderColumnError(error)) {
         rethrow;
       }
-      data = await _hasura.graphQLRequest(
-        query: queryWithoutProvider,
-        variables: {"id": id},
-      );
+      try {
+        data = await _hasura.graphQLRequest(
+          query: queryWithMerchantOnly,
+          variables: {"id": id},
+        );
+      } catch (merchantError) {
+        if (!_isMissingPaymentProviderColumnError(merchantError)) {
+          rethrow;
+        }
+        data = await _hasura.graphQLRequest(
+          query: queryWithoutChannel,
+          variables: {"id": id},
+        );
+      }
     }
 
     final order = data["orders_by_pk"] as Map<String, dynamic>?;

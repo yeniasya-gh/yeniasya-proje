@@ -80,9 +80,7 @@ class _OrderListScreenState extends State<OrderListScreen> {
     final total = order["total_paid"]?.toString() ?? "0";
     final status = (order["status"] ?? "paid").toString();
     final date = _formatDate(order["created_at"]);
-    final paymentChannel = PurchaseChannelLabels.paymentProviderLabel(
-      order["payment_provider"],
-    );
+    final paymentChannel = PurchaseChannelLabels.orderChannelLabel(order);
     final orderItems = List<Map<String, dynamic>>.from(
       order["order_items"] ?? const [],
     );

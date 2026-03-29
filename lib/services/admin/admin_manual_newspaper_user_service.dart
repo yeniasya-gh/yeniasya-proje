@@ -14,6 +14,7 @@ class AdminManualNewspaperUserService {
           starts_at
           ends_at
           is_active
+          status
           note
           created_at
           updated_at
@@ -121,6 +122,7 @@ class AdminManualNewspaperUserService {
     required DateTime startsAt,
     required DateTime endsAt,
     required bool isActive,
+    required String status,
     String? note,
   }) async {
     const mutation = r'''
@@ -129,7 +131,7 @@ class AdminManualNewspaperUserService {
           object: $object,
           on_conflict: {
             constraint: manual_newspaper_users_user_id_key,
-            update_columns: [starts_at, ends_at, is_active, note, updated_at]
+            update_columns: [starts_at, ends_at, is_active, status, note, updated_at]
           }
         ) {
           id
@@ -145,6 +147,7 @@ class AdminManualNewspaperUserService {
           "starts_at": startsAt.toUtc().toIso8601String(),
           "ends_at": endsAt.toUtc().toIso8601String(),
           "is_active": isActive,
+          "status": _normalizeStatus(status),
           "note": (note ?? "").trim().isEmpty ? null : note!.trim(),
           "updated_at": DateTime.now().toUtc().toIso8601String(),
         },
@@ -157,6 +160,7 @@ class AdminManualNewspaperUserService {
     DateTime? startsAt,
     DateTime? endsAt,
     bool? isActive,
+    String? status,
     String? note,
   }) async {
     const mutation = r'''
@@ -182,6 +186,9 @@ class AdminManualNewspaperUserService {
     if (isActive != null) {
       set["is_active"] = isActive;
     }
+    if (status != null) {
+      set["status"] = _normalizeStatus(status);
+    }
     if (note != null) {
       set["note"] = note.trim().isEmpty ? null : note.trim();
     }
@@ -190,6 +197,12 @@ class AdminManualNewspaperUserService {
       query: mutation,
       variables: {"id": id.toString(), "_set": set},
     );
+  }
+
+  String _normalizeStatus(String status) {
+    final normalized = status.trim().toLowerCase();
+    if (normalized == "old" || normalized == "eski") return "old";
+    return "new";
   }
 
   Future<void> deleteById(int id) async {

@@ -43,6 +43,31 @@ void main() {
     expect(payload?['email'], 'test@example.com');
   });
 
+  test('AuthApiService.register surfaces old manual newspaper accounts', () async {
+    final client = MockClient((request) async {
+      return http.Response(
+        '{"ok":false,"code":"OLD_MANUAL_NEWSPAPER_ACCOUNT","error":"Bu e-posta eski e-gazete aboneliğine ait."}',
+        409,
+      );
+    });
+
+    final service = AuthApiService(
+      baseUrl: 'https://cdn.example.com',
+      client: client,
+    );
+
+    expect(
+      service.register(
+        name: 'Test User',
+        email: 'old@example.com',
+        password: 'Secret123',
+      ),
+      throwsA(
+        predicate((error) => error.toString().contains('OLD_MANUAL_NEWSPAPER_ACCOUNT')),
+      ),
+    );
+  });
+
   test('AuthApiService.login lowercases email before sending', () async {
     Map<String, dynamic>? payload;
     final client = MockClient((request) async {

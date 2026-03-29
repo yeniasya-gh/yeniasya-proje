@@ -1470,9 +1470,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                 const SizedBox(height: 12),
               ],
               Text(
-                widget.detail.description.isNotEmpty
-                    ? widget.detail.description
-                    : "Açıklama yakında.",
+                _resolvedDescription(),
                 style: const TextStyle(fontSize: 15, height: 1.5),
               ),
               if (widget.detail.type != CartItemType.newspaperSubscription)
@@ -1630,6 +1628,31 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               ),
       ),
     );
+  }
+
+  String _resolvedDescription() {
+    final description = widget.detail.description.trim();
+    if (description.isNotEmpty) return description;
+
+    final subtitle = (widget.detail.subtitle ?? "").trim();
+    switch (widget.detail.type) {
+      case CartItemType.book:
+        if (subtitle.isNotEmpty) {
+          return "Bu kitabın tanıtımı ve yazar bilgisi burada gösterilir. Yazar: $subtitle.";
+        }
+        return "Bu kitabın tanıtımı burada gösterilir.";
+      case CartItemType.magazine:
+        if (subtitle.isNotEmpty) {
+          return "Bu derginin tanıtımı ve kategorisi burada gösterilir. Kategori: $subtitle.";
+        }
+        return "Bu derginin tanıtımı burada gösterilir.";
+      case CartItemType.magazineIssue:
+        return "Bu sayı, dergi aboneliği kapsamında görüntülenebilir.";
+      case CartItemType.newspaperSubscription:
+        return "E-gazete aboneliğiniz ile güncel sayılara erişebilir, arşiv içeriklerini görüntüleyebilirsiniz.";
+      case CartItemType.supplement:
+        return "Bu ek içeriğe erişim için ilgili satın alım veya abonelik gerekir.";
+    }
   }
 
   Widget _buildPrimaryActionButton(

@@ -743,7 +743,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
   double _newspaperPreviewCardHeight({
     required double imageHeight,
     required bool showRead,
-  }) => imageHeight + (showRead ? 88.0 : 72.0);
+  }) => imageHeight + (showRead ? 106.0 : 90.0);
 
   String _resolveArchivedNewspaperUrl(
     Map<String, dynamic> viewInfo, {
@@ -3034,6 +3034,10 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
                   "title": resolvedDisplayList[i]["title"],
                   "author":
                       resolvedDisplayList[i]["author_rel"]?["name"] ?? "-",
+                  "desc":
+                      resolvedDisplayList[i]["min_description"] ??
+                      resolvedDisplayList[i]["description"] ??
+                      "",
                   "salePrice": resolvedDisplayList[i]["price"],
                   "campaignPrice": resolvedDisplayList[i]["discount_price"],
                 },
@@ -3071,6 +3075,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         "image": n["image_url"] ?? fallbackImage,
         "date": "E-Gazete",
         "title": titleText,
+        "desc": "Günlük e-gazete yayını",
         "raw": n,
       };
     }).toList();
@@ -3132,6 +3137,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
                         "image": items[i]["image"],
                         "title": items[i]["title"],
                         "date": items[i]["date"],
+                        "desc": items[i]["desc"],
                       },
                       width: cardWidth,
                       compact: true,
@@ -3423,6 +3429,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         const verticalGaps = 4.0; // SizedBox height between title/author
         final contentPadding = (isWeb ? 8.0 : 9.0) * 2;
         final imageHeight = isWeb ? 140.0 : 138.0;
+        final descHeight = textScaler.scale(11.5) * 1.2;
         const safetyMargin = 8.0;
         final cardHeight =
             imageHeight +
@@ -3430,6 +3437,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
             verticalGaps +
             titleHeight +
             authorHeight +
+            descHeight +
             rowHeight +
             safetyMargin;
 
@@ -3469,6 +3477,10 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
                 "image": books[i]["cover_url"],
                 "title": books[i]["title"],
                 "author": books[i]["author_rel"]?["name"] ?? "-",
+                "desc":
+                    books[i]["min_description"] ??
+                    books[i]["description"] ??
+                    "",
                 "salePrice": books[i]["price"],
                 "campaignPrice": books[i]["discount_price"],
               },
@@ -3545,7 +3557,12 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
             final label = _formatNewspaperPublishDate(item["publish_date"]);
             final title = label.isNotEmpty ? label : "Gazete";
             return _newspaperPreviewCard(
-              {"image": item["image_url"], "title": title, "date": "E-Gazete"},
+              {
+                "image": item["image_url"],
+                "title": title,
+                "date": "E-Gazete",
+                "desc": "Günlük e-gazete yayını",
+              },
               compact: true,
               imageHeight: imageHeight,
               showRead: hasSub,
@@ -3927,6 +3944,10 @@ Widget _bookCard(
   bool hideAction = false,
   bool bookStyle = false,
 }) {
+  final description =
+      (item["desc"] ?? item["description"] ?? item["min_description"] ?? "")
+          .toString()
+          .trim();
   return InkWell(
     onTap: onTap,
     borderRadius: BorderRadius.circular(14),
@@ -3974,6 +3995,19 @@ Widget _bookCard(
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(color: Colors.black54, fontSize: 12),
                   ),
+                  if (description.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      description,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFF4B5563),
+                        fontSize: 11.5,
+                        height: 1.2,
+                      ),
+                    ),
+                  ],
                   const Spacer(),
                   if (hideAction)
                     bookStyle
@@ -4111,6 +4145,7 @@ Widget _newspaperPreviewCard(
 }) {
   final title = item["title"]?.toString() ?? "";
   final date = item["date"]?.toString() ?? "";
+  final desc = (item["desc"] ?? item["description"] ?? "").toString().trim();
   final imageUrl = UploadService.normalizeUrl(item["image"]?.toString() ?? "");
 
   final resolvedImageHeight = imageHeight ?? (compact ? 135 : 210);
@@ -4183,6 +4218,19 @@ Widget _newspaperPreviewCard(
                         ),
                       ),
                     ],
+                    if (desc.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        desc,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Color(0xFF4B5563),
+                          fontSize: 10.5,
+                          height: 1.15,
+                        ),
+                      ),
+                    ],
                     if (showRead) ...[
                       const SizedBox(height: 4),
                       SizedBox(
@@ -4226,6 +4274,19 @@ Widget _newspaperPreviewCard(
                         style: const TextStyle(
                           color: Colors.black54,
                           fontSize: 12,
+                        ),
+                      ),
+                    ],
+                    if (desc.isNotEmpty) ...[
+                      const SizedBox(height: 5),
+                      Text(
+                        desc,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Color(0xFF4B5563),
+                          fontSize: 11.5,
+                          height: 1.2,
                         ),
                       ),
                     ],
@@ -5275,6 +5336,7 @@ class _BookBrowseBodyState extends State<_BookBrowseBody> {
                   "image": book["cover_url"],
                   "title": book["title"],
                   "author": _authorName(book),
+                  "desc": book["min_description"] ?? book["description"] ?? "",
                   "salePrice": book["price"],
                   "campaignPrice": book["discount_price"],
                 },

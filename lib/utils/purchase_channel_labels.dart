@@ -15,14 +15,14 @@ class PurchaseChannelLabels {
         case "revenuecat":
           return "RevenueCat";
         case "manual_newspaper":
-          return "Manuel";
+          return _manualNewspaperLabel(item);
       }
       return _humanize(grantSource);
     }
 
     final source = _normalize(item["source"]);
     if (source == "manual_newspaper") {
-      return "Manuel";
+      return _manualNewspaperLabel(item);
     }
 
     final paymentProvider = _normalize(
@@ -98,6 +98,103 @@ class PurchaseChannelLabels {
       default:
         return _humanize(normalized);
     }
+  }
+
+  static String _manualNewspaperLabel(Map<String, dynamic> item) {
+    final status = _normalize(
+      item["status"] ??
+          item["source_status"] ??
+          item["manual_status"] ??
+          item["record_status"],
+    );
+    if (status == "old" || status == "eski") {
+      return "Manuel (Eski)";
+    }
+    if (status == "new" || status == "yeni") {
+      return "Manuel (Yeni)";
+    }
+    return "Manuel";
+  }
+
+  static String orderChannelLabel(Map<String, dynamic> item) {
+    final purchasePlatform = _normalize(
+      item["purchase_platform"] ?? item["purchasePlatform"],
+    );
+    if (purchasePlatform != null) {
+      switch (purchasePlatform) {
+        case "paratika":
+        case "sanal_pos":
+        case "virtual_pos":
+        case "web_checkout":
+        case "web":
+        case "checkout":
+          return "Web";
+        case "apple":
+        case "app_store":
+        case "appstore":
+        case "ios":
+        case "iphone":
+        case "mac_app_store":
+        case "macappstore":
+          return "iOS / Apple";
+        case "google_play":
+        case "googleplay":
+        case "play_store":
+        case "playstore":
+        case "android":
+          return "Android / Google Play";
+        default:
+          return purchasePlatformLabel(purchasePlatform);
+      }
+    }
+
+    final paymentProvider = _normalize(
+      item["payment_provider"] ?? item["paymentProvider"],
+    );
+    if (paymentProvider != null) {
+      switch (paymentProvider) {
+        case "paratika":
+        case "sanal_pos":
+        case "virtual_pos":
+        case "web_checkout":
+        case "web":
+        case "checkout":
+          return "Web";
+        case "apple":
+        case "app_store":
+        case "appstore":
+        case "ios":
+        case "iphone":
+        case "mac_app_store":
+        case "macappstore":
+          return "iOS / Apple";
+        case "google_play":
+        case "googleplay":
+        case "play_store":
+        case "playstore":
+        case "android":
+          return "Android / Google Play";
+        default:
+          return _humanize(paymentProvider);
+      }
+    }
+
+    final merchantPaymentId = _normalize(
+      item["merchant_payment_id"] ?? item["merchantPaymentId"],
+    );
+    final paymentSessionToken = _normalize(
+      item["payment_session_token"] ?? item["paymentSessionToken"],
+    );
+    if (merchantPaymentId != null || paymentSessionToken != null) {
+      return "Web";
+    }
+
+    final source = _normalize(item["source"]);
+    if (source == "web_checkout") {
+      return "Web";
+    }
+
+    return "Bilinmiyor";
   }
 
   static String _humanize(String value) {

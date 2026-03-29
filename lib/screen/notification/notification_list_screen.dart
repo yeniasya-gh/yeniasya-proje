@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../services/auth/auth_provider.dart';
 import '../../services/notification_service.dart';
 import '../../services/error/error_manager.dart';
+import '../../utils/notification_date_formatter.dart';
 import 'notification_detail_screen.dart';
 
 class NotificationListScreen extends StatefulWidget {
@@ -180,8 +181,10 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
   Widget _notificationCard(Map<String, dynamic> n) {
     final title = n["title"] ?? "-";
     final body = n["body"] ?? "";
-    final date = n["created_at"]?.toString() ?? "";
+    final date = formatNotificationDate(n["created_at"]?.toString());
     final isRead = n["is_read"] == true;
+    final accent = isRead ? const Color(0xFF16A34A) : const Color(0xFFE74C3C);
+    final surface = isRead ? const Color(0xFFF8FAFC) : const Color(0xFFFFF7F5);
 
     return Dismissible(
       key: ValueKey("notification_${n["id"]}"),
@@ -220,43 +223,11 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
       onDismissed: (_) => _deleteNotification(n),
       child: Card(
         margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        child: ListTile(
-          leading: Container(
-            width: 10,
-            height: 10,
-            decoration: BoxDecoration(
-              color: isRead ? Colors.green : Colors.red,
-              shape: BoxShape.circle,
-            ),
-          ),
-          title: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontWeight: isRead ? FontWeight.w500 : FontWeight.w700,
-                  ),
-                ),
-              ),
-              if (!isRead)
-                const Padding(
-                  padding: EdgeInsets.only(left: 8),
-                  child: Text(
-                    "Yeni",
-                    style: TextStyle(color: Colors.red, fontSize: 11),
-                  ),
-                ),
-            ],
-          ),
-          subtitle: Text(body, maxLines: 2, overflow: TextOverflow.ellipsis),
-          trailing: Text(
-            date,
-            style: const TextStyle(fontSize: 11, color: Colors.black54),
-          ),
+        elevation: 0,
+        color: surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(18),
           onTap: () async {
             await Navigator.push(
               context,
@@ -267,7 +238,146 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
             );
             if (mounted) await _load();
           },
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 46,
+                  height: 46,
+                  decoration: BoxDecoration(
+                    color: accent.withValues(alpha: isRead ? 0.10 : 0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    isRead
+                        ? Icons.notifications_none_outlined
+                        : Icons.notifications_active_outlined,
+                    color: accent,
+                    size: 24,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              title,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 15.5,
+                                height: 1.25,
+                                fontWeight: isRead
+                                    ? FontWeight.w600
+                                    : FontWeight.w700,
+                                color: const Color(0xFF1F2937),
+                              ),
+                            ),
+                          ),
+                          if (!isRead)
+                            Container(
+                              margin: const EdgeInsets.only(left: 8, top: 1),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: accent.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                              child: Text(
+                                "Yeni",
+                                style: TextStyle(
+                                  color: accent,
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        body,
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 13.5,
+                          height: 1.45,
+                          color: Color(0xFF4B5563),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          _metaChip(
+                            icon: Icons.schedule_outlined,
+                            label: date,
+                            background: const Color(0xFFFFFFFF),
+                            foreground: const Color(0xFF4B5563),
+                            border: const Color(0xFFE5E7EB),
+                          ),
+                          _metaChip(
+                            icon: isRead
+                                ? Icons.mark_email_read_outlined
+                                : Icons.mark_email_unread_outlined,
+                            label: isRead ? "Okundu" : "Okunmadı",
+                            background: isRead
+                                ? const Color(0xFFEFFAF3)
+                                : const Color(0xFFFFF0EC),
+                            foreground: accent,
+                            border: accent.withValues(alpha: 0.18),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
+      ),
+    );
+  }
+
+  Widget _metaChip({
+    required IconData icon,
+    required String label,
+    required Color background,
+    required Color foreground,
+    required Color border,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 15, color: foreground),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              color: foreground,
+              fontSize: 11.5,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
       ),
     );
   }
