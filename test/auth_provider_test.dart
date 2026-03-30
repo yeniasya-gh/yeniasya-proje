@@ -28,4 +28,28 @@ void main() {
     expect(provider.errorMessage, contains('Oturumunuz sonlandırıldı'));
     expect(provider.isLoggedIn, isFalse);
   });
+
+  test(
+    'manual newspaper token maps to friendly ui message and can be cleared',
+    () async {
+      final provider = AuthProvider();
+
+      await provider.logout(
+        bootstrapGuest: false,
+        reason: AuthLogoutReason.manual,
+        message: 'OLD_MANUAL_NEWSPAPER_ACCOUNT',
+      );
+
+      expect(provider.errorMessage, 'OLD_MANUAL_NEWSPAPER_ACCOUNT');
+      expect(
+        provider.uiErrorMessage,
+        'Sistemde aktif hesabınız bulunmaktadır.',
+      );
+
+      provider.clearErrorMessage();
+
+      expect(provider.errorMessage, isNull);
+      expect(provider.uiErrorMessage, isNull);
+    },
+  );
 }

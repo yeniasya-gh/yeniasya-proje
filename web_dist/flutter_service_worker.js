@@ -3,9 +3,9 @@ const MANIFEST = 'flutter-app-manifest';
 const TEMP = 'flutter-temp-cache';
 const CACHE_NAME = 'flutter-app-cache';
 
-const RESOURCES = {"flutter_bootstrap.js": "a346fe1c677a5289f530316933c2dd5f",
+const RESOURCES = {"flutter_bootstrap.js": "45e1bc62cf59532bcafbcd3e550a2c96",
 "cerez-politikasi/index.html": "01022d2695fc5a1b3e39b36af87a7d53",
-"version.json": "621c548b7cb1c7fc64440f064169f571",
+"version.json": "606d1f0a541e710a44a926bd852d5720",
 "splash/img/light-2x.png": "78988e7c4d052997e515d27c8d747e08",
 "splash/img/dark-4x.png": "b072f85a43db171b1ed9b5afd7dbe82f",
 "splash/img/light-3x.png": "95badff8fb4551915fa180d56a39eed4",
@@ -21,7 +21,7 @@ const RESOURCES = {"flutter_bootstrap.js": "a346fe1c677a5289f530316933c2dd5f",
 "iletisim/index.html": "01022d2695fc5a1b3e39b36af87a7d53",
 "sifre-sifirla/index.html": "620372a40bbb9cdda207f01c6d201328",
 "faq/index.html": "620372a40bbb9cdda207f01c6d201328",
-"main.dart.js": "74106a51893058e61b3e2c5bb5db444f",
+"main.dart.js": "9c56f7c655dbf3da1d24639b1153edf0",
 "payment/pay/success/index.html": "620372a40bbb9cdda207f01c6d201328",
 "payment/pay/error/index.html": "620372a40bbb9cdda207f01c6d201328",
 "flutter.js": "888483df48293866f9f41d3d9274a779",

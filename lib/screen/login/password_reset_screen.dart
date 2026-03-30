@@ -8,8 +8,14 @@ import '../../utils/web_history.dart';
 class PasswordResetScreen extends StatefulWidget {
   final String? token;
   final String? email;
+  final String? infoMessage;
 
-  const PasswordResetScreen({super.key, this.token, this.email});
+  const PasswordResetScreen({
+    super.key,
+    this.token,
+    this.email,
+    this.infoMessage,
+  });
 
   @override
   State<PasswordResetScreen> createState() => _PasswordResetScreenState();
@@ -212,6 +218,10 @@ class _PasswordResetScreenState extends State<PasswordResetScreen> {
               "Kayıtlı e-posta adresinizi girin. Size tek kullanımlık bir sıfırlama bağlantısı göndereceğiz.",
               style: TextStyle(color: Colors.black54, height: 1.45),
             ),
+            if (widget.infoMessage?.trim().isNotEmpty == true) ...[
+              const SizedBox(height: 14),
+              _infoBanner(widget.infoMessage!.trim()),
+            ],
             const SizedBox(height: 20),
             TextFormField(
               controller: _emailCtrl,
@@ -281,6 +291,10 @@ class _PasswordResetScreenState extends State<PasswordResetScreen> {
                   : "Bağlantı doğrulandıktan sonra yeni şifreniz kaydedilecektir.",
               style: const TextStyle(color: Colors.black54, height: 1.45),
             ),
+            if (widget.infoMessage?.trim().isNotEmpty == true) ...[
+              const SizedBox(height: 14),
+              _infoBanner(widget.infoMessage!.trim()),
+            ],
             const SizedBox(height: 20),
             TextFormField(
               controller: _newPasswordCtrl,
@@ -387,6 +401,30 @@ class _PasswordResetScreenState extends State<PasswordResetScreen> {
         ],
       ),
       child: child,
+    );
+  }
+
+  Widget _infoBanner(String message) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEFF6FF),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFBFDBFE)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.info_outline, color: Color(0xFF2563EB), size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              message,
+              style: const TextStyle(color: Color(0xFF1E3A8A), height: 1.45),
+            ),
+          ),
+        ],
+      ),
     );
   }
 

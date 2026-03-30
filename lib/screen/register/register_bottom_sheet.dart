@@ -159,9 +159,7 @@ class _RegisterBottomSheetState extends State<RegisterBottomSheet> {
                                 textColor: Colors.white,
                                 fontSize: 14,
                               );
-                            } else if (auth.errorMessage != null &&
-                                auth.errorMessage!
-                                    .contains("OLD_MANUAL_NEWSPAPER_ACCOUNT")) {
+                            } else if (auth.isOldManualNewspaperAccountError) {
                               final navigator = Navigator.of(
                                 context,
                                 rootNavigator: true,
@@ -169,11 +167,14 @@ class _RegisterBottomSheetState extends State<RegisterBottomSheet> {
                               final normalizedEmail = emailCtrl.text
                                   .trim()
                                   .toLowerCase();
+                              auth.clearErrorMessage();
                               Navigator.pop(context);
                               navigator.push(
                                 MaterialPageRoute(
                                   builder: (_) => PasswordResetScreen(
                                     email: normalizedEmail,
+                                    infoMessage:
+                                        "Sistemde aktif hesabınız bulunmaktadır.",
                                   ),
                                 ),
                               );
@@ -193,11 +194,11 @@ class _RegisterBottomSheetState extends State<RegisterBottomSheet> {
                           ),
                   ),
                 ),
-                if (auth.errorMessage != null)
+                if (auth.uiErrorMessage != null)
                   Padding(
                     padding: const EdgeInsets.only(top: 12),
                     child: Text(
-                      auth.errorMessage!,
+                      auth.uiErrorMessage!,
                       style: const TextStyle(
                         color: Colors.red,
                         fontSize: 13,

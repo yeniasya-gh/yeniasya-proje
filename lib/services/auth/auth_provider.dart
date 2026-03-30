@@ -34,6 +34,17 @@ class AuthProvider with ChangeNotifier {
   AppUser? get user => _user;
   bool get isLoggedIn => _isLoggedIn;
   String? get errorMessage => _errorMessage;
+  bool get isOldManualNewspaperAccountError =>
+      _errorMessage?.contains("OLD_MANUAL_NEWSPAPER_ACCOUNT") == true;
+  String? get uiErrorMessage {
+    final message = _errorMessage?.trim();
+    if (message == null || message.isEmpty) return null;
+    if (message.contains("OLD_MANUAL_NEWSPAPER_ACCOUNT")) {
+      return "Sistemde aktif hesabınız bulunmaktadır.";
+    }
+    return message;
+  }
+
   bool get needsEmailVerification => _needsEmailVerification;
   String? get verificationEmailHint => _verificationEmailHint;
   AuthLogoutReason? get lastLogoutReason => _lastLogoutReason;
@@ -234,6 +245,12 @@ class AuthProvider with ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(keyUserJson, jsonEncode(user.toJson()));
     unawaited(AppErrorReporter.instance.flushPending());
+  }
+
+  void clearErrorMessage({bool notify = true}) {
+    if (_errorMessage == null) return;
+    _errorMessage = null;
+    if (notify) notifyListeners();
   }
 
   Future<void> _clearUserLocalState(SharedPreferences prefs) async {
