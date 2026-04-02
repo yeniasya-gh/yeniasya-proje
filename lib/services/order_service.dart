@@ -16,10 +16,14 @@ class OrderService {
   final HasuraManager _hasura;
   final CdnAuthenticatedClient _cdn;
 
-  Future<List<Map<String, dynamic>>> getOrders(int userId) async {
+  Future<List<Map<String, dynamic>>> getOrders(
+    int userId, {
+    bool includePending = false,
+  }) async {
     if (_cdn.canReadUserScopedData(userId)) {
       try {
-        return await _getOrdersFromCdn();
+        final orders = await _getOrdersFromCdn();
+        return _filterPendingOrders(orders, includePending: includePending);
       } catch (error) {
         if (!_cdn.shouldFallbackToHasura(error)) {
           rethrow;
@@ -27,7 +31,8 @@ class OrderService {
       }
     }
 
-    return _getOrdersFromHasura(userId);
+    final orders = await _getOrdersFromHasura(userId);
+    return _filterPendingOrders(orders, includePending: includePending);
   }
 
   Future<List<Map<String, dynamic>>> _getOrdersFromHasura(int userId) async {
@@ -108,10 +113,14 @@ class OrderService {
     return List<Map<String, dynamic>>.from(data["orders"] ?? []);
   }
 
-  Future<List<Map<String, dynamic>>> getOrdersWithItems(int userId) async {
+  Future<List<Map<String, dynamic>>> getOrdersWithItems(
+    int userId, {
+    bool includePending = false,
+  }) async {
     if (_cdn.canReadUserScopedData(userId)) {
       try {
-        return await _getOrdersFromCdn(includeItems: true);
+        final orders = await _getOrdersFromCdn(includeItems: true);
+        return _filterPendingOrders(orders, includePending: includePending);
       } catch (error) {
         if (!_cdn.shouldFallbackToHasura(error)) {
           rethrow;
@@ -157,14 +166,17 @@ class OrderService {
       byOrder.putIfAbsent(oid, () => []).add(item);
     }
 
-    return orders
-        .map(
-          (o) => {
-            ...o,
-            "order_items": byOrder[o["id"]] ?? <Map<String, dynamic>>[],
-          },
-        )
-        .toList();
+    return _filterPendingOrders(
+      orders
+          .map(
+            (o) => {
+              ...o,
+              "order_items": byOrder[o["id"]] ?? <Map<String, dynamic>>[],
+            },
+          )
+          .toList(),
+      includePending: includePending,
+    );
   }
 
   Future<Map<String, dynamic>?> getOrderDetail(int id) async {
@@ -327,6 +339,19 @@ class OrderService {
     final order = data["order"];
     if (order is! Map) return null;
     return Map<String, dynamic>.from(order);
+  }
+
+  List<Map<String, dynamic>> _filterPendingOrders(
+    List<Map<String, dynamic>> orders, {
+    required bool includePending,
+  }) {
+    if (includePending) return orders;
+    return orders.where((order) => !_isPendingOrder(order)).toList();
+  }
+
+  bool _isPendingOrder(Map<String, dynamic> order) {
+    return (order["status"]?.toString().trim().toLowerCase() ?? "") ==
+        "pending";
   }
 
   Future<Map<String, dynamic>> createOrder({

@@ -78,7 +78,7 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
       ),
       _loadSection<List<Map<String, dynamic>>>(
         "orders",
-        () => _orderService.getOrdersWithItems(userId),
+        () => _orderService.getOrdersWithItems(userId, includePending: true),
       ),
       _loadSection<List<Map<String, dynamic>>>(
         "addresses",

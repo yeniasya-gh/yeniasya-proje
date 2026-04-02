@@ -1,7 +1,10 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:YeniAsya/services/auth/auth_provider.dart';
+import 'package:YeniAsya/services/auth/auth_api_service.dart';
 
 void main() {
   setUp(() async {
@@ -52,4 +55,27 @@ void main() {
       expect(provider.uiErrorMessage, isNull);
     },
   );
+
+  test('duplicate phone registration maps to friendly ui message', () async {
+    final authApi = AuthApiService(
+      baseUrl: 'https://cdn.example.com',
+      client: MockClient((request) async {
+        return http.Response(
+          '{"ok":false,"code":"USER_PHONE_ALREADY_EXISTS","error":"Uniqueness violation. duplicate key value violates unique constraint \\"users_phone_key\\""}',
+          409,
+        );
+      }),
+    );
+    final provider = AuthProvider(authApi: authApi);
+
+    final result = await provider.register(
+      name: 'Test User',
+      email: 'phone@example.com',
+      password: 'Secret123',
+      phone: '5314216754',
+    );
+
+    expect(result, isFalse);
+    expect(provider.uiErrorMessage, 'Bu telefon numarası zaten kayıtlı.');
+  });
 }

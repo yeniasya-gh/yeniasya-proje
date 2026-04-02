@@ -34,6 +34,26 @@ class _FakeHasuraManager implements HasuraManager {
         "insert_order_items": {"affected_rows": 1},
       };
     }
+    if (query.contains("orders(where") && !query.contains("orders_by_pk")) {
+      return {
+        "orders": [
+          {
+            "id": 10,
+            "total_paid": 0,
+            "status": "pending",
+            "created_at": "2026-03-25T10:00:00.000Z",
+            "payment_provider": "paratika",
+          },
+          {
+            "id": 11,
+            "total_paid": 149.5,
+            "status": "paid",
+            "created_at": "2026-03-25T11:00:00.000Z",
+            "payment_provider": "paratika",
+          },
+        ],
+      };
+    }
     if (query.contains("orders_by_pk")) {
       return {
         "orders_by_pk": {
@@ -67,11 +87,10 @@ class _FakeHasuraManager implements HasuraManager {
 }
 
 class _FakeCdnClient implements CdnAuthenticatedClient {
-  _FakeCdnClient({
-    required this.throw404OnDetail,
-  });
+  _FakeCdnClient({required this.throw404OnDetail, this.orders});
 
   final bool throw404OnDetail;
+  final List<Map<String, dynamic>>? orders;
 
   @override
   bool get hasToken => true;
@@ -93,7 +112,7 @@ class _FakeCdnClient implements CdnAuthenticatedClient {
     if (throw404OnDetail && path.contains("/auth/me/orders/77")) {
       throw CdnRequestException("Order not found.", statusCode: 404);
     }
-    return const {"ok": true, "data": []};
+    return {"ok": true, "data": orders ?? const []};
   }
 }
 
@@ -127,5 +146,50 @@ void main() {
     expect(detail?["id"], 77);
     expect(detail?["payment_provider"], "paratika");
     expect(fakeHasura.lastQuery, contains("orders_by_pk"));
+  });
+
+  test(
+    'OrderService hides pending orders for user-facing lists by default',
+    () async {
+      final fakeHasura = _FakeHasuraManager();
+      final service = OrderService(hasura: fakeHasura);
+
+      final orders = await service.getOrders(12);
+
+      expect(orders, hasLength(1));
+      expect(orders.single["id"], 11);
+      expect(orders.single["status"], "paid");
+    },
+  );
+
+  test('OrderService keeps pending orders when explicitly requested', () async {
+    final fakeCdn = _FakeCdnClient(
+      throw404OnDetail: false,
+      orders: [
+        {
+          "id": 10,
+          "total_paid": 0,
+          "status": "pending",
+          "created_at": "2026-03-25T10:00:00.000Z",
+          "payment_provider": "paratika",
+          "order_items": const [],
+        },
+        {
+          "id": 11,
+          "total_paid": 149.5,
+          "status": "paid",
+          "created_at": "2026-03-25T11:00:00.000Z",
+          "payment_provider": "paratika",
+          "order_items": const [],
+        },
+      ],
+    );
+    final service = OrderService(cdn: fakeCdn);
+
+    final orders = await service.getOrders(12, includePending: true);
+
+    expect(orders, hasLength(2));
+    expect(orders.first["status"], "pending");
+    expect(orders.last["status"], "paid");
   });
 }

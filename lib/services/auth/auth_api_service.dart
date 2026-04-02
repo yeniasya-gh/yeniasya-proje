@@ -336,9 +336,7 @@ class AuthApiService {
 
     if (resp.statusCode < 200 || resp.statusCode >= 300) {
       final message = _responseMessage(resp);
-      throw Exception(
-        message.isNotEmpty ? message : "Şifre güncellenemedi.",
-      );
+      throw Exception(message.isNotEmpty ? message : "Şifre güncellenemedi.");
     }
 
     final decoded = jsonDecode(resp.body);
@@ -409,10 +407,35 @@ class AuthApiService {
 
   String _registerError(http.Response resp) {
     final message = _responseMessage(resp);
+    final code = _responseCode(resp);
+    final lowerMessage = message.toLowerCase();
+    final lowerBody = resp.body.toLowerCase();
     switch (resp.statusCode) {
       case 400:
         return message.isNotEmpty ? message : "Üyelik bilgileri geçersiz.";
       case 409:
+        if (code == "USER_PHONE_ALREADY_EXISTS" ||
+            lowerMessage.contains("users_phone_key") ||
+            lowerBody.contains("users_phone_key") ||
+            lowerMessage.contains(
+              'duplicate key value violates unique constraint "users_phone_key"',
+            ) ||
+            lowerBody.contains(
+              'duplicate key value violates unique constraint "users_phone_key"',
+            )) {
+          return "Bu telefon numarası zaten kayıtlı.";
+        }
+        if (code == "USER_EMAIL_ALREADY_EXISTS" ||
+            lowerMessage.contains("users_email_key") ||
+            lowerBody.contains("users_email_key") ||
+            lowerMessage.contains(
+              'duplicate key value violates unique constraint "users_email_key"',
+            ) ||
+            lowerBody.contains(
+              'duplicate key value violates unique constraint "users_email_key"',
+            )) {
+          return "Bu e-posta adresi zaten kayıtlı.";
+        }
         return message.isNotEmpty
             ? message
             : "Bu e-posta adresiyle kayıtlı bir hesap zaten var.";

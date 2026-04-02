@@ -16,8 +16,12 @@ import '../notification_service.dart';
 import '../secure_file_service.dart';
 
 class AuthProvider with ChangeNotifier {
-  final UserService _userService = UserService();
-  final AuthApiService _authApi = AuthApiService();
+  AuthProvider({AuthApiService? authApi, UserService? userService})
+    : _authApi = authApi ?? AuthApiService(),
+      _userService = userService ?? UserService();
+
+  final UserService _userService;
+  final AuthApiService _authApi;
 
   AppUser? _user;
   bool _isLoggedIn = false;
@@ -39,10 +43,7 @@ class AuthProvider with ChangeNotifier {
   String? get uiErrorMessage {
     final message = _errorMessage?.trim();
     if (message == null || message.isEmpty) return null;
-    if (message.contains("OLD_MANUAL_NEWSPAPER_ACCOUNT")) {
-      return "Sistemde aktif hesabınız bulunmaktadır.";
-    }
-    return message;
+    return _friendlyAuthErrorMessage(message);
   }
 
   bool get needsEmailVerification => _needsEmailVerification;
@@ -74,6 +75,28 @@ class AuthProvider with ChangeNotifier {
     final trimmed = value?.trim();
     if (trimmed == null || trimmed.isEmpty) return null;
     return trimmed;
+  }
+
+  String _friendlyAuthErrorMessage(String message) {
+    final lower = message.toLowerCase();
+    if (message.contains("OLD_MANUAL_NEWSPAPER_ACCOUNT")) {
+      return "Sistemde aktif hesabınız bulunmaktadır.";
+    }
+    if (lower.contains("user_phone_already_exists") ||
+        lower.contains("users_phone_key") ||
+        lower.contains(
+          'duplicate key value violates unique constraint "users_phone_key"',
+        )) {
+      return "Bu telefon numarası zaten kayıtlı.";
+    }
+    if (lower.contains("user_email_already_exists") ||
+        lower.contains("users_email_key") ||
+        lower.contains(
+          'duplicate key value violates unique constraint "users_email_key"',
+        )) {
+      return "Bu e-posta adresi zaten kayıtlı.";
+    }
+    return message;
   }
 
   String? _tokenFromPayload(Map<String, dynamic> payload) {
@@ -752,7 +775,9 @@ class AuthProvider with ChangeNotifier {
       _verificationEmailHint = email.trim().toLowerCase();
       _needsEmailVerification = false;
       _lastLogoutReason = null;
-      _errorMessage = e.toString().replaceFirst("Exception:", "").trim();
+      _errorMessage = _friendlyAuthErrorMessage(
+        e.toString().replaceFirst("Exception:", "").trim(),
+      );
 
       notifyListeners();
       return false;

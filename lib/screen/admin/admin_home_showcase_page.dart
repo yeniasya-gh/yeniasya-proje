@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../services/admin/admin_book_service.dart';
+import '../../services/admin/admin_ek_service.dart';
 import '../../services/admin/admin_magazine_service.dart';
 import '../../services/error/error_manager.dart';
 import '../../services/home_showcase_service.dart';
@@ -16,18 +17,23 @@ class AdminHomeShowcasePage extends StatefulWidget {
 class _AdminHomeShowcasePageState extends State<AdminHomeShowcasePage> {
   static const int _maxItems = 10;
   final AdminBookService _bookService = AdminBookService();
+  final AdminEkService _ekService = AdminEkService();
   final AdminMagazineService _magazineService = AdminMagazineService();
   final HomeShowcaseService _showcaseService = HomeShowcaseService();
 
   final TextEditingController _bookSearchCtrl = TextEditingController();
+  final TextEditingController _ekSearchCtrl = TextEditingController();
   final TextEditingController _magazineSearchCtrl = TextEditingController();
 
   bool _loading = true;
   List<Map<String, dynamic>> _books = [];
+  List<Map<String, dynamic>> _ekler = [];
   List<Map<String, dynamic>> _magazines = [];
   List<Map<String, dynamic>> _bookEntries = [];
+  List<Map<String, dynamic>> _ekEntries = [];
   List<Map<String, dynamic>> _magazineEntries = [];
   List<Map<String, dynamic>> _filteredBooks = [];
+  List<Map<String, dynamic>> _filteredEkler = [];
   List<Map<String, dynamic>> _filteredMagazines = [];
 
   @override
@@ -35,12 +41,14 @@ class _AdminHomeShowcasePageState extends State<AdminHomeShowcasePage> {
     super.initState();
     _loadData();
     _bookSearchCtrl.addListener(_filterBooks);
+    _ekSearchCtrl.addListener(_filterEkler);
     _magazineSearchCtrl.addListener(_filterMagazines);
   }
 
   @override
   void dispose() {
     _bookSearchCtrl.dispose();
+    _ekSearchCtrl.dispose();
     _magazineSearchCtrl.dispose();
     super.dispose();
   }
@@ -48,19 +56,24 @@ class _AdminHomeShowcasePageState extends State<AdminHomeShowcasePage> {
   Future<void> _loadData() async {
     setState(() => _loading = true);
     try {
-      final results = await Future.wait([
+      final results = await Future.wait<List<Map<String, dynamic>>>([
         _bookService.getAllBooks(),
+        _ekService.getAll(),
         _magazineService.getMagazines(),
         _showcaseService.getByType("book"),
+        _showcaseService.getByType("ek"),
         _showcaseService.getByType("magazine"),
       ]);
 
       setState(() {
-        _books = results[0] as List<Map<String, dynamic>>;
-        _magazines = results[1] as List<Map<String, dynamic>>;
-        _bookEntries = results[2] as List<Map<String, dynamic>>;
-        _magazineEntries = results[3] as List<Map<String, dynamic>>;
+        _books = results[0];
+        _ekler = results[1];
+        _magazines = results[2];
+        _bookEntries = results[3];
+        _ekEntries = results[4];
+        _magazineEntries = results[5];
         _filteredBooks = List<Map<String, dynamic>>.from(_books);
+        _filteredEkler = List<Map<String, dynamic>>.from(_ekler);
         _filteredMagazines = List<Map<String, dynamic>>.from(_magazines);
       });
     } catch (e) {
@@ -75,8 +88,21 @@ class _AdminHomeShowcasePageState extends State<AdminHomeShowcasePage> {
     setState(() {
       _filteredBooks = _books.where((b) {
         final title = (b["title"] ?? "").toString().toLowerCase();
-        final author = (b["author_rel"]?["name"] ?? "").toString().toLowerCase();
+        final author = (b["author_rel"]?["name"] ?? "")
+            .toString()
+            .toLowerCase();
         return title.contains(q) || author.contains(q);
+      }).toList();
+    });
+  }
+
+  void _filterEkler() {
+    final q = _ekSearchCtrl.text.trim().toLowerCase();
+    setState(() {
+      _filteredEkler = _ekler.where((ek) {
+        final ad = (ek["ad"] ?? "").toString().toLowerCase();
+        final aciklama = (ek["aciklama"] ?? "").toString().toLowerCase();
+        return ad.contains(q) || aciklama.contains(q);
       }).toList();
     });
   }
@@ -111,11 +137,8 @@ class _AdminHomeShowcasePageState extends State<AdminHomeShowcasePage> {
     );
   }
 
-  Future<void> _addEntry({
-    required String type,
-    required int productId,
-  }) async {
-    final entries = type == "book" ? _bookEntries : _magazineEntries;
+  Future<void> _addEntry({required String type, required int productId}) async {
+    final entries = _entriesForType(type);
     if (entries.length >= _maxItems) {
       _showSnack("Maksimum $_maxItems ürün seçebilirsiniz.");
       return;
@@ -154,15 +177,14 @@ class _AdminHomeShowcasePageState extends State<AdminHomeShowcasePage> {
   Future<void> _reloadEntries(String type) async {
     final list = await _showcaseService.getByType(type);
     setState(() {
-      if (type == "book") {
-        _bookEntries = list;
-      } else {
-        _magazineEntries = list;
-      }
+      _setEntriesForType(type, list);
     });
   }
 
-  Future<void> _persistOrder(String type, List<Map<String, dynamic>> entries) async {
+  Future<void> _persistOrder(
+    String type,
+    List<Map<String, dynamic>> entries,
+  ) async {
     try {
       for (var i = 0; i < entries.length; i++) {
         final id = entries[i]["id"];
@@ -176,7 +198,9 @@ class _AdminHomeShowcasePageState extends State<AdminHomeShowcasePage> {
   }
 
   void _showSnack(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -186,7 +210,7 @@ class _AdminHomeShowcasePageState extends State<AdminHomeShowcasePage> {
     }
 
     return DefaultTabController(
-      length: 2,
+      length: 3,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -196,7 +220,7 @@ class _AdminHomeShowcasePageState extends State<AdminHomeShowcasePage> {
           ),
           const SizedBox(height: 6),
           const Text(
-            "Kitap ve dergiler için anasayfa sıralamasını belirleyin. Maksimum 10 ürün seçilebilir.",
+            "Kitap, dergi ve ekler için anasayfa sıralamasını belirleyin. Maksimum 10 ürün seçilebilir.",
             style: TextStyle(color: Colors.black54),
           ),
           const SizedBox(height: 16),
@@ -205,6 +229,7 @@ class _AdminHomeShowcasePageState extends State<AdminHomeShowcasePage> {
             tabs: [
               Tab(text: "Kitaplar"),
               Tab(text: "Dergiler"),
+              Tab(text: "Ekler"),
             ],
           ),
           const SizedBox(height: 12),
@@ -223,6 +248,12 @@ class _AdminHomeShowcasePageState extends State<AdminHomeShowcasePage> {
                   items: _filteredMagazines,
                   searchController: _magazineSearchCtrl,
                 ),
+                _buildTypeTab(
+                  type: "ek",
+                  entries: _ekEntries,
+                  items: _filteredEkler,
+                  searchController: _ekSearchCtrl,
+                ),
               ],
             ),
           ),
@@ -237,7 +268,7 @@ class _AdminHomeShowcasePageState extends State<AdminHomeShowcasePage> {
     required List<Map<String, dynamic>> items,
     required TextEditingController searchController,
   }) {
-    final isBook = type == "book";
+    final label = _typeLabel(type);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -292,7 +323,7 @@ class _AdminHomeShowcasePageState extends State<AdminHomeShowcasePage> {
         TextField(
           controller: searchController,
           decoration: InputDecoration(
-            labelText: isBook ? "Kitap ara" : "Dergi ara",
+            labelText: "$label ara",
             prefixIcon: const Icon(Icons.search),
           ),
         ),
@@ -330,7 +361,13 @@ class _AdminHomeShowcasePageState extends State<AdminHomeShowcasePage> {
     if (itemId == null) return "Ürün";
     if (type == "book") {
       final match = _books.where((b) => b["id"] == itemId).toList();
-      return match.isNotEmpty ? _itemTitle(type, match.first) : "Kitap #$itemId";
+      return match.isNotEmpty
+          ? _itemTitle(type, match.first)
+          : "Kitap #$itemId";
+    }
+    if (type == "ek") {
+      final match = _ekler.where((e) => e["id"] == itemId).toList();
+      return match.isNotEmpty ? _itemTitle(type, match.first) : "Ek #$itemId";
     }
     final match = _magazines.where((m) => m["id"] == itemId).toList();
     return match.isNotEmpty ? _itemTitle(type, match.first) : "Dergi #$itemId";
@@ -338,6 +375,7 @@ class _AdminHomeShowcasePageState extends State<AdminHomeShowcasePage> {
 
   String _itemTitle(String type, Map<String, dynamic> item) {
     if (type == "book") return (item["title"] ?? "Kitap").toString();
+    if (type == "ek") return (item["ad"] ?? "Ek").toString();
     return (item["name"] ?? "Dergi").toString();
   }
 
@@ -345,7 +383,49 @@ class _AdminHomeShowcasePageState extends State<AdminHomeShowcasePage> {
     if (type == "book") {
       return item["author_rel"]?["name"]?.toString();
     }
+    if (type == "ek") {
+      final aciklama = (item["aciklama"] ?? "").toString().trim();
+      if (aciklama.isNotEmpty) return aciklama;
+      final fiyat = item["fiyat"]?.toString().trim() ?? "";
+      return fiyat.isEmpty ? null : "Fiyat: $fiyat";
+    }
     final category = item["category"]?.toString();
     return category == null || category.isEmpty ? null : category;
+  }
+
+  List<Map<String, dynamic>> _entriesForType(String type) {
+    switch (type) {
+      case "book":
+        return _bookEntries;
+      case "ek":
+        return _ekEntries;
+      default:
+        return _magazineEntries;
+    }
+  }
+
+  void _setEntriesForType(String type, List<Map<String, dynamic>> list) {
+    switch (type) {
+      case "book":
+        _bookEntries = list;
+        return;
+      case "ek":
+        _ekEntries = list;
+        return;
+      default:
+        _magazineEntries = list;
+        return;
+    }
+  }
+
+  String _typeLabel(String type) {
+    switch (type) {
+      case "book":
+        return "Kitap";
+      case "ek":
+        return "Ek";
+      default:
+        return "Dergi";
+    }
   }
 }

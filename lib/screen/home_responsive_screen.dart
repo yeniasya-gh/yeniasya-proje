@@ -53,6 +53,7 @@ class _HomeLoadBundle {
   final List<Map<String, dynamic>> attachments;
   final List<Map<String, dynamic>> homeBookEntries;
   final List<Map<String, dynamic>> homeMagazineEntries;
+  final List<Map<String, dynamic>> homeEkEntries;
   final Map<String, String> failedSources;
 
   const _HomeLoadBundle({
@@ -63,6 +64,7 @@ class _HomeLoadBundle {
     required this.attachments,
     required this.homeBookEntries,
     required this.homeMagazineEntries,
+    required this.homeEkEntries,
     required this.failedSources,
   });
 }
@@ -104,6 +106,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
   List<Map<String, dynamic>> attachments = [];
   List<Map<String, dynamic>> homeBookEntries = [];
   List<Map<String, dynamic>> homeMagazineEntries = [];
+  List<Map<String, dynamic>> homeEkEntries = [];
   bool loading = true;
   int _mobileNavIndex = 0;
   bool libraryLoading = false;
@@ -194,6 +197,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         attachmentsData: cachedBootstrap.attachments,
         homeBooksData: cachedBootstrap.homeBookEntries,
         homeMagazinesData: cachedBootstrap.homeMagazineEntries,
+        homeEkEntriesData: cachedBootstrap.homeEkEntries,
         visibility: _currentVisibilitySnapshot(),
         homeLoadFailed: false,
       );
@@ -213,6 +217,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         attachmentsData: bootstrap.attachments,
         homeBooksData: bootstrap.homeBookEntries,
         homeMagazinesData: bootstrap.homeMagazineEntries,
+        homeEkEntriesData: bootstrap.homeEkEntries,
         visibility: _currentVisibilitySnapshot(),
         homeLoadFailed: false,
       );
@@ -271,6 +276,12 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         failedSources: fallback.failedSources,
         key: "homeMagazineEntries",
       );
+      final resolvedHomeEkEntries = _selectResolvedSectionData(
+        fresh: fallback.homeEkEntries,
+        current: homeEkEntries,
+        failedSources: fallback.failedSources,
+        key: "homeEkEntries",
+      );
 
       final hasAnyContent = _hasAnyHomeContent(
         slidersData: resolvedSliders,
@@ -280,6 +291,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         attachmentsData: resolvedAttachments,
         homeBooksData: resolvedHomeBooks,
         homeMagazinesData: resolvedHomeMagazines,
+        homeEkEntriesData: resolvedHomeEkEntries,
         hideMagazines: _hideMagazines,
         hideNewspapers: _hideNewspapers,
       );
@@ -292,6 +304,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         attachmentsData: resolvedAttachments,
         homeBooksData: resolvedHomeBooks,
         homeMagazinesData: resolvedHomeMagazines,
+        homeEkEntriesData: resolvedHomeEkEntries,
         visibility: _currentVisibilitySnapshot(),
         homeLoadFailed: fallback.failedSources.isNotEmpty && !hasAnyContent,
       );
@@ -307,6 +320,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
               attachments: resolvedAttachments,
               homeBookEntries: resolvedHomeBooks,
               homeMagazineEntries: resolvedHomeMagazines,
+              homeEkEntries: resolvedHomeEkEntries,
             ),
           ),
         );
@@ -402,6 +416,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         "homeMagazineEntries",
         _homeBootstrapService.fetchHomeMagazineEntries,
       ),
+      guardedList("homeEkEntries", _homeBootstrapService.fetchHomeEkEntries),
     ]);
 
     return _HomeLoadBundle(
@@ -412,6 +427,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
       sliders: results[4],
       homeBookEntries: results[5],
       homeMagazineEntries: results[6],
+      homeEkEntries: results[7],
       failedSources: failedSources,
     );
   }
@@ -424,6 +440,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     required List<Map<String, dynamic>> attachmentsData,
     required List<Map<String, dynamic>> homeBooksData,
     required List<Map<String, dynamic>> homeMagazinesData,
+    required List<Map<String, dynamic>> homeEkEntriesData,
     required AppFeatureVisibility visibility,
     required bool homeLoadFailed,
   }) {
@@ -437,6 +454,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
       attachments = attachmentsData;
       homeBookEntries = homeBooksData;
       homeMagazineEntries = homeMagazinesData;
+      homeEkEntries = homeEkEntriesData;
       _hideMagazines = visibility.hideMagazines;
       _hideNewspapers = visibility.hideNewspapers;
       _homeLoadFailed = homeLoadFailed;
@@ -467,6 +485,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     required List<Map<String, dynamic>> attachmentsData,
     required List<Map<String, dynamic>> homeBooksData,
     required List<Map<String, dynamic>> homeMagazinesData,
+    required List<Map<String, dynamic>> homeEkEntriesData,
     required bool hideMagazines,
     required bool hideNewspapers,
   }) {
@@ -487,11 +506,19 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
       idKey: "id",
       selectedIdKey: "product_id",
     ).isNotEmpty;
+    final hasEkShowcase = _buildHomeShowcaseList(
+      baseItems: attachmentsData,
+      selectedEntries: homeEkEntriesData,
+      maxItems: 10,
+      idKey: "id",
+      selectedIdKey: "product_id",
+    ).isNotEmpty;
 
     return slidersData.isNotEmpty ||
         hasNewspaperShowcase ||
         hasMagazineShowcase ||
         hasBookShowcase ||
+        hasEkShowcase ||
         attachmentsData.isNotEmpty;
   }
 
@@ -640,6 +667,17 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
 
     ProductDetail? detail;
     switch (type) {
+      case "slider":
+      case "duyuru":
+        final data = sliders.firstWhere((s) => s["id"] == id, orElse: () => {});
+        if (data.isNotEmpty) {
+          _deepLinkHandled = true;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            _openSliderDetail(data);
+          });
+        }
+        return;
       case "book":
         final data = books.firstWhere((b) => b["id"] == id, orElse: () => {});
         if (data.isNotEmpty) detail = _mapBookDetail(data);
@@ -1037,6 +1075,10 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
   }
 
   void _handleSliderTap(Map<String, dynamic> slide) {
+    _openSliderDetail(slide);
+  }
+
+  void _openSliderDetail(Map<String, dynamic> slide) {
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -2266,6 +2308,13 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
       idKey: "id",
       selectedIdKey: "product_id",
     );
+    final ekDisplayList = _buildHomeShowcaseList(
+      baseItems: attachments,
+      selectedEntries: homeEkEntries,
+      maxItems: showcaseLimit,
+      idKey: "id",
+      selectedIdKey: "product_id",
+    );
 
     final sections = <Widget>[];
     if (!_hideNewspapers && newspapers.isNotEmpty) {
@@ -2283,13 +2332,13 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         _booksShowcase(context, isWeb, cart, displayList: bookDisplayList),
       );
     }
-    if (attachments.isNotEmpty) {
+    if (ekDisplayList.isNotEmpty) {
       sections.add(
         _homeEkSection(
           context,
           isWeb,
           cart,
-          items: attachments.take(isWeb ? 5 : 4).toList(growable: false),
+          items: ekDisplayList.take(isWeb ? 5 : 4).toList(growable: false),
         ),
       );
     }
@@ -3075,7 +3124,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         "image": n["image_url"] ?? fallbackImage,
         "date": "E-Gazete",
         "title": titleText,
-        "desc": "Günlük e-gazete yayını",
+        "desc": "",
         "raw": n,
       };
     }).toList();
@@ -3561,7 +3610,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
                 "image": item["image_url"],
                 "title": title,
                 "date": "E-Gazete",
-                "desc": "Günlük e-gazete yayını",
+                "desc": "",
               },
               compact: true,
               imageHeight: imageHeight,

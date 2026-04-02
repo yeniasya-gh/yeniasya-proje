@@ -32,7 +32,7 @@ class ErrorManager {
     }
 
     // 🔥 Eğer zaten kullanıcıya gösterilebilir bir hata ise → direkt döndür
-    if (msg.contains("zaten kayıtlı") || msg.contains("telefon")) {
+    if (msg.contains("zaten kayıtlı")) {
       return cleaned;
     }
 

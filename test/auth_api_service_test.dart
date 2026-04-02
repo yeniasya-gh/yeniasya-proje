@@ -43,30 +43,68 @@ void main() {
     expect(payload?['email'], 'test@example.com');
   });
 
-  test('AuthApiService.register surfaces old manual newspaper accounts', () async {
-    final client = MockClient((request) async {
-      return http.Response(
-        '{"ok":false,"code":"OLD_MANUAL_NEWSPAPER_ACCOUNT","error":"Bu e-posta eski e-gazete aboneliğine ait."}',
-        409,
+  test(
+    'AuthApiService.register surfaces old manual newspaper accounts',
+    () async {
+      final client = MockClient((request) async {
+        return http.Response(
+          '{"ok":false,"code":"OLD_MANUAL_NEWSPAPER_ACCOUNT","error":"Bu e-posta eski e-gazete aboneliğine ait."}',
+          409,
+        );
+      });
+
+      final service = AuthApiService(
+        baseUrl: 'https://cdn.example.com',
+        client: client,
       );
-    });
 
-    final service = AuthApiService(
-      baseUrl: 'https://cdn.example.com',
-      client: client,
-    );
+      expect(
+        service.register(
+          name: 'Test User',
+          email: 'old@example.com',
+          password: 'Secret123',
+        ),
+        throwsA(
+          predicate(
+            (error) =>
+                error.toString().contains('OLD_MANUAL_NEWSPAPER_ACCOUNT'),
+          ),
+        ),
+      );
+    },
+  );
 
-    expect(
-      service.register(
-        name: 'Test User',
-        email: 'old@example.com',
-        password: 'Secret123',
-      ),
-      throwsA(
-        predicate((error) => error.toString().contains('OLD_MANUAL_NEWSPAPER_ACCOUNT')),
-      ),
-    );
-  });
+  test(
+    'AuthApiService.register surfaces duplicate phone as Turkish text',
+    () async {
+      final client = MockClient((request) async {
+        return http.Response(
+          '{"ok":false,"code":"USER_PHONE_ALREADY_EXISTS","error":"Uniqueness violation. duplicate key value violates unique constraint \\"users_phone_key\\""}',
+          409,
+        );
+      });
+
+      final service = AuthApiService(
+        baseUrl: 'https://cdn.example.com',
+        client: client,
+      );
+
+      expect(
+        service.register(
+          name: 'Test User',
+          email: 'phone@example.com',
+          password: 'Secret123',
+          phone: '5314216754',
+        ),
+        throwsA(
+          predicate(
+            (error) =>
+                error.toString().contains('Bu telefon numarası zaten kayıtlı.'),
+          ),
+        ),
+      );
+    },
+  );
 
   test('AuthApiService.login lowercases email before sending', () async {
     Map<String, dynamic>? payload;

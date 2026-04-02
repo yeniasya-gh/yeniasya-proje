@@ -25,7 +25,9 @@ class EkDetailScreen extends StatelessWidget {
     final cart = context.watch<CartProvider>();
     final hasAccess = access.hasAccess("ek", itemId: _id(data));
 
-    final imageUrl = UploadService.normalizeUrl(data["photo_url"]?.toString() ?? "");
+    final imageUrl = UploadService.normalizeUrl(
+      data["photo_url"]?.toString() ?? "",
+    );
     final item = CartItem(
       id: "ek-${_id(data)}",
       title: data["ad"]?.toString() ?? "Ek",
@@ -59,7 +61,11 @@ class EkDetailScreen extends StatelessWidget {
                   color: Colors.grey.shade200,
                   borderRadius: BorderRadius.circular(12),
                   boxShadow: [
-                    BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 6)),
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.05),
+                      blurRadius: 10,
+                      offset: const Offset(0, 6),
+                    ),
                   ],
                 ),
                 child: ClipRRect(
@@ -73,20 +79,35 @@ class EkDetailScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 16),
-            Text(data["ad"]?.toString() ?? "-", style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+            Text(
+              data["ad"]?.toString() ?? "-",
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            ),
             const SizedBox(height: 8),
             Text(
-              (data["aciklama"] ?? "").toString().isEmpty ? "Açıklama bulunmuyor." : data["aciklama"].toString(),
-              style: const TextStyle(fontSize: 15, color: Colors.black87, height: 1.4),
+              (data["aciklama"] ?? "").toString().isEmpty
+                  ? "Açıklama bulunmuyor."
+                  : data["aciklama"].toString(),
+              style: const TextStyle(
+                fontSize: 15,
+                color: Colors.black87,
+                height: 1.4,
+              ),
             ),
             const SizedBox(height: 12),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                _chip(isFree ? "Ücretsiz" : "Ücretli", isFree ? Colors.green : Colors.red),
+                _chip(
+                  isFree ? "Ücretsiz" : "Ücretli",
+                  isFree ? Colors.green : Colors.red,
+                ),
                 Text(
                   isFree ? "Ücretsiz" : "₺${price.toStringAsFixed(2)}",
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ],
             ),
@@ -102,8 +123,12 @@ class EkDetailScreen extends StatelessWidget {
             onPressed: (alreadyInCart && !(isFree || hasAccess))
                 ? null
                 : () {
-                  if (isFree || hasAccess) {
-                      _openPdf(context, data["pdf_url"]?.toString() ?? "", isFree: isFree);
+                    if (isFree || hasAccess) {
+                      _openPdf(
+                        context,
+                        data["pdf_url"]?.toString() ?? "",
+                        isFree: isFree,
+                      );
                     } else {
                       _addToCart(context, data, price);
                     }
@@ -111,10 +136,14 @@ class EkDetailScreen extends StatelessWidget {
             style: ElevatedButton.styleFrom(
               backgroundColor: (isFree || hasAccess) ? Colors.blue : Colors.red,
               foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
             ),
             child: Text(
-              (isFree || hasAccess) ? "Görüntüle" : (alreadyInCart ? "Sepette" : "Sepete Ekle"),
+              (isFree || hasAccess)
+                  ? "Görüntüle"
+                  : (alreadyInCart ? "Sepette" : "Sepete Ekle"),
             ),
           ),
         ),
@@ -124,7 +153,18 @@ class EkDetailScreen extends StatelessWidget {
 
   void _openPdf(BuildContext context, String url, {required bool isFree}) {
     if (url.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("PDF bulunamadı")));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("PDF bulunamadı")));
+      return;
+    }
+    final auth = context.read<AuthProvider>();
+    if (isFree && !auth.isLoggedIn) {
+      showLoginRequirementDialog(
+        context,
+        message:
+            "Ücretsiz eki görüntülemek için üye girişi yapmanız gerekmektedir.",
+      );
       return;
     }
     Navigator.push(
@@ -168,17 +208,23 @@ class EkDetailScreen extends StatelessWidget {
     if (added) {
       showAddedToCartDialog(context);
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Bu ürün zaten sepette.")),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("Bu ürün zaten sepette.")));
     }
   }
 
   Widget _chip(String label, Color color) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(color: color.withOpacity(0.12), borderRadius: BorderRadius.circular(12)),
-      child: Text(label, style: TextStyle(color: color, fontWeight: FontWeight.w600)),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(color: color, fontWeight: FontWeight.w600),
+      ),
     );
   }
 

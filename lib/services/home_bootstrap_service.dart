@@ -12,6 +12,7 @@ class HomeBootstrapPayload {
   final List<Map<String, dynamic>> attachments;
   final List<Map<String, dynamic>> homeBookEntries;
   final List<Map<String, dynamic>> homeMagazineEntries;
+  final List<Map<String, dynamic>> homeEkEntries;
 
   const HomeBootstrapPayload({
     this.sliders = const [],
@@ -21,6 +22,7 @@ class HomeBootstrapPayload {
     this.attachments = const [],
     this.homeBookEntries = const [],
     this.homeMagazineEntries = const [],
+    this.homeEkEntries = const [],
   });
 
   factory HomeBootstrapPayload.fromJson(Map<String, dynamic> json) {
@@ -40,6 +42,7 @@ class HomeBootstrapPayload {
       attachments: readList("attachments"),
       homeBookEntries: readList("homeBookEntries"),
       homeMagazineEntries: readList("homeMagazineEntries"),
+      homeEkEntries: readList("homeEkEntries"),
     );
   }
 
@@ -52,6 +55,7 @@ class HomeBootstrapPayload {
       "attachments": attachments,
       "homeBookEntries": homeBookEntries,
       "homeMagazineEntries": homeMagazineEntries,
+      "homeEkEntries": homeEkEntries,
     };
   }
 }
@@ -179,6 +183,12 @@ class HomeBootstrapService {
   Future<List<Map<String, dynamic>>> fetchHomeMagazineEntries() async {
     return _readList(
       await _getJson("/home/showcase/magazines", timeout: sectionTimeout),
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> fetchHomeEkEntries() async {
+    return _readList(
+      await _getJson("/home/showcase/attachments", timeout: sectionTimeout),
     );
   }
 }
