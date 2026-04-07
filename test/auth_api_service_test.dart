@@ -79,7 +79,7 @@ void main() {
     () async {
       final client = MockClient((request) async {
         return http.Response(
-          '{"ok":false,"code":"USER_PHONE_ALREADY_EXISTS","error":"Uniqueness violation. duplicate key value violates unique constraint \\"users_phone_key\\""}',
+          '{"ok":false,"code":"USER_PHONE_ALREADY_EXISTS","error":"Uniqueness violation. duplicate key value violates unique constraint \\"users_phone_active_unique_idx\\""}',
           409,
         );
       });

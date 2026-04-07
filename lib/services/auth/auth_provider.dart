@@ -84,15 +84,27 @@ class AuthProvider with ChangeNotifier {
     }
     if (lower.contains("user_phone_already_exists") ||
         lower.contains("users_phone_key") ||
+        lower.contains("users_phone_active_unique_idx") ||
         lower.contains(
           'duplicate key value violates unique constraint "users_phone_key"',
+        ) ||
+        lower.contains(
+          'duplicate key value violates unique constraint "users_phone_active_unique_idx"',
         )) {
       return "Bu telefon numarası zaten kayıtlı.";
     }
     if (lower.contains("user_email_already_exists") ||
         lower.contains("users_email_key") ||
+        lower.contains("users_email_active_unique_idx") ||
+        lower.contains("users_email_lower_unique_idx") ||
         lower.contains(
           'duplicate key value violates unique constraint "users_email_key"',
+        ) ||
+        lower.contains(
+          'duplicate key value violates unique constraint "users_email_active_unique_idx"',
+        ) ||
+        lower.contains(
+          'duplicate key value violates unique constraint "users_email_lower_unique_idx"',
         )) {
       return "Bu e-posta adresi zaten kayıtlı.";
     }

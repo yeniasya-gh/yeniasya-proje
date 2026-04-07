@@ -416,23 +416,47 @@ class AuthApiService {
       case 409:
         if (code == "USER_PHONE_ALREADY_EXISTS" ||
             lowerMessage.contains("users_phone_key") ||
+            lowerMessage.contains("users_phone_active_unique_idx") ||
             lowerBody.contains("users_phone_key") ||
+            lowerBody.contains("users_phone_active_unique_idx") ||
             lowerMessage.contains(
               'duplicate key value violates unique constraint "users_phone_key"',
             ) ||
+            lowerMessage.contains(
+              'duplicate key value violates unique constraint "users_phone_active_unique_idx"',
+            ) ||
             lowerBody.contains(
               'duplicate key value violates unique constraint "users_phone_key"',
+            ) ||
+            lowerBody.contains(
+              'duplicate key value violates unique constraint "users_phone_active_unique_idx"',
             )) {
           return "Bu telefon numarası zaten kayıtlı.";
         }
         if (code == "USER_EMAIL_ALREADY_EXISTS" ||
             lowerMessage.contains("users_email_key") ||
+            lowerMessage.contains("users_email_active_unique_idx") ||
+            lowerMessage.contains("users_email_lower_unique_idx") ||
             lowerBody.contains("users_email_key") ||
+            lowerBody.contains("users_email_active_unique_idx") ||
+            lowerBody.contains("users_email_lower_unique_idx") ||
             lowerMessage.contains(
               'duplicate key value violates unique constraint "users_email_key"',
             ) ||
+            lowerMessage.contains(
+              'duplicate key value violates unique constraint "users_email_active_unique_idx"',
+            ) ||
+            lowerMessage.contains(
+              'duplicate key value violates unique constraint "users_email_lower_unique_idx"',
+            ) ||
             lowerBody.contains(
               'duplicate key value violates unique constraint "users_email_key"',
+            ) ||
+            lowerBody.contains(
+              'duplicate key value violates unique constraint "users_email_active_unique_idx"',
+            ) ||
+            lowerBody.contains(
+              'duplicate key value violates unique constraint "users_email_lower_unique_idx"',
             )) {
           return "Bu e-posta adresi zaten kayıtlı.";
         }
