@@ -5,10 +5,17 @@ import 'package:YeniAsya/services/hasura_manager.dart';
 import 'package:YeniAsya/utils/hash_helper.dart';
 
 class _FakeHasuraManager implements HasuraManager {
+  _FakeHasuraManager({
+    this.throwDuplicateOnInsert = false,
+    this.inactiveUserSeed,
+  });
+
   String? lastQuery;
   Map<String, dynamic>? lastVariables;
   final List<String> queries = [];
   int callCount = 0;
+  final bool throwDuplicateOnInsert;
+  final Map<String, dynamic>? inactiveUserSeed;
 
   @override
   Future<Map<String, dynamic>> graphQLRequest({
@@ -20,6 +27,12 @@ class _FakeHasuraManager implements HasuraManager {
     lastVariables = variables;
     queries.add(query);
     callCount += 1;
+    if (throwDuplicateOnInsert && query.contains("insert_users_one")) {
+      throw Exception(
+        'Uniqueness violation. duplicate key value violates unique constraint "users_email_key"',
+      );
+    }
+
     return {
       if (query.contains("insert_users_one")) "insert_users_one": {"id": 1},
       if (query.contains("update_users_by_pk")) "update_users_by_pk": {"id": 1},
@@ -27,6 +40,9 @@ class _FakeHasuraManager implements HasuraManager {
         "update_user_content_access": {"affected_rows": 1},
       if (query.contains("update_manual_newspaper_users"))
         "update_manual_newspaper_users": {"affected_rows": 1},
+      if (query.contains("GetInactiveUserByEmailForAdd") ||
+          query.contains("GetInactiveUserByPhoneForAdd"))
+        "users": inactiveUserSeed == null ? const [] : [inactiveUserSeed!],
       if (query.contains("query GetUserAccess") ||
           query.contains("query GetUserAccessAll") ||
           query.contains("user_content_access"))
@@ -93,6 +109,60 @@ void main() {
       );
       expect(fakeHasura.lastQuery, contains("is_active"));
       expect(fakeHasura.lastQuery, contains("email_verified_at"));
+    },
+  );
+
+  test(
+    "AdminUserService.addUser reactivates passive user when duplicate email exists",
+    () async {
+      final fakeHasura = _FakeHasuraManager(
+        throwDuplicateOnInsert: true,
+        inactiveUserSeed: {
+          "id": 77,
+          "name": "Pasif Kullanıcı",
+          "email": "celalsagir4427@gmail.com",
+          "phone": "05551234567",
+          "role_id": 1,
+          "is_active": false,
+          "email_verified_at": null,
+          "deactivated_at": "2026-03-25T10:00:00Z",
+        },
+      );
+      final service = AdminUserService(hasura: fakeHasura);
+
+      final ok = await service.addUser(
+        name: "  Celal SağıR  ",
+        email: "  celalsagir4427@gmail.com  ",
+        password: "Abonelik123",
+        phone: " 05551234567 ",
+        roleId: 2,
+      );
+
+      expect(ok, true);
+      expect(
+        fakeHasura.queries.any(
+          (query) => query.contains("GetInactiveUserByEmailForAdd"),
+        ),
+        true,
+      );
+      expect(
+        fakeHasura.queries.any(
+          (query) => query.contains("ReactivateInactiveUserForAdd"),
+        ),
+        true,
+      );
+      expect(fakeHasura.lastQuery, contains("update_users_by_pk"));
+      expect(fakeHasura.lastVariables?["id"], 77);
+      expect(fakeHasura.lastVariables?["email"], "celalsagir4427@gmail.com");
+      expect(fakeHasura.lastVariables?["phone"], "05551234567");
+      expect(fakeHasura.lastVariables?["role_id"], 2);
+      expect(fakeHasura.lastVariables?["password"], isNotEmpty);
+      expect(
+        DateTime.tryParse(
+          fakeHasura.lastVariables?["email_verified_at"]?.toString() ?? "",
+        ),
+        isNotNull,
+      );
     },
   );
 

@@ -252,22 +252,188 @@ class AdminUserService {
       }
     ''';
 
+    final nowIso = DateTime.now().toUtc().toIso8601String();
+    final phoneValue =
+        normalizedPhone == null || normalizedPhone.isEmpty ? null : normalizedPhone;
+
+    try {
+      await _hasura.graphQLRequest(
+        query: mutation,
+        variables: {
+          "name": normalizedName,
+          "email": normalizedEmail,
+          "password": hashedPassword,
+          "phone": phoneValue,
+          "role_id": roleId,
+          "is_active": true,
+          "email_verified_at": nowIso,
+        },
+      );
+      return true;
+    } catch (error) {
+      if (!_isDuplicateConstraintError(error)) {
+        rethrow;
+      }
+
+      final inactiveByEmail =
+          await _getInactiveUserByEmailForAdd(normalizedEmail);
+      final inactiveByPhone = inactiveByEmail == null && phoneValue != null
+          ? await _getInactiveUserByPhoneForAdd(phoneValue)
+          : null;
+      final inactiveMatch = inactiveByEmail ?? inactiveByPhone;
+      if (inactiveMatch == null) {
+        rethrow;
+      }
+
+      await _reactivateInactiveUserForAdd(
+        userId: _asInt(inactiveMatch["id"]),
+        name: normalizedName,
+        email: normalizedEmail,
+        phone: phoneValue,
+        passwordHash: hashedPassword,
+        emailVerifiedAt: nowIso,
+        roleId: roleId,
+      );
+      return true;
+    }
+  }
+
+  Future<Map<String, dynamic>?> _getInactiveUserByEmailForAdd(
+    String email,
+  ) async {
+    const query = r'''
+      query GetInactiveUserByEmailForAdd($email: String!) {
+        users(
+          where: {
+            _or: [
+              {email: {_eq: $email}},
+              {email: {_ilike: $email}}
+            ],
+            is_active: {_eq: false}
+          },
+          order_by: [{email_verified_at: desc_nulls_last}, {id: asc}],
+          limit: 1
+        ) {
+          id
+          name
+          email
+          phone
+          role_id
+          is_active
+          email_verified_at
+          deactivated_at
+        }
+      }
+    ''';
+
+    final data = await _hasura.graphQLRequest(
+      query: query,
+      variables: {"email": email},
+    );
+    final users = List<Map<String, dynamic>>.from(data["users"] ?? const []);
+    if (users.isEmpty) return null;
+    return users.first;
+  }
+
+  Future<Map<String, dynamic>?> _getInactiveUserByPhoneForAdd(
+    String phone,
+  ) async {
+    const query = r'''
+      query GetInactiveUserByPhoneForAdd($phone: String!) {
+        users(
+          where: {
+            phone: {_eq: $phone},
+            is_active: {_eq: false}
+          },
+          order_by: [{email_verified_at: desc_nulls_last}, {id: asc}],
+          limit: 1
+        ) {
+          id
+          name
+          email
+          phone
+          role_id
+          is_active
+          email_verified_at
+          deactivated_at
+        }
+      }
+    ''';
+
+    final data = await _hasura.graphQLRequest(
+      query: query,
+      variables: {"phone": phone},
+    );
+    final users = List<Map<String, dynamic>>.from(data["users"] ?? const []);
+    if (users.isEmpty) return null;
+    return users.first;
+  }
+
+  Future<void> _reactivateInactiveUserForAdd({
+    required int? userId,
+    required String name,
+    required String email,
+    required String? phone,
+    required String passwordHash,
+    required String emailVerifiedAt,
+    required int roleId,
+  }) async {
+    if (userId == null) {
+      throw Exception("Pasif kullanıcı bulunamadı.");
+    }
+
+    const mutation = r'''
+      mutation ReactivateInactiveUserForAdd(
+        $id: bigint!,
+        $name: String!,
+        $email: String!,
+        $phone: String,
+        $password: String!,
+        $role_id: bigint!,
+        $email_verified_at: timestamptz!
+      ) {
+        update_users_by_pk(
+          pk_columns: {id: $id},
+          _set: {
+            name: $name,
+            email: $email,
+            phone: $phone,
+            password: $password,
+            role_id: $role_id,
+            is_active: true,
+            deactivated_at: null,
+            email_verified_at: $email_verified_at
+          }
+        ) {
+          id
+        }
+      }
+    ''';
+
     await _hasura.graphQLRequest(
       query: mutation,
       variables: {
-        "name": normalizedName,
-        "email": normalizedEmail,
-        "password": hashedPassword,
-        "phone": normalizedPhone == null || normalizedPhone.isEmpty
-            ? null
-            : normalizedPhone,
+        "id": userId,
+        "name": name,
+        "email": email,
+        "phone": phone,
+        "password": passwordHash,
         "role_id": roleId,
-        "is_active": true,
-        "email_verified_at": DateTime.now().toUtc().toIso8601String(),
+        "email_verified_at": emailVerifiedAt,
       },
     );
+  }
 
-    return true;
+  bool _isDuplicateConstraintError(Object error) {
+    final message = error.toString().toLowerCase();
+    if (!message.contains("duplicate key value violates unique constraint")) {
+      return false;
+    }
+    return message.contains("users_email_key") ||
+        message.contains("users_phone_key") ||
+        message.contains("users_email_active_unique_idx") ||
+        message.contains("users_phone_active_unique_idx") ||
+        message.contains("users_email_lower_unique_idx");
   }
 
   /// Kullanıcı güncelle

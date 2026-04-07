@@ -52,7 +52,9 @@ class AuthApiService {
     }
     final data = payload ?? (jsonDecode(resp.body) as Map<String, dynamic>);
     if (data["ok"] != true) {
-      throw Exception(data["message"]?.toString() ?? "Register failed");
+      throw Exception(
+        data["message"]?.toString() ?? "Kayıt işlemi tamamlanamadı.",
+      );
     }
     return data;
   }
@@ -137,7 +139,8 @@ class AuthApiService {
     }
 
     if (resp.statusCode == 404 &&
-        payload?["error"]?.toString() == "USER_NOT_FOUND") {
+        (payload?["error"]?.toString() == "USER_NOT_FOUND" ||
+            payload?["code"]?.toString() == "USER_NOT_FOUND")) {
       throw Exception("SOCIAL_USER_NOT_FOUND");
     }
     if (resp.statusCode < 200 || resp.statusCode >= 300) {
@@ -148,7 +151,7 @@ class AuthApiService {
       throw Exception(
         data["error"]?.toString() ??
             data["message"]?.toString() ??
-            "SOCIAL_LOGIN_FAILED",
+            "Sosyal giriş işlemi tamamlanamadı.",
       );
     }
     return data;
@@ -181,7 +184,7 @@ class AuthApiService {
       throw Exception(
         _responseMessage(resp).isNotEmpty
             ? _responseMessage(resp)
-            : "SOCIAL_REGISTER_FAILED (${resp.statusCode})",
+            : "Sosyal kayıt işlemi tamamlanamadı (${resp.statusCode})",
       );
     }
 
@@ -190,7 +193,7 @@ class AuthApiService {
       throw Exception(
         data["error"]?.toString() ??
             data["message"]?.toString() ??
-            "SOCIAL_REGISTER_FAILED",
+            "Sosyal kayıt işlemi tamamlanamadı.",
       );
     }
     return data;
@@ -201,11 +204,15 @@ class AuthApiService {
     final headers = {"content-type": "application/json"};
     final resp = await _client.post(uri, headers: headers, body: "{}");
     if (resp.statusCode < 200 || resp.statusCode >= 300) {
-      throw Exception("Guest token failed (${resp.statusCode}): ${resp.body}");
+      throw Exception(
+        "Misafir oturumu oluşturulamadı (${resp.statusCode}): ${resp.body}",
+      );
     }
     final data = jsonDecode(resp.body) as Map<String, dynamic>;
     if (data["ok"] != true) {
-      throw Exception(data["message"]?.toString() ?? "Guest token failed");
+      throw Exception(
+        data["message"]?.toString() ?? "Misafir oturumu oluşturulamadı.",
+      );
     }
     return data;
   }
@@ -395,7 +402,7 @@ class AuthApiService {
     final message = _responseMessage(resp);
     switch (resp.statusCode) {
       case 404:
-        return "Şifre sıfırlama servisi henüz aktif değil.";
+      return "Şifre sıfırlama servisi henüz aktif değil.";
       case 429:
         return "Çok fazla deneme yapıldı. Lütfen biraz sonra tekrar deneyin.";
       default:
