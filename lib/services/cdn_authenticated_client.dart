@@ -69,11 +69,7 @@ class CdnAuthenticatedClient {
     String path, {
     Map<String, String?> queryParameters = const {},
   }) async {
-    return _sendJsonRequest(
-      "GET",
-      path,
-      queryParameters: queryParameters,
-    );
+    return _sendJsonRequest("GET", path, queryParameters: queryParameters);
   }
 
   Future<Map<String, dynamic>> postJson(

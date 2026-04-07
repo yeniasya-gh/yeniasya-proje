@@ -402,7 +402,7 @@ class AuthApiService {
     final message = _responseMessage(resp);
     switch (resp.statusCode) {
       case 404:
-      return "Şifre sıfırlama servisi henüz aktif değil.";
+        return "Şifre sıfırlama servisi henüz aktif değil.";
       case 429:
         return "Çok fazla deneme yapıldı. Lütfen biraz sonra tekrar deneyin.";
       default:

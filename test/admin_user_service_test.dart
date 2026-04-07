@@ -6,16 +6,15 @@ import 'package:YeniAsya/services/hasura_manager.dart';
 import 'package:YeniAsya/utils/hash_helper.dart';
 
 class _FakeCdnClient extends CdnAuthenticatedClient {
-  _FakeCdnClient({
-    Map<String, dynamic>? purgeResponse,
-  }) : purgeResponse =
-           purgeResponse ??
-           {
-             "ok": true,
-             "deletedUserIds": [77],
-             "deletedCount": 10,
-             "deletedCounts": {"users": 1},
-           };
+  _FakeCdnClient({Map<String, dynamic>? purgeResponse})
+    : purgeResponse =
+          purgeResponse ??
+          {
+            "ok": true,
+            "deletedUserIds": [77],
+            "deletedCount": 10,
+            "deletedCounts": {"users": 1},
+          };
 
   final List<Map<String, dynamic>> calls = [];
   final Map<String, dynamic> purgeResponse;
@@ -56,8 +55,8 @@ class _FakeHasuraManager implements HasuraManager {
     lastVariables = variables;
     queries.add(query);
     callCount += 1;
-    final remaining = duplicateInsertAttemptsRemaining ??
-        (throwDuplicateOnInsert ? 1 : 0);
+    final remaining =
+        duplicateInsertAttemptsRemaining ?? (throwDuplicateOnInsert ? 1 : 0);
     if (query.contains("insert_users_one") && remaining > 0) {
       duplicateInsertAttemptsRemaining = remaining - 1;
       throw Exception(
@@ -155,24 +154,26 @@ void main() {
         name: "  Celal SağıR  ",
         email: "  celalsagir4427@gmail.com  ",
         password: "Abonelik123",
-        phone: " 05551234567 ",
+        phone: " 5057769777 ",
         roleId: 2,
       );
 
       expect(ok, true);
       expect(
-        fakeHasura.queries.where((query) => query.contains("insert_users_one")).length,
+        fakeHasura.queries
+            .where((query) => query.contains("insert_users_one"))
+            .length,
         2,
       );
       expect(fakeCdn.calls.length, 1);
       expect(fakeCdn.calls.single["path"], "/admin/users/purge");
       expect(fakeCdn.calls.single["body"], {
         "email": "celalsagir4427@gmail.com",
-        "phone": "05551234567",
+        "phone": "5057769777",
       });
       expect(fakeHasura.lastQuery, contains("insert_users_one"));
       expect(fakeHasura.lastVariables?["email"], "celalsagir4427@gmail.com");
-      expect(fakeHasura.lastVariables?["phone"], "05551234567");
+      expect(fakeHasura.lastVariables?["phone"], "5057769777");
       expect(fakeHasura.lastVariables?["role_id"], 2);
       expect(fakeHasura.lastVariables?["password"], isNotEmpty);
       expect(

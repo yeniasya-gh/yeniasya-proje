@@ -256,8 +256,9 @@ class AdminUserService {
     ''';
 
     final nowIso = DateTime.now().toUtc().toIso8601String();
-    final phoneValue =
-        normalizedPhone == null || normalizedPhone.isEmpty ? null : normalizedPhone;
+    final phoneValue = normalizedPhone == null || normalizedPhone.isEmpty
+        ? null
+        : normalizedPhone;
 
     Future<void> createUser() async {
       await _hasura.graphQLRequest(
@@ -286,7 +287,8 @@ class AdminUserService {
         email: normalizedEmail,
         phone: phoneValue,
       );
-      if ((purgeResult["deletedUserIds"] as List<dynamic>? ?? const []).isEmpty) {
+      if ((purgeResult["deletedUserIds"] as List<dynamic>? ?? const [])
+          .isEmpty) {
         rethrow;
       }
 

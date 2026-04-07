@@ -285,9 +285,11 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
                             password: payload["password"] ?? "",
                             phone: payload["phone"],
                           );
+                          if (dialogContext.mounted) {
+                            Navigator.of(dialogContext).pop();
+                          }
                           await _loadUsers();
-                          if (!mounted || !dialogContext.mounted) return;
-                          Navigator.pop(dialogContext);
+                          if (!mounted) return;
                           pageMessenger.showSnackBar(
                             const SnackBar(
                               content: Text(
