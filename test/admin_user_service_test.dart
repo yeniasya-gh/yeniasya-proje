@@ -1,13 +1,42 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:YeniAsya/services/admin/admin_user_service.dart';
+import 'package:YeniAsya/services/cdn_authenticated_client.dart';
 import 'package:YeniAsya/services/hasura_manager.dart';
 import 'package:YeniAsya/utils/hash_helper.dart';
+
+class _FakeCdnClient extends CdnAuthenticatedClient {
+  _FakeCdnClient({
+    Map<String, dynamic>? purgeResponse,
+  }) : purgeResponse =
+           purgeResponse ??
+           {
+             "ok": true,
+             "deletedUserIds": [77],
+             "deletedCount": 10,
+             "deletedCounts": {"users": 1},
+           };
+
+  final List<Map<String, dynamic>> calls = [];
+  final Map<String, dynamic> purgeResponse;
+
+  @override
+  Future<Map<String, dynamic>> postJson(
+    String path, {
+    Map<String, dynamic> body = const {},
+  }) async {
+    calls.add({"path": path, "body": body});
+    if (path != "/admin/users/purge") {
+      throw StateError("Unexpected CDN path: $path");
+    }
+    return purgeResponse;
+  }
+}
 
 class _FakeHasuraManager implements HasuraManager {
   _FakeHasuraManager({
     this.throwDuplicateOnInsert = false,
-    this.inactiveUserSeed,
+    this.duplicateInsertAttemptsRemaining,
   });
 
   String? lastQuery;
@@ -15,7 +44,7 @@ class _FakeHasuraManager implements HasuraManager {
   final List<String> queries = [];
   int callCount = 0;
   final bool throwDuplicateOnInsert;
-  final Map<String, dynamic>? inactiveUserSeed;
+  int? duplicateInsertAttemptsRemaining;
 
   @override
   Future<Map<String, dynamic>> graphQLRequest({
@@ -27,7 +56,10 @@ class _FakeHasuraManager implements HasuraManager {
     lastVariables = variables;
     queries.add(query);
     callCount += 1;
-    if (throwDuplicateOnInsert && query.contains("insert_users_one")) {
+    final remaining = duplicateInsertAttemptsRemaining ??
+        (throwDuplicateOnInsert ? 1 : 0);
+    if (query.contains("insert_users_one") && remaining > 0) {
+      duplicateInsertAttemptsRemaining = remaining - 1;
       throw Exception(
         'Uniqueness violation. duplicate key value violates unique constraint "users_email_key"',
       );
@@ -40,9 +72,6 @@ class _FakeHasuraManager implements HasuraManager {
         "update_user_content_access": {"affected_rows": 1},
       if (query.contains("update_manual_newspaper_users"))
         "update_manual_newspaper_users": {"affected_rows": 1},
-      if (query.contains("GetInactiveUserByEmailForAdd") ||
-          query.contains("GetInactiveUserByPhoneForAdd"))
-        "users": inactiveUserSeed == null ? const [] : [inactiveUserSeed!],
       if (query.contains("query GetUserAccess") ||
           query.contains("query GetUserAccessAll") ||
           query.contains("user_content_access"))
@@ -113,22 +142,14 @@ void main() {
   );
 
   test(
-    "AdminUserService.addUser reactivates passive user when duplicate email exists",
+    "AdminUserService.addUser purges passive user when duplicate email exists",
     () async {
       final fakeHasura = _FakeHasuraManager(
         throwDuplicateOnInsert: true,
-        inactiveUserSeed: {
-          "id": 77,
-          "name": "Pasif Kullanıcı",
-          "email": "celalsagir4427@gmail.com",
-          "phone": "05551234567",
-          "role_id": 1,
-          "is_active": false,
-          "email_verified_at": null,
-          "deactivated_at": "2026-03-25T10:00:00Z",
-        },
+        duplicateInsertAttemptsRemaining: 1,
       );
-      final service = AdminUserService(hasura: fakeHasura);
+      final fakeCdn = _FakeCdnClient();
+      final service = AdminUserService(hasura: fakeHasura, cdnClient: fakeCdn);
 
       final ok = await service.addUser(
         name: "  Celal SağıR  ",
@@ -140,19 +161,16 @@ void main() {
 
       expect(ok, true);
       expect(
-        fakeHasura.queries.any(
-          (query) => query.contains("GetInactiveUserByEmailForAdd"),
-        ),
-        true,
+        fakeHasura.queries.where((query) => query.contains("insert_users_one")).length,
+        2,
       );
-      expect(
-        fakeHasura.queries.any(
-          (query) => query.contains("ReactivateInactiveUserForAdd"),
-        ),
-        true,
-      );
-      expect(fakeHasura.lastQuery, contains("update_users_by_pk"));
-      expect(fakeHasura.lastVariables?["id"], 77);
+      expect(fakeCdn.calls.length, 1);
+      expect(fakeCdn.calls.single["path"], "/admin/users/purge");
+      expect(fakeCdn.calls.single["body"], {
+        "email": "celalsagir4427@gmail.com",
+        "phone": "05551234567",
+      });
+      expect(fakeHasura.lastQuery, contains("insert_users_one"));
       expect(fakeHasura.lastVariables?["email"], "celalsagir4427@gmail.com");
       expect(fakeHasura.lastVariables?["phone"], "05551234567");
       expect(fakeHasura.lastVariables?["role_id"], 2);
@@ -165,6 +183,18 @@ void main() {
       );
     },
   );
+
+  test("AdminUserService.hardDeleteUser purges passive user by id", () async {
+    final fakeHasura = _FakeHasuraManager();
+    final fakeCdn = _FakeCdnClient();
+    final service = AdminUserService(hasura: fakeHasura, cdnClient: fakeCdn);
+
+    await service.hardDeleteUser(42);
+
+    expect(fakeCdn.calls.length, 1);
+    expect(fakeCdn.calls.single["path"], "/admin/users/purge");
+    expect(fakeCdn.calls.single["body"], {"userId": 42});
+  });
 
   test("AdminUserService.deleteUser only deactivates the user", () async {
     final fakeHasura = _FakeHasuraManager();

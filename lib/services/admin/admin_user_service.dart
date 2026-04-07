@@ -1,3 +1,4 @@
+import '../cdn_authenticated_client.dart';
 import '../hasura_manager.dart';
 import '../../utils/hash_helper.dart';
 import '../../utils/purchase_channel_labels.dart';
@@ -25,10 +26,12 @@ bool _isAccessRemovalFallbackError(Object error) {
 }
 
 class AdminUserService {
-  AdminUserService({HasuraManager? hasura})
-    : _hasura = hasura ?? HasuraManager.instance;
+  AdminUserService({HasuraManager? hasura, CdnAuthenticatedClient? cdnClient})
+    : _hasura = hasura ?? HasuraManager.instance,
+      _cdn = cdnClient ?? CdnAuthenticatedClient();
 
   final HasuraManager _hasura;
+  final CdnAuthenticatedClient _cdn;
 
   Future<List<Map<String, dynamic>>> getAllRoles() async {
     const query = r'''
@@ -256,7 +259,7 @@ class AdminUserService {
     final phoneValue =
         normalizedPhone == null || normalizedPhone.isEmpty ? null : normalizedPhone;
 
-    try {
+    Future<void> createUser() async {
       await _hasura.graphQLRequest(
         query: mutation,
         variables: {
@@ -269,159 +272,44 @@ class AdminUserService {
           "email_verified_at": nowIso,
         },
       );
+    }
+
+    try {
+      await createUser();
       return true;
     } catch (error) {
       if (!_isDuplicateConstraintError(error)) {
         rethrow;
       }
 
-      final inactiveByEmail =
-          await _getInactiveUserByEmailForAdd(normalizedEmail);
-      final inactiveByPhone = inactiveByEmail == null && phoneValue != null
-          ? await _getInactiveUserByPhoneForAdd(phoneValue)
-          : null;
-      final inactiveMatch = inactiveByEmail ?? inactiveByPhone;
-      if (inactiveMatch == null) {
+      final purgeResult = await _purgeInactiveUsersByIdentity(
+        email: normalizedEmail,
+        phone: phoneValue,
+      );
+      if ((purgeResult["deletedUserIds"] as List<dynamic>? ?? const []).isEmpty) {
         rethrow;
       }
 
-      await _reactivateInactiveUserForAdd(
-        userId: _asInt(inactiveMatch["id"]),
-        name: normalizedName,
-        email: normalizedEmail,
-        phone: phoneValue,
-        passwordHash: hashedPassword,
-        emailVerifiedAt: nowIso,
-        roleId: roleId,
-      );
+      await createUser();
       return true;
     }
   }
 
-  Future<Map<String, dynamic>?> _getInactiveUserByEmailForAdd(
-    String email,
-  ) async {
-    const query = r'''
-      query GetInactiveUserByEmailForAdd($email: String!) {
-        users(
-          where: {
-            _or: [
-              {email: {_eq: $email}},
-              {email: {_ilike: $email}}
-            ],
-            is_active: {_eq: false}
-          },
-          order_by: [{email_verified_at: desc_nulls_last}, {id: asc}],
-          limit: 1
-        ) {
-          id
-          name
-          email
-          phone
-          role_id
-          is_active
-          email_verified_at
-          deactivated_at
-        }
-      }
-    ''';
-
-    final data = await _hasura.graphQLRequest(
-      query: query,
-      variables: {"email": email},
-    );
-    final users = List<Map<String, dynamic>>.from(data["users"] ?? const []);
-    if (users.isEmpty) return null;
-    return users.first;
-  }
-
-  Future<Map<String, dynamic>?> _getInactiveUserByPhoneForAdd(
-    String phone,
-  ) async {
-    const query = r'''
-      query GetInactiveUserByPhoneForAdd($phone: String!) {
-        users(
-          where: {
-            phone: {_eq: $phone},
-            is_active: {_eq: false}
-          },
-          order_by: [{email_verified_at: desc_nulls_last}, {id: asc}],
-          limit: 1
-        ) {
-          id
-          name
-          email
-          phone
-          role_id
-          is_active
-          email_verified_at
-          deactivated_at
-        }
-      }
-    ''';
-
-    final data = await _hasura.graphQLRequest(
-      query: query,
-      variables: {"phone": phone},
-    );
-    final users = List<Map<String, dynamic>>.from(data["users"] ?? const []);
-    if (users.isEmpty) return null;
-    return users.first;
-  }
-
-  Future<void> _reactivateInactiveUserForAdd({
-    required int? userId,
-    required String name,
+  Future<Map<String, dynamic>> _purgeInactiveUsersByIdentity({
     required String email,
-    required String? phone,
-    required String passwordHash,
-    required String emailVerifiedAt,
-    required int roleId,
+    String? phone,
   }) async {
-    if (userId == null) {
-      throw Exception("Pasif kullanıcı bulunamadı.");
-    }
+    final body = <String, dynamic>{
+      "email": email.trim().toLowerCase(),
+      if (phone != null && phone.trim().isNotEmpty) "phone": phone.trim(),
+    };
 
-    const mutation = r'''
-      mutation ReactivateInactiveUserForAdd(
-        $id: bigint!,
-        $name: String!,
-        $email: String!,
-        $phone: String,
-        $password: String!,
-        $role_id: bigint!,
-        $email_verified_at: timestamptz!
-      ) {
-        update_users_by_pk(
-          pk_columns: {id: $id},
-          _set: {
-            name: $name,
-            email: $email,
-            phone: $phone,
-            password: $password,
-            role_id: $role_id,
-            is_active: true,
-            deactivated_at: null,
-            email_verified_at: $email_verified_at
-          }
-        ) {
-          id
-        }
-      }
-    ''';
+    final response = await _cdn.postJson("/admin/users/purge", body: body);
+    return response;
+  }
 
-    await _hasura.graphQLRequest(
-      query: mutation,
-      variables: {
-        "id": userId,
-        "name": name,
-        "email": email,
-        "phone": phone,
-        "password": passwordHash,
-        "role_id": roleId,
-        "email_verified_at": emailVerifiedAt,
-      },
-    );
+  Future<void> hardDeleteUser(int id) async {
+    await _cdn.postJson("/admin/users/purge", body: {"userId": id});
   }
 
   bool _isDuplicateConstraintError(Object error) {

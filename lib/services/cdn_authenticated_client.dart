@@ -69,6 +69,26 @@ class CdnAuthenticatedClient {
     String path, {
     Map<String, String?> queryParameters = const {},
   }) async {
+    return _sendJsonRequest(
+      "GET",
+      path,
+      queryParameters: queryParameters,
+    );
+  }
+
+  Future<Map<String, dynamic>> postJson(
+    String path, {
+    Map<String, dynamic> body = const {},
+  }) async {
+    return _sendJsonRequest("POST", path, body: body);
+  }
+
+  Future<Map<String, dynamic>> _sendJsonRequest(
+    String method,
+    String path, {
+    Map<String, String?> queryParameters = const {},
+    Map<String, dynamic> body = const {},
+  }) async {
     final token = AuthTokenStore.token?.trim();
     if (token == null || token.isEmpty) {
       throw CdnRequestException(
@@ -87,39 +107,38 @@ class CdnAuthenticatedClient {
 
     late final http.Response response;
     try {
-      response = await _client
-          .get(
-            uri,
-            headers: {
-              "content-type": "application/json",
-              "Authorization": "Bearer $token",
-            },
-          )
-          .timeout(timeout);
+      final requestHeaders = {
+        "content-type": "application/json",
+        "Authorization": "Bearer $token",
+      };
+      final request = method.toUpperCase() == "POST"
+          ? _client.post(uri, headers: requestHeaders, body: jsonEncode(body))
+          : _client.get(uri, headers: requestHeaders);
+      response = await request.timeout(timeout);
     } catch (error) {
       throw CdnRequestException(error.toString());
     }
 
-    final body = _decodeBody(response.body);
+    final bodyJson = _decodeBody(response.body);
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw CdnRequestException(
-        _responseMessage(body).isNotEmpty
-            ? _responseMessage(body)
+        _responseMessage(bodyJson).isNotEmpty
+            ? _responseMessage(bodyJson)
             : "CDN request failed (${response.statusCode})",
         statusCode: response.statusCode,
       );
     }
 
-    if (body["ok"] == false) {
+    if (bodyJson["ok"] == false) {
       throw CdnRequestException(
-        _responseMessage(body).isNotEmpty
-            ? _responseMessage(body)
+        _responseMessage(bodyJson).isNotEmpty
+            ? _responseMessage(bodyJson)
             : "CDN request failed.",
         statusCode: response.statusCode,
       );
     }
 
-    return body;
+    return bodyJson;
   }
 
   Map<String, dynamic> _decodeBody(String body) {

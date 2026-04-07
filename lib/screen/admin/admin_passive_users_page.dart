@@ -25,6 +25,7 @@ class _AdminPassiveUsersPageState extends State<AdminPassiveUsersPage> {
   final TextEditingController _searchCtrl = TextEditingController();
 
   bool _loading = true;
+  String? _deletingUserKey;
   String? _pageError;
   List<Map<String, dynamic>> _users = [];
   List<Map<String, dynamic>> _filtered = [];
@@ -104,6 +105,57 @@ class _AdminPassiveUsersPageState extends State<AdminPassiveUsersPage> {
     );
   }
 
+  Future<void> _hardDeleteUser(Map<String, dynamic> user) async {
+    final userId = user["id"];
+    if (userId == null) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text("Kullanıcı kalıcı silinsin mi?"),
+        content: Text(
+          "${user["name"] ?? "Bu kullanıcı"} ve ilişkili tüm verileri kalıcı olarak silinecek.\n"
+          "Bu işlem geri alınamaz.",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text("Vazgeç"),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text("Kalıcı Sil", style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    final key = userId.toString();
+    final parsedUserId = int.tryParse(key);
+    if (parsedUserId == null) return;
+    setState(() => _deletingUserKey = key);
+    try {
+      await _adminService.hardDeleteUser(parsedUserId);
+      if (!mounted) return;
+      await _loadUsers();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Kullanıcı ve tüm verileri silindi.")),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Kalıcı silme başarısız: $e")),
+      );
+    } finally {
+      if (mounted) setState(() => _deletingUserKey = null);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -166,6 +218,8 @@ class _AdminPassiveUsersPageState extends State<AdminPassiveUsersPage> {
                     final verifiedAt = _formatDateShort(
                       user["email_verified_at"],
                     );
+                    final deletingKey = _deletingUserKey;
+                    final userKey = user["id"]?.toString() ?? "";
                     return ListTile(
                       contentPadding: EdgeInsets.zero,
                       title: Text(name),
@@ -179,10 +233,33 @@ class _AdminPassiveUsersPageState extends State<AdminPassiveUsersPage> {
                           Text("E-posta onayı: $verifiedAt"),
                         ],
                       ),
-                      trailing: IconButton(
-                        tooltip: "Detay",
-                        icon: const Icon(Icons.open_in_new, color: Colors.blue),
-                        onPressed: () => _openUserDetail(user),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            tooltip: "Detay",
+                            icon: const Icon(
+                              Icons.open_in_new,
+                              color: Colors.blue,
+                            ),
+                            onPressed: () => _openUserDetail(user),
+                          ),
+                          if (deletingKey == userKey)
+                            const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          else
+                            IconButton(
+                              tooltip: "Kalıcı Sil",
+                              icon: const Icon(
+                                Icons.delete_forever,
+                                color: Colors.red,
+                              ),
+                              onPressed: () => _hardDeleteUser(user),
+                            ),
+                        ],
                       ),
                     );
                   },
