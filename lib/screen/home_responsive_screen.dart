@@ -747,6 +747,14 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     return double.tryParse(value?.toString() ?? "") ?? fallback;
   }
 
+  String _firstNonEmptyText(Iterable<dynamic?> values) {
+    for (final value in values) {
+      final text = (value?.toString() ?? "").trim();
+      if (text.isNotEmpty) return text;
+    }
+    return "";
+  }
+
   DateTime _normalizeDate(DateTime date) =>
       DateTime(date.year, date.month, date.day);
 
@@ -2113,13 +2121,16 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     final actionLabel = (hasAccess || price <= 0)
         ? "Kitabı Gör"
         : "Sepete Ekle";
-    final needsHydration =
-        book["book_url"] == null || book["description"] == null;
+    final description = _firstNonEmptyText([
+      book["description"],
+      book["min_description"],
+    ]);
+    final needsHydration = book["book_url"] == null || description.isEmpty;
     return ProductDetail(
       id: "book-${book["id"]}",
       title: book["title"] ?? "",
       subtitle: book["author_rel"]?["name"] ?? "",
-      description: book["description"] ?? book["min_description"] ?? "",
+      description: description,
       imageUrl: book["cover_url"] ?? "",
       price: price,
       type: CartItemType.book,
@@ -2127,6 +2138,8 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         "productId": book["id"],
         "disableAdd": hasAccess,
         "hydrateOnOpen": needsHydration,
+        "description": description,
+        "minDescription": _firstNonEmptyText([book["min_description"]]),
       },
       actionLabel: actionLabel,
     );
@@ -3083,10 +3096,10 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
                   "title": resolvedDisplayList[i]["title"],
                   "author":
                       resolvedDisplayList[i]["author_rel"]?["name"] ?? "-",
-                  "desc":
-                      resolvedDisplayList[i]["min_description"] ??
-                      resolvedDisplayList[i]["description"] ??
-                      "",
+                  "desc": _firstNonEmptyText([
+                    resolvedDisplayList[i]["description"],
+                    resolvedDisplayList[i]["min_description"],
+                  ]),
                   "salePrice": resolvedDisplayList[i]["price"],
                   "campaignPrice": resolvedDisplayList[i]["discount_price"],
                 },
@@ -3526,10 +3539,10 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
                 "image": books[i]["cover_url"],
                 "title": books[i]["title"],
                 "author": books[i]["author_rel"]?["name"] ?? "-",
-                "desc":
-                    books[i]["min_description"] ??
-                    books[i]["description"] ??
-                    "",
+                "desc": _firstNonEmptyText([
+                  books[i]["description"],
+                  books[i]["min_description"],
+                ]),
                 "salePrice": books[i]["price"],
                 "campaignPrice": books[i]["discount_price"],
               },
@@ -5385,7 +5398,10 @@ class _BookBrowseBodyState extends State<_BookBrowseBody> {
                   "image": book["cover_url"],
                   "title": book["title"],
                   "author": _authorName(book),
-                  "desc": book["min_description"] ?? book["description"] ?? "",
+                  "desc": widget.homeState._firstNonEmptyText([
+                    book["description"],
+                    book["min_description"],
+                  ]),
                   "salePrice": book["price"],
                   "campaignPrice": book["discount_price"],
                 },

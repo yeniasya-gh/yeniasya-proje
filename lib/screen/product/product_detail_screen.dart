@@ -10,6 +10,7 @@ import '../../services/cart/cart_provider.dart';
 import '../../utils/safe_image.dart';
 import 'magazine_issues_screen.dart';
 import '../../services/upload_service.dart';
+import '../../services/home_bootstrap_service.dart';
 import '../../services/magazine_type_price_service.dart';
 import '../../services/newspaper_subscription_type_service.dart';
 import '../../services/access_provider.dart';
@@ -84,6 +85,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   final _reviewService = ReviewService();
   final _magazineTypePriceService = MagazineTypePriceService();
   final _newspaperTypePriceService = NewspaperSubscriptionTypeService();
+  final _homeBootstrapService = HomeBootstrapService();
   final _bookService = AdminBookService();
   final _magazineService = AdminMagazineService();
   final _newspaperService = AdminNewspaperService();
@@ -99,18 +101,60 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   bool _openingBook = false;
   double? _downloadProgress;
   String? _resolvedFileUrl;
+  String? _resolvedBookDescription;
 
   @override
   void initState() {
     super.initState();
     _loadReviews();
     _checkLocalCopy();
+    _hydrateBookDescriptionIfNeeded();
   }
 
   @override
   void dispose() {
     _commentCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _hydrateBookDescriptionIfNeeded() async {
+    if (widget.detail.type != CartItemType.book) return;
+    if (_resolvedDescription().isNotEmpty) return;
+
+    final productId = _parseInt(widget.detail.metadata?["productId"]);
+    if (productId == null) return;
+
+    try {
+      final description = await _fetchBookDescription(productId);
+      if (description.isEmpty) return;
+
+      if (!mounted) return;
+      setState(() {
+        _resolvedBookDescription = description;
+      });
+    } catch (error) {
+      debugPrint("Book detail description hydrate error: $error");
+    }
+  }
+
+  Future<String> _fetchBookDescription(int productId) async {
+    final isLoggedIn = context.read<AuthProvider>().isLoggedIn;
+    final publicBooks = await _homeBootstrapService.fetchBooks();
+    for (final book in publicBooks) {
+      if (_parseInt(book["id"]) != productId) continue;
+      final description = _firstNonEmptyText([
+        book["description"],
+        book["min_description"],
+      ]);
+      if (description.isNotEmpty) return description;
+      break;
+    }
+
+    if (!isLoggedIn) return "";
+
+    final book = await _bookService.getBookById(productId);
+    if (book == null || book.isEmpty) return "";
+    return _firstNonEmptyText([book["description"], book["min_description"]]);
   }
 
   void _addToCart(BuildContext context) {
@@ -1632,7 +1676,25 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   }
 
   String _resolvedDescription() {
-    return widget.detail.description.trim();
+    final candidates = [
+      _resolvedBookDescription,
+      widget.detail.description,
+      widget.detail.metadata?["description"]?.toString(),
+      widget.detail.metadata?["minDescription"]?.toString(),
+    ];
+    for (final candidate in candidates) {
+      final text = (candidate ?? "").trim();
+      if (text.isNotEmpty) return text;
+    }
+    return "";
+  }
+
+  String _firstNonEmptyText(Iterable<dynamic?> values) {
+    for (final value in values) {
+      final text = (value ?? "").toString().trim();
+      if (text.isNotEmpty) return text;
+    }
+    return "";
   }
 
   Widget _buildPrimaryActionButton(
