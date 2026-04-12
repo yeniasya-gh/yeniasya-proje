@@ -254,7 +254,7 @@ class MyApp extends StatelessWidget {
         color: Colors.white,
         child: SafeArea(
           top: false,
-          bottom: true,
+          bottom: false,
           child: child ?? const SizedBox.shrink(),
         ),
       ),

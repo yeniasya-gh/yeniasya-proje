@@ -2641,6 +2641,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
       ),
       body: SafeArea(
         top: false,
+        bottom: false,
         child: _mobileNavIndex == 2 && !isWeb
             ? _libraryView(context, this)
             : (!isWeb && _section == HomeSection.home
@@ -2654,15 +2655,16 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
       ),
       bottomNavigationBar: isWeb
           ? null
-          : Container(
-              color: Colors.white,
-              child: SafeArea(
-                top: false,
-                left: false,
-                right: false,
-                maintainBottomViewPadding: true,
+          : MediaQuery.removePadding(
+              context: context,
+              removeBottom: true,
+              removeLeft: true,
+              removeRight: true,
+              child: Container(
+                color: Colors.white,
+                padding: const EdgeInsets.only(bottom: 10),
                 child: BottomNavigationBar(
-                  elevation: 12,
+                  elevation: 0,
                   backgroundColor: Colors.white,
                   selectedItemColor: Colors.red,
                   unselectedItemColor: Colors.grey,
