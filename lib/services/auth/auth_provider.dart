@@ -379,7 +379,10 @@ class AuthProvider with ChangeNotifier {
       return SocialLoginResult(user: user);
     } catch (e) {
       final msg = e.toString();
-      if (msg.contains("SOCIAL_USER_NOT_FOUND")) {
+      final lower = msg.toLowerCase();
+      if (msg.contains("SOCIAL_USER_NOT_FOUND") ||
+          msg.contains("USER_NOT_FOUND") ||
+          lower.contains("kullanıcı bulunamadı")) {
         return SocialLoginResult(
           draft: SocialDraft(
             email: email,
