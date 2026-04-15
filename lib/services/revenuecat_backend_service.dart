@@ -83,6 +83,7 @@ class RevenueCatBackendService {
     String source = "manual_refresh",
     String? entitlementId,
     String? appUserId,
+    String? originalAppUserId,
     String? expectedAppUserId,
     bool? identityMatched,
     int? userId,
@@ -95,6 +96,8 @@ class RevenueCatBackendService {
       if (entitlementId != null && entitlementId.isNotEmpty)
         "entitlementId": entitlementId,
       if (appUserId != null && appUserId.isNotEmpty) "appUserId": appUserId,
+      if (originalAppUserId != null && originalAppUserId.isNotEmpty)
+        "originalAppUserId": originalAppUserId,
       if (expectedAppUserId != null && expectedAppUserId.isNotEmpty)
         "expectedAppUserId": expectedAppUserId,
       if (identityMatched != null) "identityMatched": identityMatched,

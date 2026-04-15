@@ -192,6 +192,7 @@ class RevenueCatService with ChangeNotifier {
     _currentDbUserId = user?.id;
     if (previousIdentity != _expectedAppUserId) {
       _setRevenueCatOwnershipLock(locked: false);
+      clearTransientState();
     }
 
     if (!supportsNativePurchaseUi) {
@@ -630,6 +631,7 @@ class RevenueCatService with ChangeNotifier {
         source: source,
         entitlementId: RevenueCatConfig.entitlementYeniasyaPro,
         appUserId: _currentAppUserId,
+        originalAppUserId: _customerInfo?.originalAppUserId,
         expectedAppUserId: _expectedAppUserId,
         identityMatched: isIdentityMatched,
         userId: _resolvedBackendUserId(userId),
@@ -658,8 +660,6 @@ class RevenueCatService with ChangeNotifier {
       _lastBackendSyncSource = source;
       _lastBackendSyncSuccess = false;
       _lastBackendSyncError = e.toString();
-      _lastBackendWarning =
-          "Abonelik durumu sunucudan doğrulanırken sorun oluştu.";
       notifyListeners();
       if (kDebugMode) {
         debugPrint("RevenueCat backend confirmation warning: $e");
@@ -688,6 +688,7 @@ class RevenueCatService with ChangeNotifier {
         source: source,
         entitlementId: RevenueCatConfig.entitlementYeniasyaPro,
         appUserId: user.revenueCatUserId,
+        originalAppUserId: _customerInfo?.originalAppUserId,
         expectedAppUserId: user.revenueCatUserId,
         identityMatched: true,
         userId: user.id,
@@ -713,6 +714,20 @@ class RevenueCatService with ChangeNotifier {
         notifyListeners();
         return;
       }
+      final entitlement = _customerInfo
+          ?.entitlements
+          .all[RevenueCatConfig.entitlementYeniasyaPro];
+      final shouldSurfaceWarning = entitlement?.isActive == true;
+      if (!shouldSurfaceWarning) {
+        if (kDebugMode) {
+          debugPrint("RevenueCat backend refresh ignored (no active entitlement): $e");
+        }
+        _lastBackendSyncAt = DateTime.now();
+        _lastBackendSyncSource = source;
+        _lastBackendSyncSuccess = false;
+        _lastBackendSyncError = e.toString();
+        return;
+      }
       if (kDebugMode) {
         debugPrint("RevenueCat backend refresh warning: $e");
       }
@@ -720,8 +735,6 @@ class RevenueCatService with ChangeNotifier {
       _lastBackendSyncSource = source;
       _lastBackendSyncSuccess = false;
       _lastBackendSyncError = e.toString();
-      _lastBackendWarning =
-          "Abonelik durumu sunucudan güncellenirken sorun oluştu.";
     }
   }
 
@@ -800,6 +813,19 @@ class RevenueCatService with ChangeNotifier {
         notifyListeners();
         return;
       }
+      final entitlement =
+          info.entitlements.all[RevenueCatConfig.entitlementYeniasyaPro];
+      final shouldSurfaceWarning = entitlement?.isActive == true;
+      if (!shouldSurfaceWarning) {
+        if (kDebugMode) {
+          debugPrint("RevenueCat backend sync ignored (no active entitlement): $e");
+        }
+        _lastBackendSyncAt = DateTime.now();
+        _lastBackendSyncSource = source;
+        _lastBackendSyncSuccess = false;
+        _lastBackendSyncError = e.toString();
+        return;
+      }
       if (kDebugMode) {
         debugPrint("RevenueCat backend sync warning: $e");
       }
@@ -807,8 +833,6 @@ class RevenueCatService with ChangeNotifier {
       _lastBackendSyncSource = source;
       _lastBackendSyncSuccess = false;
       _lastBackendSyncError = e.toString();
-      _lastBackendWarning =
-          "Abonelik durumu sunucuya aktarılırken sorun oluştu.";
       notifyListeners();
     }
   }
@@ -881,8 +905,6 @@ class RevenueCatService with ChangeNotifier {
       _lastBackendEventResult = result;
       _lastBackendEventSuccess = false;
       _lastBackendEventError = e.toString();
-      _lastBackendWarning =
-          "Abonelik olayları sunucuya aktarılırken sorun oluştu.";
       notifyListeners();
     }
   }
