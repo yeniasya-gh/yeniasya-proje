@@ -64,11 +64,13 @@ class AppUser {
 
   bool get isAdmin => roleName.toLowerCase() == "admin";
 
-  // RevenueCat ile users tablosu arasında ortak kimlik:
-  // önce payUniqe, yoksa users.id.
+  // RevenueCat için sabit hesap kimliği:
+  // anonim RC id'leri yerine hesap bazlı users.id'e düş.
   String get revenueCatUserId {
     final candidate = payUniqe?.trim();
-    if (candidate != null && candidate.isNotEmpty) {
+    if (candidate != null &&
+        candidate.isNotEmpty &&
+        !candidate.startsWith(r"$RCAnonymousID:")) {
       return candidate;
     }
     return id.toString();
