@@ -15,7 +15,7 @@ void main() {
     expect(user.revenueCatUserId, '876');
   });
 
-  test('stable payUniqe values are preserved for RevenueCat', () {
+  test('RevenueCat user id follows the stable account id', () {
     final user = AppUser(
       id: 876,
       name: 'Aykut',
@@ -25,6 +25,7 @@ void main() {
       payUniqe: 'stable-account-id-123',
     );
 
-    expect(user.revenueCatUserId, 'stable-account-id-123');
+    expect(user.revenueCatUserId, '876');
+    expect(user.legacyRevenueCatUserId, 'stable-account-id-123');
   });
 }

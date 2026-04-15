@@ -65,15 +65,17 @@ class AppUser {
   bool get isAdmin => roleName.toLowerCase() == "admin";
 
   // RevenueCat için sabit hesap kimliği:
-  // anonim RC id'leri yerine hesap bazlı users.id'e düş.
+  // Tüm platformlarda aynı hesabı temsil eden kalıcı id.
   String get revenueCatUserId {
-    final candidate = payUniqe?.trim();
-    if (candidate != null &&
-        candidate.isNotEmpty &&
-        !candidate.startsWith(r"$RCAnonymousID:")) {
-      return candidate;
-    }
     return id.toString();
+  }
+
+  /// Eski RevenueCat subscriber kimliği varsa korur.
+  /// Legacy restore / fallback lookup için kullanılır.
+  String? get legacyRevenueCatUserId {
+    final candidate = payUniqe?.trim();
+    if (candidate == null || candidate.isEmpty) return null;
+    return candidate;
   }
 
   static String? _readPayIdentity(Map<String, dynamic> json) {

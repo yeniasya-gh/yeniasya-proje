@@ -489,6 +489,9 @@ class RevenueCatService with ChangeNotifier {
     final attrs = <String, String>{
       "user_id": user.id.toString(),
       "rc_user_id": user.revenueCatUserId,
+      if (user.legacyRevenueCatUserId != null &&
+          user.legacyRevenueCatUserId != user.revenueCatUserId)
+        "rc_legacy_user_id": user.legacyRevenueCatUserId!,
       "email": user.email,
       if (user.phone != null && user.phone!.trim().isNotEmpty)
         "phone": user.phone!.trim(),
