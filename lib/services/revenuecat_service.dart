@@ -243,6 +243,9 @@ class RevenueCatService with ChangeNotifier {
 
       _lastSyncedIdentity = identity;
       await refreshCustomerInfo(source: "auth_sync", userId: user?.id);
+      if (user != null) {
+        await _refreshBackendSubscription(user: user, source: "auth_sync");
+      }
       await loadOfferings();
     } on PlatformException catch (e) {
       _errorMessage = _formatPurchasesPlatformError(e);

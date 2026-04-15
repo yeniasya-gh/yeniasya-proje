@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../services/access_provider.dart';
 import '../../services/auth/auth_provider.dart';
@@ -73,14 +75,32 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
+  Future<void> _handleBackAction() async {
+    final auth = context.read<AuthProvider>();
+    if (auth.shouldForceLoginScreen) {
+      if (Platform.isAndroid || Platform.isIOS) {
+        await SystemNavigator.pop();
+      }
+      return;
+    }
+
+    final nav = rootNavigatorKey.currentState;
+    if (nav != null && nav.canPop()) {
+      nav.pop();
+      return;
+    }
+
+    _goHome();
+  }
+
   Future<void> _primePostLoginState() async {
     final user = context.read<AuthProvider>().user;
     if (user == null) return;
     try {
-      await Future.wait([
-        context.read<AccessProvider>().load(user.id),
-        context.read<RevenueCatService>().syncWithAuthUser(user),
-      ]);
+      final revenueCatService = context.read<RevenueCatService>();
+      final accessProvider = context.read<AccessProvider>();
+      await revenueCatService.syncWithAuthUser(user);
+      await accessProvider.load(user.id, force: true);
     } catch (e) {
       debugPrint("Post-login state prime failed: $e");
     }
@@ -201,19 +221,11 @@ class _LoginScreenState extends State<LoginScreen> {
     final auth = context.watch<AuthProvider>();
     final isWeb = MediaQuery.of(context).size.width > 900;
 
-    return WillPopScope(
-      onWillPop: () async {
-        final nav = rootNavigatorKey.currentState;
-        if (nav == null) return true;
-        if (nav.canPop()) return true;
-        nav.pushAndRemoveUntil(
-          MaterialPageRoute(
-            builder: (_) =>
-                HomeResponsiveScreen(initialUri: currentLaunchUri()),
-          ),
-          (route) => false,
-        );
-        return false;
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        unawaited(_handleBackAction());
       },
       child: Scaffold(
         backgroundColor: Colors.white,
@@ -223,7 +235,7 @@ class _LoginScreenState extends State<LoginScreen> {
           elevation: 1,
           leading: IconButton(
             icon: const Icon(Icons.arrow_back),
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => unawaited(_handleBackAction()),
           ),
         ),
 
@@ -269,7 +281,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         borderRadius: BorderRadius.circular(24),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.05),
+                            color: Colors.black.withValues(alpha: 0.05),
                             blurRadius: 18,
                             offset: const Offset(0, 10),
                           ),

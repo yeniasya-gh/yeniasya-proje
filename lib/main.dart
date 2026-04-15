@@ -8,9 +8,11 @@ import 'package:provider/provider.dart';
 import '/screen/home_responsive_screen.dart';
 import '/screen/login/login_screen.dart';
 import '/screen/splash/splash_screen.dart';
+import '/screen/splash/force_update_screen.dart';
 import '/services/auth/auth_provider.dart';
 import '/services/cart/cart_provider.dart';
 import '/services/access_provider.dart';
+import '/services/app_version_service.dart';
 import '/services/revenuecat_service.dart';
 import '/services/error/app_error_reporter.dart';
 import '/utils/launch_uri.dart';
@@ -43,11 +45,10 @@ Future<void> main() async {
         final shouldShowLogin =
             reason == AuthLogoutReason.sessionRevoked ||
             reason == AuthLogoutReason.accountDeleted;
-        if (navigator != null && shouldShowLogin) {
-          navigator.pushAndRemoveUntil(
-            MaterialPageRoute(builder: (_) => const LoginScreen()),
-            (route) => false,
-          );
+        if (shouldShowLogin) {
+          // AppBootstrap already rebuilds to the forced login screen.
+          // Avoid pushing a second login route on top of the stack, which can
+          // leave the user on a blank page when navigating back.
           return;
         }
         navigator?.pushAndRemoveUntil(
@@ -98,26 +99,14 @@ class _AppBootstrapState extends State<AppBootstrap>
   String _status = "Uygulama hazırlanıyor";
   String? _lastRevenueCatIdentity;
   AuthProvider? _authProvider;
-
-  bool get _shouldGateHomeUntilBootstrap {
-    if (kIsWeb) return true;
-    switch (defaultTargetPlatform) {
-      case TargetPlatform.android:
-      case TargetPlatform.iOS:
-        return false;
-      case TargetPlatform.macOS:
-      case TargetPlatform.windows:
-      case TargetPlatform.linux:
-      case TargetPlatform.fuchsia:
-        return true;
-    }
-  }
+  final AppVersionService _appVersionService = AppVersionService();
+  AppVersionGate? _forceUpdateGate;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _ready = !_shouldGateHomeUntilBootstrap;
+    _ready = false;
     _authProvider = context.read<AuthProvider>();
     unawaited(_bootstrap());
   }
@@ -140,8 +129,24 @@ class _AppBootstrapState extends State<AppBootstrap>
   Future<void> _bootstrap() async {
     final authProvider = context.read<AuthProvider>();
     final revenueCatService = context.read<RevenueCatService>();
+    final accessProvider = context.read<AccessProvider>();
 
-    if (_shouldGateHomeUntilBootstrap && mounted) {
+    if (mounted) {
+      setState(() => _status = "Sürüm kontrol ediliyor");
+    }
+
+    final forceUpdateGate = await _appVersionService.getGateForCurrentApp();
+    if (!mounted) return;
+    if (forceUpdateGate.forceUpdateRequired) {
+      setState(() {
+        _forceUpdateGate = forceUpdateGate;
+        _status = "Güncelleme gerekli";
+        _ready = true;
+      });
+      return;
+    }
+
+    if (mounted) {
       setState(() => _status = "Oturum hazırlanıyor");
     }
 
@@ -156,11 +161,16 @@ class _AppBootstrapState extends State<AppBootstrap>
     _authProvider?.removeListener(_handleAuthChanged);
     _authProvider?.addListener(_handleAuthChanged);
 
-    if (_shouldGateHomeUntilBootstrap && mounted) {
-      setState(() => _ready = true);
+    if (user != null) {
+      await revenueCatService.syncWithAuthUser(user);
+      await accessProvider.load(user.id, force: true);
+    } else {
+      unawaited(revenueCatService.syncWithAuthUser(user));
     }
 
-    unawaited(revenueCatService.syncWithAuthUser(user));
+    if (mounted) {
+      setState(() => _ready = true);
+    }
   }
 
   Future<void> _initializeFirebaseSafely() async {
@@ -205,7 +215,9 @@ class _AppBootstrapState extends State<AppBootstrap>
         FocusManager.instance.primaryFocus?.unfocus();
       },
       child: MyApp(
-        home: _ready
+        home: _forceUpdateGate != null
+            ? ForceUpdateScreen(gate: _forceUpdateGate!)
+            : _ready
             ? (authProvider.shouldForceLoginScreen
                   ? const LoginScreen()
                   : HomeResponsiveScreen(initialUri: widget.initialUri))
