@@ -64,16 +64,9 @@ class AppUser {
 
   bool get isAdmin => roleName.toLowerCase() == "admin";
 
-  // RevenueCat için hesap kimliği:
-  // Önce mevcut legacy subscriber id korunur, yoksa kullanıcı id'sine düşer.
+  // RevenueCat için ana hesap kimliği.
+  // Abonelik hesabı cihazda değil kullanıcı hesabında sabit kalmalı.
   String get revenueCatUserId {
-    final legacy = legacyRevenueCatUserId;
-    if (legacy != null) {
-      final isNumericOnly = RegExp(r"^\d+$").hasMatch(legacy);
-      if (!isNumericOnly) {
-        return legacy;
-      }
-    }
     return id.toString();
   }
 
