@@ -39,6 +39,9 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
   List<Map<String, dynamic>> _orders = [];
   List<Map<String, dynamic>> _addresses = [];
   final Map<String, String> _sectionErrors = {};
+  bool _revenueCatReconcileLoading = false;
+  String? _revenueCatReconcileMessage;
+  bool? _revenueCatReconcileSuccess;
 
   @override
   void initState() {
@@ -183,6 +186,58 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
     }
   }
 
+  Future<void> _reconcileRevenueCatSubscription() async {
+    final userId = _asInt(widget.user["id"]);
+    if (userId == null || _revenueCatReconcileLoading) return;
+
+    setState(() {
+      _revenueCatReconcileLoading = true;
+      _revenueCatReconcileMessage = null;
+      _revenueCatReconcileSuccess = null;
+    });
+
+    try {
+      final result = await _adminService.reconcileRevenueCatSubscription(
+        userId: userId,
+      );
+      await _loadAll();
+      if (!mounted) return;
+
+      final message = result["message"]?.toString().trim();
+      final summary = message != null && message.isNotEmpty
+          ? message
+          : (result["fixed"] == true
+                ? "RevenueCat aktif abonelik bulundu ve sistem kaydı düzeltildi."
+                : result["activeRevenueCat"] == true
+                ? "RevenueCat aboneliği bulundu."
+                : "RevenueCat'te aktif abonelik bulunamadı.");
+      final success = result["activeRevenueCat"] == true;
+
+      setState(() {
+        _revenueCatReconcileMessage = summary;
+        _revenueCatReconcileSuccess = success;
+      });
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(summary)));
+    } catch (e) {
+      if (!mounted) return;
+      final message = "Abonelik incelenemedi: $e";
+      setState(() {
+        _revenueCatReconcileMessage = message;
+        _revenueCatReconcileSuccess = false;
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
+    } finally {
+      if (mounted) {
+        setState(() => _revenueCatReconcileLoading = false);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = _resolvedUser;
@@ -253,6 +308,46 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
                   _infoRow("Aktif", activeCount.toString()),
                   _infoRow("Pasif", passiveCount.toString()),
                 ]),
+                const SizedBox(height: 12),
+                _infoCard([
+                  const Text(
+                    "RevenueCat'te aktif abonelik varsa ve sistemde eksikse tek tuşla düzeltir.",
+                    style: TextStyle(height: 1.4),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: _revenueCatReconcileLoading
+                          ? null
+                          : _reconcileRevenueCatSubscription,
+                      icon: _revenueCatReconcileLoading
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.manage_search),
+                      label: Text(
+                        _revenueCatReconcileLoading
+                            ? "Taranıyor..."
+                            : "Aboneliği Tara ve Düzelt",
+                      ),
+                    ),
+                  ),
+                ]),
+                if (_revenueCatReconcileMessage != null) ...[
+                  const SizedBox(height: 12),
+                  _messageCard(
+                    _revenueCatReconcileMessage!,
+                    color: _revenueCatReconcileSuccess == true
+                        ? const Color(0xFF1B5E20)
+                        : const Color(0xFF37474F),
+                    backgroundColor: _revenueCatReconcileSuccess == true
+                        ? const Color(0xFFE8F5E9)
+                        : const Color(0xFFECEFF1),
+                  ),
+                ],
                 const SizedBox(height: 12),
                 _sectionTitle("Erişim Filtreleri"),
                 _infoCard([

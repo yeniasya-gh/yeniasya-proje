@@ -314,6 +314,22 @@ class AdminUserService {
     await _cdn.postJson("/admin/users/purge", body: {"userId": id});
   }
 
+  Future<Map<String, dynamic>> reconcileRevenueCatSubscription({
+    required int userId,
+    String? entitlementId,
+  }) async {
+    final body = <String, dynamic>{
+      "userId": userId,
+      if (entitlementId != null && entitlementId.trim().isNotEmpty)
+        "entitlementId": entitlementId.trim(),
+    };
+    final response = await _cdn.postJson(
+      "/admin/users/revenuecat/reconcile",
+      body: body,
+    );
+    return response;
+  }
+
   bool _isDuplicateConstraintError(Object error) {
     final message = error.toString().toLowerCase();
     if (!message.contains("duplicate key value violates unique constraint")) {

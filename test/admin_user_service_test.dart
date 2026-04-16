@@ -26,7 +26,9 @@ class _FakeCdnClient extends CdnAuthenticatedClient {
   }) async {
     calls.add({"path": path, "body": body});
     if (path != "/admin/users/purge") {
-      throw StateError("Unexpected CDN path: $path");
+      if (path != "/admin/users/revenuecat/reconcile") {
+        throw StateError("Unexpected CDN path: $path");
+      }
     }
     return purgeResponse;
   }
@@ -196,6 +198,36 @@ void main() {
     expect(fakeCdn.calls.single["path"], "/admin/users/purge");
     expect(fakeCdn.calls.single["body"], {"userId": 42});
   });
+
+  test(
+    "AdminUserService.reconcileRevenueCatSubscription posts reconcile request",
+    () async {
+      final fakeHasura = _FakeHasuraManager();
+      final fakeCdn = _FakeCdnClient(
+        purgeResponse: {
+          "ok": true,
+          "fixed": true,
+          "activeRevenueCat": true,
+          "activeAccessBefore": false,
+          "activeAccessAfter": true,
+          "payUniqeUpdated": true,
+          "matchedAppUserId": "debae21d-cd46-4070-a40a-e7b4d178d296",
+          "message":
+              "RevenueCat aktif abonelik bulundu ve sistem kaydı düzeltildi.",
+        },
+      );
+      final service = AdminUserService(hasura: fakeHasura, cdnClient: fakeCdn);
+
+      final result = await service.reconcileRevenueCatSubscription(userId: 907);
+
+      expect(fakeCdn.calls.length, 1);
+      expect(fakeCdn.calls.single["path"], "/admin/users/revenuecat/reconcile");
+      expect(fakeCdn.calls.single["body"], {"userId": 907});
+      expect(result["fixed"], true);
+      expect(result["activeRevenueCat"], true);
+      expect(result["payUniqeUpdated"], true);
+    },
+  );
 
   test("AdminUserService.deleteUser only deactivates the user", () async {
     final fakeHasura = _FakeHasuraManager();
