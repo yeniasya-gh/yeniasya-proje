@@ -207,11 +207,15 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
       final summary = message != null && message.isNotEmpty
           ? message
           : (result["fixed"] == true
-                ? "RevenueCat aktif abonelik bulundu ve sistem kaydı düzeltildi."
-                : result["activeRevenueCat"] == true
-                ? "RevenueCat aboneliği bulundu."
+                ? "Abonelik düzeltildi."
+                : result["healthy"] == true || result["alreadySynced"] == true
+                ? "Abonelik tarafında kullanıcının sorunu bulunmamaktadır."
                 : "RevenueCat'te aktif abonelik bulunamadı.");
-      final success = result["activeRevenueCat"] == true;
+      final success =
+          result["fixed"] == true ||
+          result["healthy"] == true ||
+          result["alreadySynced"] == true ||
+          result["activeAccessAfter"] == true;
 
       setState(() {
         _revenueCatReconcileMessage = summary;

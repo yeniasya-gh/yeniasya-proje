@@ -1034,6 +1034,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isAndroid = defaultTargetPlatform == TargetPlatform.android;
     final cart = context.watch<CartProvider>();
 
     return Scaffold(
@@ -1063,10 +1064,15 @@ class _PaymentScreenState extends State<PaymentScreen> {
           ),
         ),
       ),
-      bottomNavigationBar: SafeArea(
-        minimum: const EdgeInsets.all(16),
+      bottomNavigationBar: Padding(
+        padding: EdgeInsets.fromLTRB(
+          16,
+          16,
+          16,
+          isAndroid ? MediaQuery.viewPaddingOf(context).bottom + 32 : 16,
+        ),
         child: SizedBox(
-          height: 54,
+          height: 56,
           child: ElevatedButton(
             onPressed: _loading ? null : _submit,
             style: ElevatedButton.styleFrom(

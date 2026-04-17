@@ -67,261 +67,270 @@ class _ProfileScreenState extends State<ProfileScreen> {
           onPressed: () => Navigator.pop(context),
         ),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Column(
-                children: [
-                  AppUserAvatar(
-                    radius: 45,
-                    imageUrl: auth.user?.avatarUrl,
-                    onEditTap: _openPersonalInfo,
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    displayName,
-                    style: const TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
+      body: SafeArea(
+        top: false,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Column(
+                  children: [
+                    AppUserAvatar(
+                      radius: 45,
+                      imageUrl: auth.user?.avatarUrl,
+                      onEditTap: _openPersonalInfo,
                     ),
-                  ),
-                  Text(
-                    auth.user?.email ?? "",
-                    style: const TextStyle(color: Colors.black54, fontSize: 14),
-                  ),
-                  const SizedBox(height: 4),
-                  TextButton.icon(
-                    onPressed: _openPersonalInfo,
-                    icon: const Icon(Icons.camera_alt_outlined, size: 18),
-                    label: const Text("Fotoğrafı Düzenle"),
-                    style: TextButton.styleFrom(foregroundColor: Colors.red),
-                  ),
-                  const SizedBox(height: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFFE5E5),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      auth.user?.isAdmin == true ? "Admin" : "Üye",
+                    const SizedBox(height: 12),
+                    Text(
+                      displayName,
                       style: const TextStyle(
-                        color: Colors.red,
-                        fontWeight: FontWeight.w600,
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
-                  ),
-                ],
+                    Text(
+                      auth.user?.email ?? "",
+                      style: const TextStyle(
+                        color: Colors.black54,
+                        fontSize: 14,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    TextButton.icon(
+                      onPressed: _openPersonalInfo,
+                      icon: const Icon(Icons.camera_alt_outlined, size: 18),
+                      label: const Text("Fotoğrafı Düzenle"),
+                      style: TextButton.styleFrom(foregroundColor: Colors.red),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFE5E5),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        auth.user?.isAdmin == true ? "Admin" : "Üye",
+                        style: const TextStyle(
+                          color: Colors.red,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(height: 30),
-            const Text(
-              "Abonelik Durumu",
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 12),
-            _membershipStatusCard(auth, rc),
-            const SizedBox(height: 16),
-            if (kIsWeb) ...[
+              const SizedBox(height: 30),
               const Text(
-                "Abonelikler / İçerikler",
+                "Abonelik Durumu",
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 12),
-              _subscriptionCard(auth),
-            ],
-            if (kIsWeb && auth.user?.isAdmin == true) ...[
-              const SizedBox(height: 20),
+              _membershipStatusCard(auth, rc),
+              const SizedBox(height: 16),
+              if (kIsWeb) ...[
+                const Text(
+                  "Abonelikler / İçerikler",
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                ),
+                const SizedBox(height: 12),
+                _subscriptionCard(auth),
+              ],
+              if (kIsWeb && auth.user?.isAdmin == true) ...[
+                const SizedBox(height: 20),
+                _menuCard(
+                  items: [
+                    _menuTile(
+                      Icons.admin_panel_settings,
+                      "Yönetim Paneli",
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          RouteGuard.guard(
+                            context: context,
+                            routeName: "/admin",
+                            builder: (_) => const AdminPanelScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ],
+              SizedBox(height: kIsWeb ? 30 : 0),
               _menuCard(
                 items: [
                   _menuTile(
-                    Icons.admin_panel_settings,
-                    "Yönetim Paneli",
+                    Icons.person_outline,
+                    "Kişisel Bilgiler",
+                    onTap: _openPersonalInfo,
+                  ),
+                  const Divider(height: 1, indent: 56),
+                  _menuTile(
+                    Icons.credit_card,
+                    "Kayıtlı Kartlarım",
                     onTap: () {
                       Navigator.push(
                         context,
-                        RouteGuard.guard(
-                          context: context,
-                          routeName: "/admin",
-                          builder: (_) => const AdminPanelScreen(),
+                        MaterialPageRoute(
+                          builder: (_) => const SavedCardsScreen(),
                         ),
                       );
                     },
                   ),
-                ],
-              ),
-            ],
-            SizedBox(height: kIsWeb ? 30 : 0),
-            _menuCard(
-              items: [
-                _menuTile(
-                  Icons.person_outline,
-                  "Kişisel Bilgiler",
-                  onTap: _openPersonalInfo,
-                ),
-                const Divider(height: 1, indent: 56),
-                _menuTile(
-                  Icons.credit_card,
-                  "Kayıtlı Kartlarım",
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const SavedCardsScreen(),
-                      ),
-                    );
-                  },
-                ),
-                const Divider(height: 1, indent: 56),
-                _menuTile(
-                  Icons.receipt_long,
-                  "Sipariş Geçmişi",
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const OrderListScreen(),
-                      ),
-                    );
-                  },
-                ),
-                const Divider(height: 1, indent: 56),
-                _menuTile(
-                  Icons.location_on_outlined,
-                  "Adreslerim",
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const AddressListScreen(),
-                      ),
-                    );
-                  },
-                ),
-                const Divider(height: 1, indent: 56),
-                _menuTile(
-                  Icons.notifications_outlined,
-                  "Bildirimler",
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const NotificationListScreen(),
-                      ),
-                    );
-                  },
-                ),
-                const Divider(height: 1, indent: 56),
-                _menuTile(
-                  Icons.help_center_outlined,
-                  "Yardım Merkezi",
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const FaqPage(title: "Yardım Merkezi"),
-                      ),
-                    );
-                  },
-                ),
-                const Divider(height: 1, indent: 56),
-                _menuTile(
-                  Icons.support_agent,
-                  "Bize Ulaşın",
-                  onTap: () async {
-                    final sent = await Navigator.push<bool>(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => Scaffold(
-                          appBar: AppBar(
-                            backgroundColor: Colors.white,
-                            foregroundColor: Colors.black,
-                            title: const Text("Bize Ulaşın"),
-                            elevation: 1,
-                          ),
-                          body: const SafeArea(
-                            child: ContactForm(popOnSuccess: true),
-                          ),
-                        ),
-                      ),
-                    );
-                    if (sent == true && context.mounted) {
-                      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-                        const SnackBar(
-                          content: Text("Mesajınız iletildi, teşekkür ederiz."),
+                  const Divider(height: 1, indent: 56),
+                  _menuTile(
+                    Icons.receipt_long,
+                    "Sipariş Geçmişi",
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const OrderListScreen(),
                         ),
                       );
-                    }
-                  },
-                ),
-              ],
-            ),
-            const SizedBox(height: 30),
-            Center(
-              child: SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: ElevatedButton.icon(
-                  onPressed: _loggingOut
-                      ? null
-                      : () async {
-                          setState(() => _loggingOut = true);
-                          try {
-                            await auth.logout();
-                          } finally {
-                            if (mounted) {
-                              setState(() => _loggingOut = false);
+                    },
+                  ),
+                  const Divider(height: 1, indent: 56),
+                  _menuTile(
+                    Icons.location_on_outlined,
+                    "Adreslerim",
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const AddressListScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                  const Divider(height: 1, indent: 56),
+                  _menuTile(
+                    Icons.notifications_outlined,
+                    "Bildirimler",
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const NotificationListScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                  const Divider(height: 1, indent: 56),
+                  _menuTile(
+                    Icons.help_center_outlined,
+                    "Yardım Merkezi",
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              const FaqPage(title: "Yardım Merkezi"),
+                        ),
+                      );
+                    },
+                  ),
+                  const Divider(height: 1, indent: 56),
+                  _menuTile(
+                    Icons.support_agent,
+                    "Bize Ulaşın",
+                    onTap: () async {
+                      final sent = await Navigator.push<bool>(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => Scaffold(
+                            appBar: AppBar(
+                              backgroundColor: Colors.white,
+                              foregroundColor: Colors.black,
+                              title: const Text("Bize Ulaşın"),
+                              elevation: 1,
+                            ),
+                            body: const SafeArea(
+                              child: ContactForm(popOnSuccess: true),
+                            ),
+                          ),
+                        ),
+                      );
+                      if (sent == true && context.mounted) {
+                        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              "Mesajınız iletildi, teşekkür ederiz.",
+                            ),
+                          ),
+                        );
+                      }
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 30),
+              Center(
+                child: SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: ElevatedButton.icon(
+                    onPressed: _loggingOut
+                        ? null
+                        : () async {
+                            setState(() => _loggingOut = true);
+                            try {
+                              await auth.logout();
+                            } finally {
+                              if (mounted) {
+                                setState(() => _loggingOut = false);
+                              }
                             }
-                          }
-                        },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.red,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
+                          },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                    ),
+                    icon: _loggingOut
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.logout),
+                    label: Text(
+                      _loggingOut ? "Çıkış Yapılıyor..." : "Çıkış Yap",
+                      style: const TextStyle(fontSize: 16),
                     ),
                   ),
-                  icon: _loggingOut
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : const Icon(Icons.logout),
-                  label: Text(
-                    _loggingOut ? "Çıkış Yapılıyor..." : "Çıkış Yap",
-                    style: const TextStyle(fontSize: 16),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Center(
+                child: TextButton(
+                  onPressed: _deletingAccount
+                      ? null
+                      : () => _confirmDeleteAccount(auth),
+                  child: Text(
+                    _deletingAccount ? "Hesap siliniyor..." : "Hesabımı Sil",
+                    style: const TextStyle(
+                      color: Colors.red,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ),
-            ),
-            const SizedBox(height: 8),
-            Center(
-              child: TextButton(
-                onPressed: _deletingAccount
-                    ? null
-                    : () => _confirmDeleteAccount(auth),
-                child: Text(
-                  _deletingAccount ? "Hesap siliniyor..." : "Hesabımı Sil",
-                  style: const TextStyle(
-                    color: Colors.red,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 30),
-          ],
+              const SizedBox(height: 30),
+            ],
+          ),
         ),
       ),
     );
@@ -332,9 +341,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final hasRevenueCatSubscription = rc.isYeniasyaProActive;
     final hasBackendAccess = access.hasAccess("newspaper_subscription");
     final hasAnyAccess = hasRevenueCatSubscription || hasBackendAccess;
+    final hasActiveSubscription = hasAnyAccess;
     final statusColor = hasAnyAccess ? const Color(0xFF0F9D58) : Colors.black54;
     final user = auth.user;
     final busy = rc.isPaywallInProgress || rc.isRestoreInProgress;
+    final revenueCatMessage = _revenueCatMessage(rc);
 
     return Container(
       width: double.infinity,
@@ -371,11 +382,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ],
           ),
-          if (rc.isRevenueCatEntitlementLocked) ...[
+          if (revenueCatMessage != null) ...[
             const SizedBox(height: 8),
             Text(
-              rc.revenueCatOwnershipConflictMessage ??
-                  "Bu abonelik başka bir hesapta aktif.",
+              revenueCatMessage,
               style: const TextStyle(
                 color: Colors.red,
                 fontSize: 13,
@@ -393,7 +403,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             Row(
               children: [
                 Expanded(
-                  flex: hasRevenueCatSubscription ? 9 : 1,
+                  flex: hasActiveSubscription ? 9 : 1,
                   child: ElevatedButton(
                     onPressed: busy
                         ? null
@@ -412,15 +422,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             ),
                           )
                         : Text(
-                            hasRevenueCatSubscription
+                            hasActiveSubscription
                                 ? "Abonelik Aktif"
-                                : hasBackendAccess
-                                ? "Erişim Aktif"
                                 : "Abonelik Al",
                           ),
                   ),
                 ),
-                if (hasRevenueCatSubscription) ...[
+                if (hasActiveSubscription) ...[
                   const SizedBox(width: 10),
                   Expanded(
                     flex: 11,
@@ -445,41 +453,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ],
             ),
             const SizedBox(height: 8),
-            Align(
-              alignment: Alignment.center,
-              child: TextButton(
-                onPressed: busy
-                    ? null
-                    : () => _onRestorePressed(auth: auth, rc: rc),
-                child: const Text("Satın Alımları Geri Yükle"),
+            if (!hasActiveSubscription)
+              Align(
+                alignment: Alignment.center,
+                child: TextButton(
+                  onPressed: busy
+                      ? null
+                      : () => _onRestorePressed(auth: auth, rc: rc),
+                  child: const Text("Satın Alımları Geri Yükle"),
+                ),
               ),
-            ),
           ],
           if (user == null)
             const Text(
               "Abonelik yönetimi için giriş yapmalısınız.",
               style: TextStyle(fontSize: 12, color: Colors.black54),
-            ),
-          if (rc.errorMessage != null && rc.errorMessage!.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 6),
-              child: Text(
-                rc.errorMessage!,
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: Colors.red,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          if (rc.lastBackendWarning != null &&
-              rc.lastBackendWarning!.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 6),
-              child: Text(
-                rc.lastBackendWarning!,
-                style: const TextStyle(fontSize: 12, color: Colors.orange),
-              ),
             ),
           if (kDebugMode && rc.supportsNativePurchaseUi)
             Padding(
@@ -517,7 +505,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _showInfo("İşlem iptal edildi.");
       return;
     }
-    _showInfo(rc.errorMessage ?? "Abonelik işlemi tamamlanamadı.");
+    _showInfo(
+      _revenueCatMessage(
+            rc,
+          ) ??
+          "Abonelik işlemi tamamlanamadı.",
+    );
   }
 
   Future<void> _onRestorePressed({
@@ -532,8 +525,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     await rc.syncWithAuthUser(user);
     await rc.restorePurchases(userId: user.id);
     if (!mounted) return;
-    final conflictMessage =
-        rc.revenueCatOwnershipConflictMessage ?? rc.errorMessage;
+    final conflictMessage = _revenueCatMessage(
+      rc,
+    );
     if (conflictMessage != null && conflictMessage.isNotEmpty) {
       _showInfo(conflictMessage);
       return;
@@ -543,7 +537,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
       unawaited(context.read<AccessProvider>().load(user.id, force: true));
     } else {
       _showInfo(
-        rc.errorMessage ?? "Geri yüklenecek aktif abonelik bulunamadı.",
+        _revenueCatMessage(
+              rc,
+            ) ??
+            "Geri yüklenecek aktif abonelik bulunamadı.",
       );
     }
   }
@@ -560,8 +557,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     await rc.syncWithAuthUser(user);
     await rc.presentCustomerCenter(userId: user.id);
     if (!mounted) return;
-    if (rc.errorMessage != null && rc.errorMessage!.isNotEmpty) {
-      _showInfo(rc.errorMessage!);
+    final message = _revenueCatMessage(
+      rc,
+    );
+    if (message != null && message.isNotEmpty) {
+      _showInfo(message);
     }
   }
 
@@ -616,6 +616,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  String? _revenueCatMessage(RevenueCatService rc) {
+    final conflict = rc.revenueCatOwnershipConflictMessage;
+    if (conflict != null && conflict.isNotEmpty) return conflict;
+    return null;
   }
 
   Widget _backendChecklistCard(RevenueCatService rc) {

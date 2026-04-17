@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import '../../services/address_service.dart';
 import '../../services/error/error_manager.dart';
@@ -67,6 +68,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isAndroid = defaultTargetPlatform == TargetPlatform.android;
     final cart = context.watch<CartProvider>();
     return Scaffold(
       appBar: AppBar(
@@ -92,14 +94,21 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 ),
               ),
       ),
-      bottomNavigationBar: SafeArea(
-        minimum: const EdgeInsets.all(16),
+      bottomNavigationBar: Padding(
+        padding: EdgeInsets.fromLTRB(
+          16,
+          16,
+          16,
+          isAndroid ? MediaQuery.viewPaddingOf(context).bottom + 32 : 16,
+        ),
         child: SizedBox(
           height: 54,
           child: ElevatedButton(
-            onPressed: (_deliveryId != null && (_sameBilling || _billingId != null))
+            onPressed:
+                (_deliveryId != null && (_sameBilling || _billingId != null))
                 ? () {
-                    final userId = context.read<AuthProvider>().user?.id?.toString();
+                    final userId =
+                        context.read<AuthProvider>().user?.id?.toString();
                     if (userId == null) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(content: Text("Kullanıcı bulunamadı.")),
@@ -111,7 +120,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       MaterialPageRoute(
                         builder: (_) => PaymentScreen(
                           deliveryAddressId: _deliveryId!,
-                          billingAddressId: _sameBilling ? _deliveryId! : _billingId!,
+                          billingAddressId:
+                              _sameBilling ? _deliveryId! : _billingId!,
                           userId: userId,
                         ),
                       ),
@@ -121,7 +131,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,
               foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
             ),
             child: const Text("Ödemeye Geç"),
           ),

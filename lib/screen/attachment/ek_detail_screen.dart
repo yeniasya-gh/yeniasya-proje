@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 
 import '../../models/cart_item.dart';
@@ -18,6 +19,7 @@ class EkDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isAndroid = defaultTargetPlatform == TargetPlatform.android;
     final data = normalizeEk(ek);
     final price = _price(data["fiyat"]);
     final isFree = price == 0;
@@ -114,8 +116,13 @@ class EkDetailScreen extends StatelessWidget {
           ],
         ),
       ),
-      bottomNavigationBar: SafeArea(
-        minimum: const EdgeInsets.all(16),
+      bottomNavigationBar: Padding(
+        padding: EdgeInsets.fromLTRB(
+          16,
+          16,
+          16,
+          isAndroid ? MediaQuery.viewPaddingOf(context).bottom + 20 : 16,
+        ),
         child: SizedBox(
           width: double.infinity,
           height: 50,

@@ -207,13 +207,13 @@ void main() {
         purgeResponse: {
           "ok": true,
           "fixed": true,
+          "healthy": true,
           "activeRevenueCat": true,
           "activeAccessBefore": false,
           "activeAccessAfter": true,
           "payUniqeUpdated": true,
           "matchedAppUserId": "debae21d-cd46-4070-a40a-e7b4d178d296",
-          "message":
-              "RevenueCat aktif abonelik bulundu ve sistem kaydı düzeltildi.",
+          "message": "Abonelik düzeltildi.",
         },
       );
       final service = AdminUserService(hasura: fakeHasura, cdnClient: fakeCdn);
@@ -224,6 +224,7 @@ void main() {
       expect(fakeCdn.calls.single["path"], "/admin/users/revenuecat/reconcile");
       expect(fakeCdn.calls.single["body"], {"userId": 907});
       expect(result["fixed"], true);
+      expect(result["healthy"], true);
       expect(result["activeRevenueCat"], true);
       expect(result["payUniqeUpdated"], true);
     },

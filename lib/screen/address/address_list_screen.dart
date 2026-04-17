@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import '../../services/address_service.dart';
 import '../../services/error/error_manager.dart';
@@ -182,6 +183,7 @@ class _AddressListScreenState extends State<AddressListScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isAndroid = defaultTargetPlatform == TargetPlatform.android;
     return Scaffold(
       backgroundColor: const Color(0xFFF7F8FA),
       appBar: AppBar(
@@ -225,8 +227,13 @@ class _AddressListScreenState extends State<AddressListScreen> {
                 ),
         ),
       ),
-      bottomNavigationBar: SafeArea(
-        minimum: const EdgeInsets.all(16),
+      bottomNavigationBar: Padding(
+        padding: EdgeInsets.fromLTRB(
+          16,
+          16,
+          16,
+          isAndroid ? MediaQuery.viewPaddingOf(context).bottom + 20 : 16,
+        ),
         child: SizedBox(
           height: 56,
           child: ElevatedButton.icon(

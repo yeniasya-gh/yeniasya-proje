@@ -196,205 +196,210 @@ class _PersonalInfoScreenState extends State<PersonalInfoScreen> {
         foregroundColor: Colors.black,
         elevation: 1,
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              "Profil Bilgileri",
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 10),
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(14),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.04),
-                    blurRadius: 8,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
+      body: SafeArea(
+        bottom: true,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                "Profil Bilgileri",
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
               ),
-              child: Form(
-                key: _profileFormKey,
-                child: Column(
-                  children: [
-                    Center(
-                      child: Column(
-                        children: [
-                          AppUserAvatar(
-                            radius: 44,
-                            imageUrl: user?.avatarUrl,
-                            busy: avatarBusy,
-                            onEditTap: _pickAvatar,
-                          ),
-                          const SizedBox(height: 12),
-                          Wrap(
-                            spacing: 10,
-                            runSpacing: 10,
-                            alignment: WrapAlignment.center,
-                            children: [
-                              OutlinedButton.icon(
-                                onPressed: avatarBusy ? null : _pickAvatar,
-                                icon: const Icon(Icons.upload_outlined),
-                                label: Text(
-                                  hasAvatar
-                                      ? "Fotoğrafı Değiştir"
-                                      : "Fotoğraf Yükle",
-                                ),
-                              ),
-                              if (hasAvatar)
-                                TextButton.icon(
-                                  onPressed: avatarBusy ? null : _removeAvatar,
-                                  icon: const Icon(Icons.delete_outline),
-                                  label: const Text("Kaldır"),
-                                  style: TextButton.styleFrom(
-                                    foregroundColor: Colors.red,
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.04),
+                      blurRadius: 8,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: Form(
+                  key: _profileFormKey,
+                  child: Column(
+                    children: [
+                      Center(
+                        child: Column(
+                          children: [
+                            AppUserAvatar(
+                              radius: 44,
+                              imageUrl: user?.avatarUrl,
+                              busy: avatarBusy,
+                              onEditTap: _pickAvatar,
+                            ),
+                            const SizedBox(height: 12),
+                            Wrap(
+                              spacing: 10,
+                              runSpacing: 10,
+                              alignment: WrapAlignment.center,
+                              children: [
+                                OutlinedButton.icon(
+                                  onPressed: avatarBusy ? null : _pickAvatar,
+                                  icon: const Icon(Icons.upload_outlined),
+                                  label: Text(
+                                    hasAvatar
+                                        ? "Fotoğrafı Değiştir"
+                                        : "Fotoğraf Yükle",
                                   ),
                                 ),
-                            ],
-                          ),
+                                if (hasAvatar)
+                                  TextButton.icon(
+                                    onPressed:
+                                        avatarBusy ? null : _removeAvatar,
+                                    icon: const Icon(Icons.delete_outline),
+                                    label: const Text("Kaldır"),
+                                    style: TextButton.styleFrom(
+                                      foregroundColor: Colors.red,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _nameCtrl,
+                        decoration:
+                            const InputDecoration(labelText: "Ad Soyad"),
+                        validator: (v) =>
+                            v == null || v.trim().isEmpty ? "Zorunlu" : null,
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _phoneCtrl,
+                        decoration: const InputDecoration(labelText: "Telefon"),
+                        keyboardType: TextInputType.phone,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                          LengthLimitingTextInputFormatter(10),
                         ],
                       ),
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _nameCtrl,
-                      decoration: const InputDecoration(labelText: "Ad Soyad"),
-                      validator: (v) =>
-                          v == null || v.trim().isEmpty ? "Zorunlu" : null,
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: _phoneCtrl,
-                      decoration: const InputDecoration(labelText: "Telefon"),
-                      keyboardType: TextInputType.phone,
-                      inputFormatters: [
-                        FilteringTextInputFormatter.digitsOnly,
-                        LengthLimitingTextInputFormatter(10),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 44,
-                      child: ElevatedButton(
-                        onPressed: _savingProfile ? null : _saveProfile,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.red,
-                        ),
-                        child: _savingProfile
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
+                      const SizedBox(height: 16),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 44,
+                        child: ElevatedButton(
+                          onPressed: _savingProfile ? null : _saveProfile,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.red,
+                          ),
+                          child: _savingProfile
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Text(
+                                  "Kaydet",
+                                  style: TextStyle(color: Colors.white),
                                 ),
-                              )
-                            : const Text(
-                                "Kaydet",
-                                style: TextStyle(color: Colors.white),
-                              ),
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 24),
-            const Text(
-              "Şifre Güncelle",
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 10),
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(14),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.04),
-                    blurRadius: 8,
-                    offset: const Offset(0, 4),
+                    ],
                   ),
-                ],
+                ),
               ),
-              child: Form(
-                key: _passwordFormKey,
-                child: Column(
-                  children: [
-                    TextFormField(
-                      controller: _currentPasswordCtrl,
-                      decoration: const InputDecoration(
-                        labelText: "Mevcut Şifre",
-                      ),
-                      obscureText: true,
-                      validator: (v) =>
-                          v == null || v.trim().isEmpty ? "Zorunlu" : null,
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: _newPasswordCtrl,
-                      decoration: const InputDecoration(
-                        labelText: "Yeni Şifre",
-                      ),
-                      obscureText: true,
-                      validator: (v) {
-                        if (v == null || v.trim().isEmpty) return "Zorunlu";
-                        if (v.trim().length < 6) return "En az 6 karakter";
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: _confirmPasswordCtrl,
-                      decoration: const InputDecoration(
-                        labelText: "Yeni Şifre (Tekrar)",
-                      ),
-                      obscureText: true,
-                      validator: (v) {
-                        if (v == null || v.trim().isEmpty) return "Zorunlu";
-                        if (v.trim() != _newPasswordCtrl.text.trim()) {
-                          return "Şifreler eşleşmiyor";
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 16),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 44,
-                      child: ElevatedButton(
-                        onPressed: _savingPassword ? null : _changePassword,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.red,
-                        ),
-                        child: _savingPassword
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : const Text(
-                                "Şifreyi Güncelle",
-                                style: TextStyle(color: Colors.white),
-                              ),
-                      ),
+              const SizedBox(height: 24),
+              const Text(
+                "Şifre Güncelle",
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.04),
+                      blurRadius: 8,
+                      offset: const Offset(0, 4),
                     ),
                   ],
                 ),
+                child: Form(
+                  key: _passwordFormKey,
+                  child: Column(
+                    children: [
+                      TextFormField(
+                        controller: _currentPasswordCtrl,
+                        decoration: const InputDecoration(
+                          labelText: "Mevcut Şifre",
+                        ),
+                        obscureText: true,
+                        validator: (v) =>
+                            v == null || v.trim().isEmpty ? "Zorunlu" : null,
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _newPasswordCtrl,
+                        decoration: const InputDecoration(
+                          labelText: "Yeni Şifre",
+                        ),
+                        obscureText: true,
+                        validator: (v) {
+                          if (v == null || v.trim().isEmpty) return "Zorunlu";
+                          if (v.trim().length < 6) return "En az 6 karakter";
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _confirmPasswordCtrl,
+                        decoration: const InputDecoration(
+                          labelText: "Yeni Şifre (Tekrar)",
+                        ),
+                        obscureText: true,
+                        validator: (v) {
+                          if (v == null || v.trim().isEmpty) return "Zorunlu";
+                          if (v.trim() != _newPasswordCtrl.text.trim()) {
+                            return "Şifreler eşleşmiyor";
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 44,
+                        child: ElevatedButton(
+                          onPressed: _savingPassword ? null : _changePassword,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.red,
+                          ),
+                          child: _savingPassword
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Text(
+                                  "Şifreyi Güncelle",
+                                  style: TextStyle(color: Colors.white),
+                                ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

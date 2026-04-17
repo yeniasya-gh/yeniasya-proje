@@ -789,7 +789,9 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
   double _newspaperPreviewCardHeight({
     required double imageHeight,
     required bool showRead,
-  }) => imageHeight + (showRead ? 106.0 : 90.0);
+    bool dense = false,
+  }) =>
+      imageHeight + (showRead ? 106.0 : 90.0) - (dense ? 22.0 : 0.0);
 
   String _resolveArchivedNewspaperUrl(
     Map<String, dynamic> viewInfo, {
@@ -2655,74 +2657,75 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
       ),
       bottomNavigationBar: isWeb
           ? null
-          : MediaQuery.removePadding(
-              context: context,
-              removeBottom: true,
-              removeLeft: true,
-              removeRight: true,
-              child: Container(
-                color: Colors.white,
-                padding: const EdgeInsets.only(bottom: 10),
-                child: BottomNavigationBar(
-                  elevation: 0,
-                  backgroundColor: Colors.white,
-                  selectedItemColor: Colors.red,
-                  unselectedItemColor: Colors.grey,
-                  type: BottomNavigationBarType.fixed,
-                  currentIndex: _mobileNavIndex,
-                  onTap: (index) {
-                    setState(() => _mobileNavIndex = index);
-                    if (index == 0) {
-                      setState(() => _section = HomeSection.home);
-                    }
-                    if (index == 1) {
-                      _openSearch();
-                    }
-                    if (index == 2) {
-                      _libraryWarmupTimer?.cancel();
-                      _loadLibraryOrders();
-                      _loadLibraryAccess();
-                    }
-                    if (index == 3) {
-                      if (auth.isLoggedIn) {
-                        Navigator.push(
-                          context,
-                          RouteGuard.guard(
-                            context: context,
-                            routeName: "/profile",
-                            builder: (_) => const ProfileScreen(),
-                          ),
-                        );
-                      } else {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const LoginScreen(),
-                          ),
-                        );
+          : Builder(
+              builder: (context) {
+                final isAndroid =
+                    Theme.of(context).platform == TargetPlatform.android;
+                final bottomInset = isAndroid ? 0.0 : 10.0;
+                return Container(
+                  color: Colors.white,
+                  padding: EdgeInsets.only(bottom: bottomInset),
+                  child: BottomNavigationBar(
+                    elevation: 0,
+                    backgroundColor: Colors.white,
+                    selectedItemColor: Colors.red,
+                    unselectedItemColor: Colors.grey,
+                    type: BottomNavigationBarType.fixed,
+                    currentIndex: _mobileNavIndex,
+                    onTap: (index) {
+                      setState(() => _mobileNavIndex = index);
+                      if (index == 0) {
+                        setState(() => _section = HomeSection.home);
                       }
-                    }
-                  },
-                  items: [
-                    const BottomNavigationBarItem(
-                      icon: Icon(Icons.home),
-                      label: "Ana Sayfa",
-                    ),
-                    const BottomNavigationBarItem(
-                      icon: Icon(Icons.search),
-                      label: "Ara",
-                    ),
-                    const BottomNavigationBarItem(
-                      icon: Icon(Icons.library_books_outlined),
-                      label: "Kütüphanem",
-                    ),
-                    BottomNavigationBarItem(
-                      icon: const Icon(Icons.person_outline),
-                      label: auth.isLoggedIn ? "Profil" : "Giriş Yap",
-                    ),
-                  ],
-                ),
-              ),
+                      if (index == 1) {
+                        _openSearch();
+                      }
+                      if (index == 2) {
+                        _libraryWarmupTimer?.cancel();
+                        _loadLibraryOrders();
+                        _loadLibraryAccess();
+                      }
+                      if (index == 3) {
+                        if (auth.isLoggedIn) {
+                          Navigator.push(
+                            context,
+                            RouteGuard.guard(
+                              context: context,
+                              routeName: "/profile",
+                              builder: (_) => const ProfileScreen(),
+                            ),
+                          );
+                        } else {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const LoginScreen(),
+                            ),
+                          );
+                        }
+                      }
+                    },
+                    items: [
+                      const BottomNavigationBarItem(
+                        icon: Icon(Icons.home),
+                        label: "Ana Sayfa",
+                      ),
+                      const BottomNavigationBarItem(
+                        icon: Icon(Icons.search),
+                        label: "Ara",
+                      ),
+                      const BottomNavigationBarItem(
+                        icon: Icon(Icons.library_books_outlined),
+                        label: "Kütüphanem",
+                      ),
+                      BottomNavigationBarItem(
+                        icon: const Icon(Icons.person_outline),
+                        label: auth.isLoggedIn ? "Profil" : "Giriş Yap",
+                      ),
+                    ],
+                  ),
+                );
+              },
             ),
     );
   }
@@ -3107,6 +3110,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
                 },
                 isWeb,
                 bookStyle: true,
+                showDescription: false,
                 hideAction: purchased || isFree,
                 onAdd: alreadyInCart || isFree
                     ? null
@@ -3187,6 +3191,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
               final cardHeight = _newspaperPreviewCardHeight(
                 imageHeight: imageHeight,
                 showRead: showRead,
+                dense: !isWeb,
               );
               return SizedBox(
                 height: cardHeight,
@@ -3603,6 +3608,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         final cardHeight = _newspaperPreviewCardHeight(
           imageHeight: imageHeight,
           showRead: hasSub,
+          dense: false,
         );
 
         return GridView.builder(
@@ -4007,6 +4013,7 @@ Widget _bookCard(
   VoidCallback? onTap,
   bool hideAction = false,
   bool bookStyle = false,
+  bool showDescription = true,
 }) {
   final description =
       (item["desc"] ?? item["description"] ?? item["min_description"] ?? "")
@@ -4059,7 +4066,7 @@ Widget _bookCard(
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(color: Colors.black54, fontSize: 12),
                   ),
-                  if (description.isNotEmpty) ...[
+                  if (showDescription && description.isNotEmpty) ...[
                     const SizedBox(height: 4),
                     Text(
                       description,
@@ -4255,11 +4262,10 @@ Widget _newspaperPreviewCard(
           if (compact)
             Expanded(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
+                padding: const EdgeInsets.fromLTRB(10, 4, 10, 6),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Spacer(),
                     if (title.isNotEmpty)
                       Text(
                         title,
@@ -5409,6 +5415,7 @@ class _BookBrowseBodyState extends State<_BookBrowseBody> {
                 },
                 false,
                 bookStyle: true,
+                showDescription: false,
                 hideAction: purchased || isFree,
                 onAdd: alreadyInCart || isFree
                     ? null

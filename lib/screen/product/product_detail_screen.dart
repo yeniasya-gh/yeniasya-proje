@@ -488,11 +488,16 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     }
   }
 
-  bool _hasContentAccess(BuildContext context) {
+  bool _hasContentAccess(
+    BuildContext context, {
+    AuthProvider? auth,
+    AccessProvider? access,
+    RevenueCatService? revenueCat,
+  }) {
     if (widget.detail.forceAccess) return true;
-    final auth = context.read<AuthProvider>();
+    final authProvider = auth ?? context.read<AuthProvider>();
     final isSubscription = _isSubscriptionType(widget.detail.type);
-    if (!auth.isLoggedIn) {
+    if (!authProvider.isLoggedIn) {
       if (widget.detail.price <= 0 && !isSubscription) {
         return true;
       }
@@ -501,9 +506,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     if (widget.detail.price <= 0 && !isSubscription) return true;
     if (_hasLocalCopy) return true;
     if (widget.detail.type == CartItemType.newspaperSubscription) {
-      final access = context.read<AccessProvider>();
-      final rc = context.read<RevenueCatService>();
-      return access.hasAccess("newspaper_subscription") ||
+      final accessProvider = access ?? context.read<AccessProvider>();
+      final rc = revenueCat ?? context.read<RevenueCatService>();
+      return accessProvider.hasAccess("newspaper_subscription") ||
           rc.isYeniasyaProActive;
     }
     if (widget.detail.type == CartItemType.magazineIssue) {
@@ -515,8 +520,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     if (target == null) {
       return widget.detail.metadata?["disableAdd"] == true;
     }
-    final access = context.read<AccessProvider>();
-    final hasAccess = access.hasAccess(
+    final accessProvider = access ?? context.read<AccessProvider>();
+    final hasAccess = accessProvider.hasAccess(
       target["productType"] as String,
       itemId: target["productId"] as int?,
     );
@@ -1281,6 +1286,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   Widget build(BuildContext context) {
     final isWeb = MediaQuery.of(context).size.width > 800;
     final horizontalPadding = isWeb ? 120.0 : 16.0;
+    final isAndroid = Theme.of(context).platform == TargetPlatform.android;
+    final auth = context.watch<AuthProvider>();
+    final access = context.watch<AccessProvider>();
+    final revenueCat = context.watch<RevenueCatService>();
     final magazineId = widget.detail.type == CartItemType.magazine
         ? int.tryParse(widget.detail.metadata?["productId"]?.toString() ?? "")
         : null;
@@ -1293,6 +1302,12 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         ? cart.contains(directItem)
         : (widget.detail.type == CartItemType.newspaperSubscription &&
               hasNewspaperInCart);
+    final hasContentAccess = _hasContentAccess(
+      context,
+      auth: auth,
+      access: access,
+      revenueCat: revenueCat,
+    );
 
     if (widget.detail.type == CartItemType.newspaperSubscription) {
       final newsTitle = "Yeni Asya Gazetesi";
@@ -1370,6 +1385,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                           context,
                           alreadyInCart,
                           magazineId,
+                          hasContentAccess: hasContentAccess,
                         ),
                       ),
                     ],
@@ -1556,15 +1572,22 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           ),
         ),
       ),
-      bottomNavigationBar: SafeArea(
-        minimum: EdgeInsets.symmetric(
-          horizontal: horizontalPadding,
-          vertical: 16,
+      bottomNavigationBar: Padding(
+        padding: EdgeInsets.fromLTRB(
+          horizontalPadding,
+          16,
+          horizontalPadding,
+          isAndroid ? MediaQuery.viewPaddingOf(context).bottom + 20 : 16,
         ),
         child: widget.detail.type == CartItemType.magazineIssue
             ? Builder(
                 builder: (context) {
-                  final hasContentAccess = _hasContentAccess(context);
+                  final hasContentAccess = _hasContentAccess(
+                    context,
+                    auth: auth,
+                    access: access,
+                    revenueCat: revenueCat,
+                  );
                   final hasMagazineSubscription =
                       _hasMagazineSubscriptionForIssue(context);
                   final hasDirectIssueAccess = _hasDirectMagazineIssueAccess(
@@ -1669,6 +1692,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                   context,
                   alreadyInCart,
                   magazineId,
+                  hasContentAccess: hasContentAccess,
                 ),
               ),
       ),
@@ -1689,7 +1713,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     return "";
   }
 
-  String _firstNonEmptyText(Iterable<dynamic?> values) {
+  String _firstNonEmptyText(Iterable<dynamic> values) {
     for (final value in values) {
       final text = (value ?? "").toString().trim();
       if (text.isNotEmpty) return text;
@@ -1701,12 +1725,13 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     BuildContext context,
     bool alreadyInCart,
     int? magazineId,
+    {required bool hasContentAccess}
   ) {
     return ElevatedButton(
-      onPressed: (alreadyInCart && !_hasContentAccess(context))
+      onPressed: (alreadyInCart && !hasContentAccess)
           ? null
           : () {
-              final hasAccess = _hasContentAccess(context);
+              final hasAccess = hasContentAccess;
 
               if (hasAccess) {
                 _openAccessibleContent(context, magazineId: magazineId);
@@ -1724,13 +1749,13 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               _addToCart(context);
             },
       style: ElevatedButton.styleFrom(
-        backgroundColor: _hasContentAccess(context) ? Colors.blue : Colors.red,
+        backgroundColor: hasContentAccess ? Colors.blue : Colors.red,
         foregroundColor: Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
       child: Builder(
         builder: (context) {
-          final hasAccess = _hasContentAccess(context);
+          final hasAccess = hasContentAccess;
           final label = (alreadyInCart && !hasAccess)
               ? "Sepette"
               : (hasAccess && widget.detail.type == CartItemType.book)
