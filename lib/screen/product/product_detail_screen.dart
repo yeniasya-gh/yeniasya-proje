@@ -521,9 +521,11 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       return widget.detail.metadata?["disableAdd"] == true;
     }
     final accessProvider = access ?? context.read<AccessProvider>();
+    final targetType = (target["productType"] ?? "").toString();
+    final targetId = _parseInt(target["productId"]);
     final hasAccess = accessProvider.hasAccess(
-      target["productType"] as String,
-      itemId: target["productId"] as int?,
+      targetType,
+      itemId: targetId,
     );
     return hasAccess;
   }
@@ -636,9 +638,11 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         return access.hasAccess("newspaper_subscription") ||
             rc.isYeniasyaProActive;
       default:
+        final targetType = (target["productType"] ?? "").toString();
+        final targetId = _parseInt(target["productId"]);
         return access.hasAccess(
-          target["productType"] as String,
-          itemId: target["productId"] as int?,
+          targetType,
+          itemId: targetId,
         );
     }
   }
@@ -949,9 +953,12 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
     setState(() => _reviewsLoading = true);
     try {
+      final productType = (target["productType"] ?? "").toString();
+      final productId = _parseInt(target["productId"]);
+      if (productId == null) return;
       final data = await _reviewService.getReviews(
-        productType: target["productType"] as String,
-        productId: target["productId"] as int,
+        productType: productType,
+        productId: productId,
       );
       setState(() {
         _reviews = List<Map<String, dynamic>>.from(data["reviews"] ?? []);
@@ -1016,9 +1023,14 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
     setState(() => _reviewSubmitting = true);
     try {
+      final productType = (target["productType"] ?? "").toString();
+      final productId = _parseInt(target["productId"]);
+      if (productId == null) {
+        throw StateError("Ürün kimliği bulunamadı.");
+      }
       await _reviewService.addReview(
-        productType: target["productType"] as String,
-        productId: target["productId"] as int,
+        productType: productType,
+        productId: productId,
         userId: userId,
         rating: _rating,
         comment: comment,
@@ -1887,9 +1899,11 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     final target = _reviewTarget();
     if (target == null) return fallback;
     final access = context.read<AccessProvider>();
+    final targetType = (target["productType"] ?? "").toString();
+    final targetId = _parseInt(target["productId"]);
     final exp = access.expiry(
-      target["productType"] as String,
-      itemId: target["productId"] as int?,
+      targetType,
+      itemId: targetId,
     );
     if (exp == null) return fallback;
     String two(int v) => v.toString().padLeft(2, '0');

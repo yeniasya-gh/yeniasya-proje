@@ -1917,7 +1917,29 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
                             return FutureBuilder<_AccessItem>(
                               future: _resolveAccessItem(itemType, entry),
                               builder: (_, snap) {
-                                if (!snap.hasData) {
+                                if (snap.hasError) {
+                                  return ListTile(
+                                    leading: CircleAvatar(
+                                      backgroundColor: Colors.red.shade100,
+                                      foregroundColor: Colors.red,
+                                      child: Icon(
+                                        _iconForType(itemType),
+                                      ),
+                                    ),
+                                    title: const Text("Yükleme hatası"),
+                                    subtitle: Text(
+                                      snap.error.toString().replaceFirst(
+                                        "Exception: ",
+                                        "",
+                                      ),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  );
+                                }
+                                if (!snap.hasData ||
+                                    snap.connectionState ==
+                                        ConnectionState.waiting) {
                                   return const ListTile(
                                     title: Text("Yükleniyor..."),
                                     trailing: SizedBox(
