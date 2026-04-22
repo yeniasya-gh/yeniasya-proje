@@ -1429,7 +1429,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
       case "magazine_issue":
         if (pid != null) {
           _magService.getIssueById(pid).then((issue) {
-            final magId = issue?["magazine_id"] as int?;
+            final magId = _toInt(issue?["magazine_id"]);
             if (magId != null) {
               _magService.getMagazineById(magId).then((mag) {
                 final baseDetail = _mapMagazineDetail(mag ?? {});
@@ -1613,11 +1613,11 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     String type,
     Map<String, dynamic> entry,
   ) async {
-    final itemId = entry["item_id"];
+    final itemId = _toInt(entry["item_id"]);
     switch (type) {
       case "ek":
         if (itemId == null) return _AccessItem(title: "Bilinmeyen ek");
-        final ek = await _ekService.getEk(itemId as int);
+        final ek = await _ekService.getEk(itemId);
         final title = ek?["ad"]?.toString() ?? "Ek #$itemId";
         return _AccessItem(
           title: title,
@@ -1632,7 +1632,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         );
       case "book":
         if (itemId == null) return _AccessItem(title: "Bilinmeyen kitap");
-        final book = await _bookService.getBookById(itemId as int);
+        final book = await _bookService.getBookById(itemId);
         final title = book?["title"]?.toString() ?? "Kitap #$itemId";
         final url = book?["book_url"]?.toString();
         return _AccessItem(
@@ -1660,7 +1660,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         );
       case "magazine_issue":
         if (itemId == null) return _AccessItem(title: "Bilinmeyen sayı");
-        final issue = await _magService.getIssueById(itemId as int);
+        final issue = await _magService.getIssueById(itemId);
         final magName = issue?["magazine"]?["name"]?.toString() ?? "Dergi";
         final issueNumber = issue?["issue_number"]?.toString() ?? "#$itemId";
         final url = issue?["file_url"]?.toString();
@@ -1689,7 +1689,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         );
       case "magazine":
         if (itemId == null) return _AccessItem(title: "Dergi aboneliği");
-        final mag = await _magService.getMagazineById(itemId as int);
+        final mag = await _magService.getMagazineById(itemId);
         final name = mag?["name"]?.toString() ?? "Dergi #$itemId";
         final expiresAtRaw = entry["expires_at"]?.toString();
         final expiresAt = expiresAtRaw == null
@@ -2058,7 +2058,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     required String magazineName,
     required String imageUrl,
   }) {
-    final issueId = issue["id"] as int?;
+    final issueId = _toInt(issue["id"]);
     final title = issueNumber.isNotEmpty
         ? "$magazineName - $issueNumber"
         : "$magazineName - Sayı";
@@ -2092,7 +2092,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
   ProductDetail _mapMagazineDetail(Map<String, dynamic> mag) {
     final hasAccess = context.read<AccessProvider>().hasAccess(
       "magazine",
-      itemId: mag["id"] as int?,
+      itemId: _toInt(mag["id"]),
     );
     final actionLabel = hasAccess ? "E-dergiyi Gör" : "Abone Ol";
     final needsHydration = mag["created_at"] == null;
@@ -2117,7 +2117,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
   ProductDetail _mapBookDetail(Map<String, dynamic> book) {
     final hasAccess = context.read<AccessProvider>().hasAccess(
       "book",
-      itemId: book["id"] as int?,
+      itemId: _toInt(book["id"]),
     );
     final price = _effectiveBookPrice(book);
     final actionLabel = (hasAccess || price <= 0)
@@ -2406,6 +2406,10 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
 
   Widget _buildMobileHomeBody(CartProvider cart) {
     final sections = _buildHomeShowcaseSections(context, false, cart);
+    final isIos =
+        Theme.of(context).platform == TargetPlatform.iOS;
+    final sectionGap = isIos ? 16.0 : 32.0;
+    final bottomPadding = isIos ? 12.0 : 24.0;
     final children = <Widget>[];
 
     if (sliders.isNotEmpty) {
@@ -2418,7 +2422,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
       }
       for (var i = 0; i < sections.length; i++) {
         if (i > 0) {
-          children.add(const SizedBox(height: 32));
+          children.add(SizedBox(height: sectionGap));
         }
         children.add(sections[i]);
       }
@@ -2432,7 +2436,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
         physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
           SliverPadding(
-            padding: const EdgeInsets.fromLTRB(16, 24, 16, 24),
+            padding: EdgeInsets.fromLTRB(16, 24, 16, bottomPadding),
             sliver: SliverList(
               delegate: SliverChildBuilderDelegate(
                 (context, index) => children[index],
@@ -2659,10 +2663,8 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
           ? null
           : Builder(
               builder: (context) {
-                final isAndroid =
-                    Theme.of(context).platform == TargetPlatform.android;
-                final bottomInset = isAndroid ? 0.0 : 10.0;
-                return Container(
+                const bottomInset = 0.0;
+                final bar = Container(
                   color: Colors.white,
                   padding: EdgeInsets.only(bottom: bottomInset),
                   child: BottomNavigationBar(
@@ -2725,6 +2727,18 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
                     ],
                   ),
                 );
+                final isIos =
+                    Theme.of(context).platform == TargetPlatform.iOS;
+                return isIos
+                    ? Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: MediaQuery.removePadding(
+                          context: context,
+                          removeBottom: true,
+                          child: bar,
+                        ),
+                      )
+                    : bar;
               },
             ),
     );
@@ -3214,11 +3228,11 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
                       showRead: showRead,
                       onTap: () => _openProductDetail(_mapNewspaperDetail(raw)),
                     );
-                  },
-                ),
-              );
-            },
-          ),
+                      },
+                    ),
+                );
+              },
+            ),
       ],
     );
   }
@@ -4451,7 +4465,10 @@ Widget _libraryView(BuildContext context, _HomeResponsiveScreenState state) {
     );
   }
 
-  if (state.libraryLoading && state.libraryOrders.isEmpty) {
+  if (state.libraryLoading &&
+      state.libraryOrders.isEmpty &&
+      state.libraryAccessLoading &&
+      state.libraryAccess.isEmpty) {
     return const Center(child: CircularProgressIndicator());
   }
 
@@ -4472,7 +4489,115 @@ Widget _libraryView(BuildContext context, _HomeResponsiveScreenState state) {
         ),
         const SizedBox(height: 12),
         _librarySubscriptionCard(context, state),
+        _libraryAccessOverview(context, state),
       ],
+    ),
+  );
+}
+
+Widget _libraryAccessOverview(
+  BuildContext context,
+  _HomeResponsiveScreenState state,
+) {
+  if (state.libraryAccessLoading && state.libraryAccess.isEmpty) {
+    return const Padding(
+      padding: EdgeInsets.only(top: 16),
+      child: Center(child: CircularProgressIndicator()),
+    );
+  }
+
+  if (state.libraryAccess.isEmpty) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 16, left: 16, right: 16),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF8F8F8),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFFE8E8E8)),
+        ),
+        child: const Text(
+          "Aktif erişim bulunmuyor.",
+          textAlign: TextAlign.center,
+          style: TextStyle(color: Colors.black54),
+        ),
+      ),
+    );
+  }
+
+  final visibleEntries = state.libraryAccess;
+
+  return Padding(
+    padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+    child: Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Theme.of(context).dividerColor),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            "Aktif Erişimler",
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 8),
+          ...visibleEntries.asMap().entries.map((entry) {
+            final index = entry.key;
+            final accessRow = entry.value;
+            final type = (accessRow["item_type"] ?? "").toString();
+            final tileFuture =
+                state._resolveAccessItem(type, Map<String, dynamic>.from(accessRow));
+            return FutureBuilder<_AccessItem>(
+              future: tileFuture,
+              builder: (context, snap) {
+                final item = snap.data;
+                final title = item?.title ?? "Yükleniyor...";
+                final subtitle = item?.subtitle;
+                return Column(
+                  children: [
+                    if (index > 0) const Divider(height: 1),
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: CircleAvatar(
+                        backgroundColor: Colors.red.shade50,
+                        foregroundColor: Colors.red,
+                        child: Icon(
+                          state._iconForType(type),
+                          size: 20,
+                        ),
+                      ),
+                      title: Text(
+                        title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      subtitle: subtitle == null
+                          ? null
+                          : Text(
+                              subtitle,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                    ),
+                  ],
+                );
+              },
+            );
+          }),
+        ],
+      ),
     ),
   );
 }
