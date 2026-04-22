@@ -13,6 +13,7 @@ import '/services/auth/auth_provider.dart';
 import '/services/cart/cart_provider.dart';
 import '/services/access_provider.dart';
 import '/services/app_version_service.dart';
+import '/services/notification_service.dart';
 import '/services/revenuecat_service.dart';
 import '/services/error/app_error_reporter.dart';
 import '/utils/launch_uri.dart';
@@ -106,7 +107,7 @@ class _AppBootstrapState extends State<AppBootstrap>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _ready = false;
+    _ready = kIsWeb;
     _authProvider = context.read<AuthProvider>();
     unawaited(_bootstrap());
   }
@@ -150,7 +151,7 @@ class _AppBootstrapState extends State<AppBootstrap>
       setState(() => _status = "Oturum hazırlanıyor");
     }
 
-    unawaited(_initializeFirebaseSafely());
+    await _initializeFirebaseSafely();
     await authProvider.loadSession();
     unawaited(AppErrorReporter.instance.flushPending());
 
@@ -164,6 +165,7 @@ class _AppBootstrapState extends State<AppBootstrap>
     if (user != null) {
       await revenueCatService.syncWithAuthUser(user);
       await accessProvider.load(user.id, force: true);
+      await NotificationService().registerDeviceToken(userId: user.id);
     } else {
       unawaited(revenueCatService.syncWithAuthUser(user));
     }
