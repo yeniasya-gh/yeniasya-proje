@@ -3,6 +3,7 @@ import '../../services/notification_service.dart';
 import '../../services/error/error_manager.dart';
 import '../../services/loading_manager.dart';
 import 'admin_loading_indicator.dart';
+import 'admin_subscription_warning_notifications_page.dart';
 
 class AdminNotificationsPage extends StatefulWidget {
   const AdminNotificationsPage({super.key});
@@ -15,28 +16,31 @@ class _AdminNotificationsPageState extends State<AdminNotificationsPage> {
   final _formKey = GlobalKey<FormState>();
   final _titleCtrl = TextEditingController();
   final _bodyCtrl = TextEditingController();
-  final _userIdsCtrl = TextEditingController();
+  final _recipientSearchCtrl = TextEditingController();
   final _searchCtrl = TextEditingController();
   final NotificationService _service = NotificationService();
   bool _sending = false;
   bool _loadingNotifications = false;
-  List<Map<String, dynamic>> _tokens = [];
-  bool _loadingTokens = false;
+  List<Map<String, dynamic>> _recipients = [];
+  bool _loadingRecipients = false;
+  bool _sendToAll = false;
+  final Set<int> _selectedRecipientIds = <int>{};
   List<Map<String, dynamic>> _notifications = [];
   _AdminNotificationFilter _filter = _AdminNotificationFilter.all;
 
   @override
   void initState() {
     super.initState();
-    _loadTokens();
+    _loadRecipients();
     _loadNotifications();
   }
 
-  Future<void> _loadTokens() async {
-    setState(() => _loadingTokens = true);
+  Future<void> _loadRecipients() async {
+    setState(() => _loadingRecipients = true);
     try {
-      final tokens = await _service.getTokens();
-      setState(() => _tokens = tokens);
+      final recipients = await _service.getTokens();
+      if (!mounted) return;
+      setState(() => _recipients = recipients);
     } catch (e) {
       final parsed = ErrorManager.parseGraphQLError(e.toString());
       if (mounted) {
@@ -44,8 +48,9 @@ class _AdminNotificationsPageState extends State<AdminNotificationsPage> {
           context,
         ).showSnackBar(SnackBar(content: Text(parsed)));
       }
+    } finally {
+      if (mounted) setState(() => _loadingRecipients = false);
     }
-    setState(() => _loadingTokens = false);
   }
 
   Future<void> _loadNotifications() async {
@@ -77,31 +82,97 @@ class _AdminNotificationsPageState extends State<AdminNotificationsPage> {
   void dispose() {
     _titleCtrl.dispose();
     _bodyCtrl.dispose();
-    _userIdsCtrl.dispose();
+    _recipientSearchCtrl.dispose();
     _searchCtrl.dispose();
     super.dispose();
   }
 
-  List<int> _parseUserIds() {
-    final raw = _userIdsCtrl.text.trim();
-    if (raw.isEmpty) return const [];
-    return raw
-        .split(RegExp(r"[,\s]+"))
-        .map((value) => int.tryParse(value.trim()))
-        .whereType<int>()
-        .toSet()
+  int? _asInt(dynamic value) {
+    if (value is int) return value;
+    return int.tryParse(value?.toString() ?? "");
+  }
+
+  String _recipientLabel(Map<String, dynamic> recipient) {
+    final name = recipient["name"]?.toString().trim();
+    if (name != null && name.isNotEmpty) return name;
+    final email = recipient["email"]?.toString().trim();
+    if (email != null && email.isNotEmpty) return email;
+    return "Kullanıcı ${recipient["id"] ?? "-"}";
+  }
+
+  String _recipientSubtitle(Map<String, dynamic> recipient) {
+    final email = recipient["email"]?.toString().trim();
+    final updatedAt = recipient["updated_at"]?.toString().trim();
+    final parts = <String>[];
+    if (email != null && email.isNotEmpty) parts.add(email);
+    if (updatedAt != null && updatedAt.isNotEmpty) parts.add(updatedAt);
+    return parts.isEmpty ? "" : parts.join(" • ");
+  }
+
+  List<Map<String, dynamic>> get _filteredRecipients {
+    final query = _recipientSearchCtrl.text.trim().toLowerCase();
+    final items = _recipients
+        .where((recipient) {
+          if (_sendToAll) return false;
+          if (query.isEmpty) return true;
+          final id = recipient["id"]?.toString().toLowerCase() ?? "";
+          final name = recipient["name"]?.toString().toLowerCase() ?? "";
+          final email = recipient["email"]?.toString().toLowerCase() ?? "";
+          return id.contains(query) ||
+              name.contains(query) ||
+              email.contains(query);
+        })
         .toList(growable: false);
+    items.sort((a, b) {
+      final aSelected = _selectedRecipientIds.contains(_asInt(a["id"])) ? 1 : 0;
+      final bSelected = _selectedRecipientIds.contains(_asInt(b["id"])) ? 1 : 0;
+      if (aSelected != bSelected) return bSelected.compareTo(aSelected);
+      return _recipientLabel(a).compareTo(_recipientLabel(b));
+    });
+    return items;
+  }
+
+  List<int> get _selectedRecipientList {
+    final ids = _selectedRecipientIds.toList(growable: false)..sort();
+    return ids;
+  }
+
+  void _toggleRecipient(Map<String, dynamic> recipient) {
+    final id = _asInt(recipient["id"]);
+    if (id == null) return;
+    setState(() {
+      if (_selectedRecipientIds.contains(id)) {
+        _selectedRecipientIds.remove(id);
+      } else {
+        _sendToAll = false;
+        _selectedRecipientIds.add(id);
+      }
+    });
+  }
+
+  void _removeRecipient(int id) {
+    setState(() => _selectedRecipientIds.remove(id));
   }
 
   Future<void> _sendNotification() async {
     if (!_formKey.currentState!.validate()) return;
+    if (!_sendToAll && _selectedRecipientIds.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            "En az bir kullanıcı seçin veya herkese gönder seçeneğini açın.",
+          ),
+        ),
+      );
+      return;
+    }
     setState(() => _sending = true);
     try {
-      final userIds = _parseUserIds();
+      final userIds = _sendToAll ? null : _selectedRecipientList;
       final result = await _service.sendNotification(
         title: _titleCtrl.text.trim(),
         body: _bodyCtrl.text.trim(),
-        userIds: userIds.isEmpty ? null : userIds,
+        userIds: userIds,
         persist: true,
         dryRun: false,
       );
@@ -119,7 +190,7 @@ class _AdminNotificationsPageState extends State<AdminNotificationsPage> {
         ),
       );
       await _loadNotifications();
-      await _loadTokens();
+      await _loadRecipients();
     } catch (e) {
       final parsed = ErrorManager.parseGraphQLError(e.toString());
       if (!mounted) return;
@@ -202,7 +273,7 @@ class _AdminNotificationsPageState extends State<AdminNotificationsPage> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text("ID: ${notification["id"] ?? "-"}"),
-              Text("Kullanıcı ID: ${notification["user_id"] ?? "-"}"),
+              Text("Kullanıcı: ${_notificationUserLabel(notification)}"),
               Text(
                 "Durum: ${notification["is_read"] == true ? "Okunmuş" : "Okunmamış"}",
               ),
@@ -274,14 +345,162 @@ class _AdminNotificationsPageState extends State<AdminNotificationsPage> {
                       (v == null || v.trim().isEmpty) ? "İçerik gerekli" : null,
                 ),
                 const SizedBox(height: 12),
-                TextFormField(
-                  controller: _userIdsCtrl,
-                  decoration: const InputDecoration(
-                    labelText:
-                        "Kullanıcı ID'leri (virgülle ayırın, boşsa herkese gönder)",
+                SwitchListTile.adaptive(
+                  contentPadding: EdgeInsets.zero,
+                  value: _sendToAll,
+                  title: const Text("Herkese gönder"),
+                  subtitle: const Text(
+                    "Açık olursa seçili kullanıcılar yok sayılır ve tüm kullanıcılara gider.",
                   ),
-                  keyboardType: TextInputType.text,
+                  onChanged: (value) {
+                    setState(() {
+                      _sendToAll = value;
+                      if (value) {
+                        _selectedRecipientIds.clear();
+                        _recipientSearchCtrl.clear();
+                      }
+                    });
+                  },
                 ),
+                if (!_sendToAll) ...[
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _recipientSearchCtrl,
+                    onChanged: (_) => setState(() {}),
+                    decoration: InputDecoration(
+                      labelText: "Kullanıcı ara",
+                      hintText: "İsim veya e-posta ile ara",
+                      prefixIcon: const Icon(Icons.search),
+                      filled: true,
+                      fillColor: Colors.white,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  if (_selectedRecipientIds.isNotEmpty) ...[
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        "Seçili kullanıcılar (${_selectedRecipientIds.length})",
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: _selectedRecipientIds
+                          .map((id) {
+                            final recipient = _recipients.firstWhere(
+                              (item) => _asInt(item["id"]) == id,
+                              orElse: () => const <String, dynamic>{},
+                            );
+                            if (recipient.isEmpty) {
+                              return const SizedBox.shrink();
+                            }
+                            return Chip(
+                              label: Text(_recipientLabel(recipient)),
+                              onDeleted: () => _removeRecipient(id),
+                            );
+                          })
+                          .whereType<Widget>()
+                          .toList(growable: false),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                  _loadingRecipients
+                      ? const AdminLoadingIndicator(padding: EdgeInsets.all(16))
+                      : Container(
+                          constraints: const BoxConstraints(maxHeight: 240),
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.05),
+                                blurRadius: 8,
+                              ),
+                            ],
+                          ),
+                          child: _filteredRecipients.isEmpty
+                              ? const Center(
+                                  child: Text("Eşleşen kullanıcı bulunamadı."),
+                                )
+                              : ListView.separated(
+                                  itemCount: _filteredRecipients.length,
+                                  separatorBuilder: (_, __) =>
+                                      const Divider(height: 1),
+                                  itemBuilder: (_, index) {
+                                    final recipient =
+                                        _filteredRecipients[index];
+                                    final id = _asInt(recipient["id"]);
+                                    final selected =
+                                        id != null &&
+                                        _selectedRecipientIds.contains(id);
+                                    return ListTile(
+                                      dense: true,
+                                      onTap: () => _toggleRecipient(recipient),
+                                      leading: CircleAvatar(
+                                        radius: 16,
+                                        backgroundColor: selected
+                                            ? Colors.red.shade100
+                                            : Colors.grey.shade200,
+                                        child: Icon(
+                                          selected
+                                              ? Icons.check
+                                              : Icons.person_outline,
+                                          size: 18,
+                                          color: selected
+                                              ? Colors.red
+                                              : Colors.black54,
+                                        ),
+                                      ),
+                                      title: Text(
+                                        _recipientLabel(recipient),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      subtitle: Text(
+                                        _recipientSubtitle(recipient),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      trailing: Text(
+                                        selected ? "Seçildi" : "Ekle",
+                                        style: TextStyle(
+                                          color: selected
+                                              ? Colors.green
+                                              : Colors.red,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                        ),
+                ] else ...[
+                  const SizedBox(height: 4),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF8F8F8),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFE5E5E5)),
+                    ),
+                    child: const Text(
+                      "Mesaj tüm kullanıcılara gönderilecek.",
+                      style: TextStyle(fontSize: 13, color: Colors.black54),
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 16),
                 SizedBox(
                   width: 220,
@@ -305,8 +524,29 @@ class _AdminNotificationsPageState extends State<AdminNotificationsPage> {
                             ),
                           );
                         }
-                        return const Text("Gönder");
+                        return Text(_sendToAll ? "Herkese Gönder" : "Gönder");
                       },
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              const AdminSubscriptionWarningNotificationsPage(),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.schedule_outlined),
+                    label: const Text("Abonelik Uyarıları"),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.red,
+                      side: const BorderSide(color: Colors.red),
                     ),
                   ),
                 ),
@@ -314,11 +554,6 @@ class _AdminNotificationsPageState extends State<AdminNotificationsPage> {
             ),
           ),
           const SizedBox(height: 24),
-          const Text(
-            "Bildirim Yönetimi",
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 12),
           TextField(
             controller: _searchCtrl,
             onChanged: (_) => setState(() {}),
@@ -344,48 +579,6 @@ class _AdminNotificationsPageState extends State<AdminNotificationsPage> {
             ],
           ),
           const SizedBox(height: 12),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                "Kayıtlı cihaz token'ları",
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.grey.shade900,
-                ),
-              ),
-              IconButton(
-                icon: const Icon(Icons.refresh),
-                onPressed: _loadTokens,
-              ),
-            ],
-          ),
-          _loadingTokens
-              ? const AdminLoadingIndicator(padding: EdgeInsets.all(16))
-              : Container(
-                  height: 220,
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.05),
-                        blurRadius: 8,
-                      ),
-                    ],
-                  ),
-                  child: ListView.builder(
-                    itemCount: _tokens.length,
-                    itemBuilder: (_, i) => ListTile(
-                      dense: true,
-                      title: Text("User: ${_tokens[i]["user_id"] ?? "-"}"),
-                      subtitle: Text(_tokens[i]["token"] ?? ""),
-                    ),
-                  ),
-                ),
-          const SizedBox(height: 16),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -444,7 +637,7 @@ class _AdminNotificationsPageState extends State<AdminNotificationsPage> {
                               ),
                               subtitle: Text(
                                 [
-                                  "User: ${item["user_id"] ?? "-"}",
+                                  "Kullanıcı: ${_notificationUserLabel(item)}",
                                   item["body"]?.toString() ?? "",
                                 ].join(" • "),
                                 maxLines: 2,
@@ -489,11 +682,34 @@ class _AdminNotificationsPageState extends State<AdminNotificationsPage> {
         .where((item) {
           final title = (item["title"] ?? "").toString().toLowerCase();
           final body = (item["body"] ?? "").toString().toLowerCase();
+          final user = item["user"];
+          final userName = user is Map
+              ? (user["name"] ?? "").toString().toLowerCase()
+              : "";
+          final userEmail = user is Map
+              ? (user["email"] ?? "").toString().toLowerCase()
+              : "";
           final searchMatch =
-              query.isEmpty || title.contains(query) || body.contains(query);
+              query.isEmpty ||
+              title.contains(query) ||
+              body.contains(query) ||
+              userName.contains(query) ||
+              userEmail.contains(query);
           return searchMatch;
         })
         .toList(growable: false);
+  }
+
+  String _notificationUserLabel(Map<String, dynamic> notification) {
+    final user = notification["user"];
+    if (user is Map) {
+      final name = user["name"]?.toString().trim();
+      if (name != null && name.isNotEmpty) return name;
+      final email = user["email"]?.toString().trim();
+      if (email != null && email.isNotEmpty) return email;
+    }
+    final userId = notification["user_id"]?.toString().trim();
+    return (userId != null && userId.isNotEmpty) ? "ID $userId" : "-";
   }
 
   Widget _filterChip(String label, _AdminNotificationFilter filter) {
