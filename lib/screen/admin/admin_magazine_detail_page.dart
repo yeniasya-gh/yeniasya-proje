@@ -45,12 +45,21 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
   Future<void> _loadIssues() async {
     setState(() => _loading = true);
     try {
-      final list = await _service.getAdminIssues(widget.magazine["id"] as int);
+      final list = await _service.getAdminIssues(
+        _asInt(widget.magazine["id"]) ?? 0,
+      );
       setState(() => _issues = list);
     } catch (e) {
       await _showError(e.toString());
     }
     setState(() => _loading = false);
+  }
+
+  int? _asInt(dynamic value) {
+    if (value == null) return null;
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value.toString());
   }
 
   bool _issueIsPublished(Map<String, dynamic> issue) =>
@@ -69,7 +78,7 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
     Map<String, dynamic> issue,
     bool isPublished,
   ) async {
-    final id = issue["id"] as int?;
+    final id = _asInt(issue["id"]);
     if (id == null || _publicationBusyIssueIds.contains(id)) return;
 
     setState(() => _publicationBusyIssueIds.add(id));
@@ -105,7 +114,7 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
     try {
       final data = await _reviewService.getReviews(
         productType: "magazine",
-        productId: widget.magazine["id"] as int,
+        productId: _asInt(widget.magazine["id"]) ?? 0,
       );
       setState(() {
         _reviews = List<Map<String, dynamic>>.from(data["reviews"] ?? []);
@@ -395,7 +404,7 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
                                   "${widget.magazine["name"] ?? "Dergi"} • Sayı $issueNumber",
                             );
                             await _service.addIssue(
-                              magazineId: widget.magazine["id"] as int,
+                              magazineId: _asInt(widget.magazine["id"]) ?? 0,
                               issueNumber: issueNumber,
                               fileUrl: fileUrl,
                               photoUrl: photoUrl,
@@ -647,7 +656,7 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
                                   "${widget.magazine["name"] ?? "Dergi"} • Sayı $issueNumber",
                             );
                             await _service.updateIssue(
-                              id: issue["id"] as int,
+                              id: _asInt(issue["id"]) ?? 0,
                               issueNumber: issueNumber,
                               fileUrl: fileUrl,
                               photoUrl: photoUrl,
@@ -880,7 +889,7 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
                         itemBuilder: (_, i) {
                           final issue = _issues[i];
                           final issueYear = _issueYear(issue);
-                          final issueId = issue["id"] as int?;
+                          final issueId = _asInt(issue["id"]);
                           final isPublished = _issueIsPublished(issue);
                           final busy =
                               issueId != null &&
@@ -918,7 +927,7 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
                                     color: Colors.red,
                                   ),
                                   onPressed: () =>
-                                      _deleteIssue(issue["id"] as int),
+                                      _deleteIssue(_asInt(issue["id"]) ?? 0),
                                 ),
                               ],
                             ),
@@ -1053,7 +1062,7 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
                             style: const TextStyle(fontWeight: FontWeight.w600),
                           ),
                           const SizedBox(width: 8),
-                          _ratingStars((r["rating"] ?? 0) as int? ?? 0),
+                          _ratingStars(_asInt(r["rating"]) ?? 0),
                         ],
                       ),
                       subtitle: Column(

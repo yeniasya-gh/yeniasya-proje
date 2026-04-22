@@ -523,10 +523,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     final accessProvider = access ?? context.read<AccessProvider>();
     final targetType = (target["productType"] ?? "").toString();
     final targetId = _parseInt(target["productId"]);
-    final hasAccess = accessProvider.hasAccess(
-      targetType,
-      itemId: targetId,
-    );
+    final hasAccess = accessProvider.hasAccess(targetType, itemId: targetId);
     return hasAccess;
   }
 
@@ -640,10 +637,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       default:
         final targetType = (target["productType"] ?? "").toString();
         final targetId = _parseInt(target["productId"]);
-        return access.hasAccess(
-          targetType,
-          itemId: targetId,
-        );
+        return access.hasAccess(targetType, itemId: targetId);
     }
   }
 
@@ -1120,7 +1114,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                               ),
                               const SizedBox(width: 8),
                               _ratingStars(
-                                (r["rating"] ?? 0) as int? ?? 0,
+                                _parseInt(r["rating"]) ?? 0,
                                 size: 16,
                               ),
                             ],
@@ -1736,9 +1730,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   Widget _buildPrimaryActionButton(
     BuildContext context,
     bool alreadyInCart,
-    int? magazineId,
-    {required bool hasContentAccess}
-  ) {
+    int? magazineId, {
+    required bool hasContentAccess,
+  }) {
     return ElevatedButton(
       onPressed: (alreadyInCart && !hasContentAccess)
           ? null
@@ -1901,10 +1895,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     final access = context.read<AccessProvider>();
     final targetType = (target["productType"] ?? "").toString();
     final targetId = _parseInt(target["productId"]);
-    final exp = access.expiry(
-      targetType,
-      itemId: targetId,
-    );
+    final exp = access.expiry(targetType, itemId: targetId);
     if (exp == null) return fallback;
     String two(int v) => v.toString().padLeft(2, '0');
     final dateText = "${two(exp.day)}.${two(exp.month)}.${exp.year}";

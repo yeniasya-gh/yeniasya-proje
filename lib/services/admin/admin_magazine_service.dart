@@ -103,7 +103,10 @@ class AdminMagazineService {
       },
     );
 
-    return (data["insert_magazine_one"]?["id"] as int?) ?? 0;
+    final insertedId = data["insert_magazine_one"]?["id"];
+    return insertedId is int
+        ? insertedId
+        : int.tryParse(insertedId?.toString() ?? "") ?? 0;
   }
 
   Future<bool> updateMagazine({
