@@ -18,6 +18,13 @@ class _AddressListScreenState extends State<AddressListScreen> {
   bool _loading = true;
   List<Map<String, dynamic>> _addresses = [];
 
+  int? _asInt(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    if (value == null) return null;
+    return int.tryParse(value.toString());
+  }
+
   @override
   void initState() {
     super.initState();
@@ -117,7 +124,10 @@ class _AddressListScreenState extends State<AddressListScreen> {
               PopupMenuButton<String>(
                 onSelected: (v) {
                   if (v == "edit") _openForm(address: a);
-                  if (v == "delete") _delete(a["id"] as int);
+                  if (v == "delete") {
+                    final addressId = _asInt(a["id"]);
+                    if (addressId != null) _delete(addressId);
+                  }
                 },
                 itemBuilder: (_) => const [
                   PopupMenuItem(value: "edit", child: Text("Düzenle")),
@@ -169,7 +179,10 @@ class _AddressListScreenState extends State<AddressListScreen> {
               const SizedBox(width: 8),
               Expanded(
                 child: OutlinedButton(
-                  onPressed: () => _delete(a["id"] as int),
+                  onPressed: () {
+                    final addressId = _asInt(a["id"]);
+                    if (addressId != null) _delete(addressId);
+                  },
                   style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
                   child: const Text("Sil"),
                 ),

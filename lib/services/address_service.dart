@@ -28,7 +28,9 @@ class AddressService {
       "user_id": userId,
     });
 
-    return List<Map<String, dynamic>>.from(data["user_addresses"] ?? []);
+    return List<Map<String, dynamic>>.from(data["user_addresses"] ?? [])
+        .map(_normalizeAddressRow)
+        .toList(growable: false);
   }
 
   Future<Map<String, dynamic>?> getAddressById(int id) async {
@@ -62,7 +64,7 @@ class AddressService {
     final address = data["user_addresses_by_pk"] as Map<String, dynamic>?;
     // ignore: avoid_print
     print("🟩 AddressService.getAddressById <- ${address == null ? "null" : "ok"}");
-    return address == null ? null : Map<String, dynamic>.from(address);
+    return address == null ? null : _normalizeAddressRow(address);
   }
 
   Future<bool> addAddress({
@@ -196,5 +198,19 @@ class AddressService {
 
     await _hasura.graphQLRequest(query: mutation, variables: {"id": id});
     return true;
+  }
+
+  Map<String, dynamic> _normalizeAddressRow(Map<String, dynamic> row) {
+    final normalized = Map<String, dynamic>.from(row);
+    normalized["id"] = _toInt(normalized["id"]);
+    normalized["user_id"] = _toInt(normalized["user_id"]);
+    return normalized;
+  }
+
+  int? _toInt(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    if (value == null) return null;
+    return int.tryParse(value.toString());
   }
 }

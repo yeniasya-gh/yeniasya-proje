@@ -156,18 +156,21 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
     try {
       await _adminService.deactivateAccessEntry(item);
       try {
-        await _auditService.logEntry(
-          userId: widget.user["id"] as int,
-          actorUserId: actor?.id,
-          action: "deactivate",
-          itemType: (item["item_type"] ?? "").toString(),
-          itemId: _asInt(item["item_id"]),
-          itemTitle: itemTitle,
-          accessSource: item["source"]?.toString() ?? "user_content_access",
-          previousExpiresAt: _parseDate(item["expires_at"]),
-          newExpiresAt: null,
-          note: "Admin paneli erişim kaldırma",
-        );
+        final auditUserId = _asInt(widget.user["id"]);
+        if (auditUserId != null) {
+          await _auditService.logEntry(
+            userId: auditUserId,
+            actorUserId: actor?.id,
+            action: "deactivate",
+            itemType: (item["item_type"] ?? "").toString(),
+            itemId: _asInt(item["item_id"]),
+            itemTitle: itemTitle,
+            accessSource: item["source"]?.toString() ?? "user_content_access",
+            previousExpiresAt: _parseDate(item["expires_at"]),
+            newExpiresAt: null,
+            note: "Admin paneli erişim kaldırma",
+          );
+        }
       } catch (_) {
         // Audit log migration'ı henüz uygulanmadıysa ana akışı bozma.
       }

@@ -24,6 +24,13 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   int? _billingId;
   bool _sameBilling = true;
 
+  int? _asInt(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    if (value == null) return null;
+    return int.tryParse(value.toString());
+  }
+
   @override
   void initState() {
     super.initState();
@@ -39,8 +46,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       setState(() {
         _addresses = list;
         if (list.isNotEmpty) {
-          _deliveryId = list.first["id"] as int;
-          _billingId = list.first["id"] as int;
+          _deliveryId = _asInt(list.first["id"]);
+          _billingId = _asInt(list.first["id"]);
         }
       });
     } catch (e) {
@@ -276,11 +283,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             value: _deliveryId,
             items: _addresses
                 .map(
-                  (a) => DropdownMenuItem<int>(
-                    value: a["id"] as int,
-                    child: Text(a["address_name"] ?? "Adres"),
-                  ),
+                  (a) => _asInt(a["id"]) == null
+                      ? null
+                      : DropdownMenuItem<int>(
+                          value: _asInt(a["id"]),
+                          child: Text(a["address_name"] ?? "Adres"),
+                        ),
                 )
+                .whereType<DropdownMenuItem<int>>()
                 .toList(),
             onChanged: (v) => setState(() => _deliveryId = v),
           ),
@@ -304,11 +314,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               value: _billingId,
               items: _addresses
                   .map(
-                    (a) => DropdownMenuItem<int>(
-                      value: a["id"] as int,
-                      child: Text(a["address_name"] ?? "Adres"),
-                    ),
+                    (a) => _asInt(a["id"]) == null
+                        ? null
+                        : DropdownMenuItem<int>(
+                            value: _asInt(a["id"]),
+                            child: Text(a["address_name"] ?? "Adres"),
+                          ),
                   )
+                  .whereType<DropdownMenuItem<int>>()
                   .toList(),
               onChanged: (v) => setState(() => _billingId = v),
             ),
