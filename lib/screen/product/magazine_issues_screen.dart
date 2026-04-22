@@ -35,6 +35,13 @@ class _MagazineIssuesScreenState extends State<MagazineIssuesScreen> {
 
   bool get _busy => _openingIssueKey != null;
 
+  int? _toInt(dynamic value) {
+    if (value == null) return null;
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value.toString());
+  }
+
   @override
   void initState() {
     super.initState();
@@ -113,7 +120,7 @@ class _MagazineIssuesScreenState extends State<MagazineIssuesScreen> {
     required String issueNumber,
     required String imageUrl,
   }) {
-    final issueId = issue["id"] as int?;
+    final issueId = _toInt(issue["id"]);
     if (issueId == null) {
       ScaffoldMessenger.of(
         context,
@@ -270,7 +277,7 @@ class _MagazineIssuesScreenState extends State<MagazineIssuesScreen> {
                           itemBuilder: (_, i) {
                             final issue = filteredIssues[i];
                             final issueYear = _issueYear(issue);
-                            final issueId = issue["id"] as int?;
+                            final issueId = _toInt(issue["id"]);
                             final issueNumber =
                                 issue["issue_number"]?.toString() ?? "";
                             final imageUrl =

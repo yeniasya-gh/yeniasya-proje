@@ -188,7 +188,8 @@ class AdminMagazineService {
       variables: {"magazine_id": magazineId},
     );
 
-    return List<Map<String, dynamic>>.from(data["magazine_issue"]);
+    final rows = List<Map<String, dynamic>>.from(data["magazine_issue"]);
+    return rows.map(_normalizeIssueRow).toList(growable: false);
   }
 
   Future<List<Map<String, dynamic>>> getAdminIssues(int magazineId) async {
@@ -216,7 +217,8 @@ class AdminMagazineService {
       variables: {"magazine_id": magazineId},
     );
 
-    return List<Map<String, dynamic>>.from(data["magazine_issue"]);
+    final rows = List<Map<String, dynamic>>.from(data["magazine_issue"]);
+    return rows.map(_normalizeIssueRow).toList(growable: false);
   }
 
   Future<List<Map<String, dynamic>>> getPublicIssues(int magazineId) async {
@@ -241,7 +243,29 @@ class AdminMagazineService {
       );
     }
 
-    return List<Map<String, dynamic>>.from(body["data"] ?? const []);
+    final rows = List<Map<String, dynamic>>.from(body["data"] ?? const []);
+    return rows.map(_normalizeIssueRow).toList(growable: false);
+  }
+
+  Map<String, dynamic> _normalizeIssueRow(Map<String, dynamic> row) {
+    final normalized = Map<String, dynamic>.from(row);
+    final id = _toInt(normalized["id"]);
+    if (id != null) normalized["id"] = id;
+
+    final magazineId = _toInt(normalized["magazine_id"]);
+    if (magazineId != null) normalized["magazine_id"] = magazineId;
+
+    final issueNumber = _toInt(normalized["issue_number"]);
+    if (issueNumber != null) normalized["issue_number"] = issueNumber;
+
+    return normalized;
+  }
+
+  int? _toInt(dynamic value) {
+    if (value == null) return null;
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value.toString());
   }
 
   Future<bool> addIssue({
