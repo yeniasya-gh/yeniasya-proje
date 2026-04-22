@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../contact/contact_form.dart';
 import 'faq_page.dart';
 
@@ -289,6 +290,11 @@ class YeniAsyaFooter extends StatelessWidget {
 
   const YeniAsyaFooter({super.key, this.onCategoryTap});
 
+  static const String _appStoreUrl =
+      'https://apps.apple.com/us/app/yeni-asya-dijital/id6758656907';
+  static const String _googlePlayUrl =
+      'https://play.google.com/store/apps/details?id=com.yeniasya.books&hl=tr';
+
   @override
   Widget build(BuildContext context) {
     final isWebWide = MediaQuery.of(context).size.width > 900;
@@ -389,6 +395,28 @@ class YeniAsyaFooter extends StatelessWidget {
                   "Çerez Politikası",
                   "KVKK",
                 ], context),
+              ),
+          ],
+          ),
+
+          const SizedBox(height: 24),
+
+          Wrap(
+            alignment: WrapAlignment.center,
+            spacing: 16,
+            runSpacing: 12,
+            children: [
+              _storeBadge(
+                assetPath: 'assets/images/app_store_badge.png',
+                url: _appStoreUrl,
+                width: isWebWide ? 180 : 160,
+                height: 54,
+              ),
+              _storeBadge(
+                assetPath: 'assets/images/google_play_badge.png',
+                url: _googlePlayUrl,
+                width: isWebWide ? 180 : 160,
+                height: 54,
               ),
             ],
           ),
@@ -497,6 +525,45 @@ class YeniAsyaFooter extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _storeBadge(
+    {required String assetPath,
+    required String url,
+    required double width,
+    required double height,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () async {
+          final uri = Uri.parse(url);
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+        },
+        child: Container(
+          width: width,
+          height: height,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x22000000),
+                blurRadius: 10,
+                offset: Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Image.asset(
+            assetPath,
+            fit: BoxFit.contain,
+            filterQuality: FilterQuality.high,
+          ),
+        ),
+      ),
     );
   }
 }
