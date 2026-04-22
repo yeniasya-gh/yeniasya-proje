@@ -19,6 +19,13 @@ class _AdminOrdersPageState extends State<AdminOrdersPage> {
   List<Map<String, dynamic>> _filtered = [];
   final TextEditingController _searchCtrl = TextEditingController();
 
+  int? _asInt(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    if (value == null) return null;
+    return int.tryParse(value.toString());
+  }
+
   @override
   void initState() {
     super.initState();
@@ -152,13 +159,13 @@ class _AdminOrdersPageState extends State<AdminOrdersPage> {
                                         color: Colors.blue,
                                       ),
                                       onPressed: () {
-                                        final id = o["id"];
+                                        final id = _asInt(o["id"]);
                                         if (id != null) {
                                           Navigator.push(
                                             context,
                                             MaterialPageRoute(
                                               builder: (_) => OrderDetailScreen(
-                                                orderId: id as int,
+                                                orderId: id,
                                               ),
                                             ),
                                           );

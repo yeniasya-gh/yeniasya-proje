@@ -110,7 +110,9 @@ class OrderService {
       }
     }
 
-    return List<Map<String, dynamic>>.from(data["orders"] ?? []);
+    return List<Map<String, dynamic>>.from(
+      data["orders"] ?? [],
+    ).map(_normalizeOrderRow).toList(growable: false);
   }
 
   Future<List<Map<String, dynamic>>> getOrdersWithItems(
@@ -131,7 +133,10 @@ class OrderService {
     final orders = await _getOrdersFromHasura(userId);
     if (orders.isEmpty) return [];
 
-    final ids = orders.map((o) => o["id"]).whereType<int>().toList();
+    final ids = orders
+        .map((o) => _toInt(o["id"]))
+        .whereType<int>()
+        .toList(growable: false);
     if (ids.isEmpty) return orders;
 
     const itemsQuery = r'''
@@ -161,20 +166,22 @@ class OrderService {
     );
     final byOrder = <int, List<Map<String, dynamic>>>{};
     for (final item in items) {
-      final oid = item["order_id"] as int?;
+      final oid = _toInt(item["order_id"]);
       if (oid == null) continue;
       byOrder.putIfAbsent(oid, () => []).add(item);
     }
 
     return _filterPendingOrders(
-      orders
-          .map(
-            (o) => {
-              ...o,
-              "order_items": byOrder[o["id"]] ?? <Map<String, dynamic>>[],
-            },
-          )
-          .toList(),
+      orders.map((o) {
+        final normalized = _normalizeOrderRow(o);
+        final orderId = normalized["id"] as int?;
+        return {
+          ...normalized,
+          "order_items": orderId == null
+              ? <Map<String, dynamic>>[]
+              : byOrder[orderId] ?? <Map<String, dynamic>>[],
+        };
+      }).toList(),
       includePending: includePending,
     );
   }
@@ -321,7 +328,7 @@ class OrderService {
     if (order == null) return null;
 
     final items = List<Map<String, dynamic>>.from(data["order_items"] ?? []);
-    return {...order, "order_items": items};
+    return {..._normalizeOrderRow(order), "order_items": items};
   }
 
   Future<List<Map<String, dynamic>>> _getOrdersFromCdn({
@@ -331,14 +338,16 @@ class OrderService {
       "/auth/me/orders",
       queryParameters: {if (includeItems) "includeItems": "true"},
     );
-    return List<Map<String, dynamic>>.from(data["data"] ?? const []);
+    return List<Map<String, dynamic>>.from(
+      data["data"] ?? const [],
+    ).map(_normalizeOrderRow).toList(growable: false);
   }
 
   Future<Map<String, dynamic>?> _getOrderDetailFromCdn(int id) async {
     final data = await _cdn.getJson("/auth/me/orders/$id");
     final order = data["order"];
     if (order is! Map) return null;
-    return Map<String, dynamic>.from(order);
+    return _normalizeOrderRow(Map<String, dynamic>.from(order));
   }
 
   List<Map<String, dynamic>> _filterPendingOrders(
@@ -587,6 +596,44 @@ class OrderService {
         "payment_error_msg": paymentErrorMsg,
       },
     );
+  }
+
+  Map<String, dynamic> _normalizeOrderRow(Map<String, dynamic> row) {
+    final normalized = Map<String, dynamic>.from(row);
+    normalized["id"] = _toInt(normalized["id"]);
+    normalized["user_id"] = _toInt(normalized["user_id"]);
+    normalized["delivery_address_id"] = _toInt(
+      normalized["delivery_address_id"],
+    );
+    normalized["billing_address_id"] = _toInt(normalized["billing_address_id"]);
+    normalized["promo_code_id"] = _toInt(normalized["promo_code_id"]);
+
+    final items = normalized["order_items"];
+    if (items is List) {
+      normalized["order_items"] = items
+          .whereType<Map>()
+          .map(
+            (item) => _normalizeOrderItemRow(Map<String, dynamic>.from(item)),
+          )
+          .toList(growable: false);
+    }
+    return normalized;
+  }
+
+  Map<String, dynamic> _normalizeOrderItemRow(Map<String, dynamic> row) {
+    final normalized = Map<String, dynamic>.from(row);
+    normalized["id"] = _toInt(normalized["id"]);
+    normalized["order_id"] = _toInt(normalized["order_id"]);
+    normalized["product_id"] = _toInt(normalized["product_id"]);
+    normalized["ek_id"] = _toInt(normalized["ek_id"]);
+    return normalized;
+  }
+
+  int? _toInt(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    if (value == null) return null;
+    return int.tryParse(value.toString());
   }
 }
 

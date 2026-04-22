@@ -790,8 +790,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     required double imageHeight,
     required bool showRead,
     bool dense = false,
-  }) =>
-      imageHeight + (showRead ? 106.0 : 90.0) - (dense ? 22.0 : 0.0);
+  }) => imageHeight + (showRead ? 106.0 : 90.0) - (dense ? 22.0 : 0.0);
 
   String _resolveArchivedNewspaperUrl(
     Map<String, dynamic> viewInfo, {
@@ -2406,8 +2405,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
 
   Widget _buildMobileHomeBody(CartProvider cart) {
     final sections = _buildHomeShowcaseSections(context, false, cart);
-    final isIos =
-        Theme.of(context).platform == TargetPlatform.iOS;
+    final isIos = Theme.of(context).platform == TargetPlatform.iOS;
     final sectionGap = isIos ? 16.0 : 32.0;
     final bottomPadding = isIos ? 12.0 : 24.0;
     final children = <Widget>[];
@@ -2727,8 +2725,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
                     ],
                   ),
                 );
-                final isIos =
-                    Theme.of(context).platform == TargetPlatform.iOS;
+                final isIos = Theme.of(context).platform == TargetPlatform.iOS;
                 return isIos
                     ? Padding(
                         padding: const EdgeInsets.only(bottom: 6),
@@ -3228,11 +3225,11 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
                       showRead: showRead,
                       onTap: () => _openProductDetail(_mapNewspaperDetail(raw)),
                     );
-                      },
-                    ),
-                );
-              },
-            ),
+                  },
+                ),
+              );
+            },
+          ),
       ],
     );
   }
@@ -4557,8 +4554,10 @@ Widget _libraryAccessOverview(
             final index = entry.key;
             final accessRow = entry.value;
             final type = (accessRow["item_type"] ?? "").toString();
-            final tileFuture =
-                state._resolveAccessItem(type, Map<String, dynamic>.from(accessRow));
+            final tileFuture = state._resolveAccessItem(
+              type,
+              Map<String, dynamic>.from(accessRow),
+            );
             return FutureBuilder<_AccessItem>(
               future: tileFuture,
               builder: (context, snap) {
@@ -4573,10 +4572,7 @@ Widget _libraryAccessOverview(
                       leading: CircleAvatar(
                         backgroundColor: Colors.red.shade50,
                         foregroundColor: Colors.red,
-                        child: Icon(
-                          state._iconForType(type),
-                          size: 20,
-                        ),
+                        child: Icon(state._iconForType(type), size: 20),
                       ),
                       title: Text(
                         title,
@@ -4697,6 +4693,13 @@ Widget _libraryMenuTile(IconData icon, String text, {VoidCallback? onTap}) {
 }
 
 Widget _libraryOrderCard(BuildContext context, Map<String, dynamic> order) {
+  int? parseOrderId(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    if (value == null) return null;
+    return int.tryParse(value.toString());
+  }
+
   final id = order["id"]?.toString() ?? "-";
   final total = order["total_paid"]?.toString() ?? "0";
   final status = (order["status"] ?? "").toString().toLowerCase();
@@ -4707,7 +4710,8 @@ Widget _libraryOrderCard(BuildContext context, Map<String, dynamic> order) {
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => OrderDetailScreen(orderId: order["id"] as int),
+          builder: (_) =>
+              OrderDetailScreen(orderId: parseOrderId(order["id"]) ?? 0),
         ),
       );
     },
