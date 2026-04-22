@@ -39,6 +39,7 @@ dependencies:
   url_launcher: ^6.3.1
   mailer: ^6.1.0
   path_provider: ^2.1.2
+  excel: ^4.0.6
   encrypt: ^5.0.3
   flutter_secure_storage: ^9.2.2
   package_info_plus: ^8.0.2

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../services/admin/admin_user_service.dart';
+import '../../services/admin/admin_users_excel_export_service.dart';
 import '../../services/error/error_manager.dart';
 import '../../services/admin/admin_book_service.dart';
 import '../../services/admin/admin_magazine_service.dart';
@@ -10,6 +11,7 @@ import '../../services/admin/admin_ek_service.dart';
 import '../../services/admin/admin_user_access_audit_service.dart';
 import '../../services/auth/auth_provider.dart';
 import '../../services/user_content_access_service.dart';
+import '../../utils/excel_export_helper.dart';
 import 'admin_passive_users_page.dart';
 import 'admin_user_detail_page.dart';
 
@@ -27,19 +29,30 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
   final TextEditingController searchCtrl = TextEditingController();
   late final AdminUserService _adminService;
   late final AdminUserAccessAuditService _auditService;
+  late final AdminUsersExcelExportService _excelExportService;
 
   List<Map<String, dynamic>> allUsers = [];
   List<Map<String, dynamic>> filteredUsers = [];
   List<Map<String, dynamic>> allRoles = [];
 
   bool isLoading = true;
+  bool isExporting = false;
 
   @override
   void initState() {
     super.initState();
     _adminService = widget.adminService ?? AdminUserService();
     _auditService = widget.auditService ?? AdminUserAccessAuditService();
+    _excelExportService = AdminUsersExcelExportService(
+      userService: _adminService,
+    );
     _loadUsers();
+  }
+
+  @override
+  void dispose() {
+    searchCtrl.dispose();
+    super.dispose();
   }
 
   Future<void> _loadUsers() async {
@@ -179,6 +192,34 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
         ),
       ),
     );
+  }
+
+  Future<void> _exportUsersToExcel() async {
+    if (isLoading || isExporting) return;
+
+    setState(() => isExporting = true);
+    final messenger = ScaffoldMessenger.of(context);
+
+    try {
+      final export = await _excelExportService.exportUsersWorkbook();
+      await exportExcelBytes(export.bytes, export.fileName);
+
+      if (!mounted) return;
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            "${export.userCount} kullanıcı, ${export.accessCount} abonelik satırı ve ${export.orderCount} sipariş Excel'e aktarıldı.",
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      await _showError("Excel export sırasında hata oluştu:\n$e");
+    } finally {
+      if (mounted) {
+        setState(() => isExporting = false);
+      }
+    }
   }
 
   // ➕ Kullanıcı ekleme popup
@@ -952,6 +993,23 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
                     side: const BorderSide(color: Colors.red),
                   ),
                   onPressed: _openPassiveUsersPage,
+                ),
+                OutlinedButton.icon(
+                  icon: isExporting
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.download),
+                  label: Text(
+                    isExporting ? "Hazırlanıyor..." : "Excel'e Aktar",
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.blue,
+                    side: const BorderSide(color: Colors.blue),
+                  ),
+                  onPressed: isExporting ? null : _exportUsersToExcel,
                 ),
                 ElevatedButton.icon(
                   icon: const Icon(Icons.add, color: Colors.white),

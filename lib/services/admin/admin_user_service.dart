@@ -566,6 +566,77 @@ class AdminUserService {
     return _enrichAccessRecords([...access, ...manualAccess]);
   }
 
+  Future<List<Map<String, dynamic>>> getExportAccessRecords({
+    required List<int> userIds,
+  }) async {
+    if (userIds.isEmpty) return const [];
+
+    const queryWithChannel = r'''
+      query GetExportAccess($user_ids: [Int!]!) {
+        user_content_access(
+          where: {
+            user_id: {_in: $user_ids},
+            is_active: {_eq: true}
+          },
+          order_by: [{user_id: asc}, {started_at: desc}, {id: desc}]
+        ) {
+          id
+          user_id
+          item_type
+          item_id
+          started_at
+          expires_at
+          purchase_price
+          is_active
+          grant_source
+          purchase_platform
+        }
+      }
+    ''';
+    const queryWithoutChannel = r'''
+      query GetExportAccess($user_ids: [Int!]!) {
+        user_content_access(
+          where: {
+            user_id: {_in: $user_ids},
+            is_active: {_eq: true}
+          },
+          order_by: [{user_id: asc}, {started_at: desc}, {id: desc}]
+        ) {
+          id
+          user_id
+          item_type
+          item_id
+          started_at
+          expires_at
+          purchase_price
+          is_active
+        }
+      }
+    ''';
+
+    Map<String, dynamic> data;
+    try {
+      data = await _hasura.graphQLRequest(
+        query: queryWithChannel,
+        variables: {"user_ids": userIds},
+      );
+    } catch (error) {
+      if (!_isMissingAccessChannelColumnError(error)) {
+        rethrow;
+      }
+      data = await _hasura.graphQLRequest(
+        query: queryWithoutChannel,
+        variables: {"user_ids": userIds},
+      );
+    }
+
+    final access = List<Map<String, dynamic>>.from(
+      data["user_content_access"] ?? [],
+    );
+    final manualAccess = await _getManualNewspaperAccessForUsers(userIds);
+    return _enrichAccessRecords([...access, ...manualAccess]);
+  }
+
   Future<void> deactivateAccessEntry(Map<String, dynamic> entry) async {
     final source = _resolveAccessSource(entry);
     if (source == "manual_newspaper") {
@@ -637,6 +708,64 @@ class AdminUserService {
             (row) => {
               "id": "manual_${row["id"]}",
               "source_id": row["id"],
+              "item_type": "newspaper_subscription",
+              "item_id": null,
+              "started_at": row["starts_at"],
+              "expires_at": row["ends_at"],
+              "is_active": row["is_active"] == true,
+              "purchase_price": null,
+              "source": "manual_newspaper",
+              "status": row["status"],
+              "note": row["note"],
+            },
+          )
+          .toList(growable: false);
+    } catch (e) {
+      final msg = e.toString().toLowerCase();
+      if (msg.contains("manual_newspaper_users")) {
+        return const [];
+      }
+      rethrow;
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _getManualNewspaperAccessForUsers(
+    List<int> userIds,
+  ) async {
+    const query = r'''
+      query GetManualNewspaperAccessForUsers($user_ids: [bigint!]!) {
+        manual_newspaper_users(
+          where: {
+            user_id: {_in: $user_ids},
+            is_active: {_eq: true}
+          },
+          order_by: [{user_id: asc}, {ends_at: desc_nulls_last}, {id: desc}]
+        ) {
+          id
+          user_id
+          starts_at
+          ends_at
+          is_active
+          status
+          note
+        }
+      }
+    ''';
+
+    try {
+      final data = await _hasura.graphQLRequest(
+        query: query,
+        variables: {"user_ids": userIds.map((id) => id.toString()).toList()},
+      );
+      final rows = List<Map<String, dynamic>>.from(
+        data["manual_newspaper_users"] ?? [],
+      );
+      return rows
+          .map(
+            (row) => {
+              "id": "manual_${row["id"]}",
+              "source_id": row["id"],
+              "user_id": row["user_id"],
               "item_type": "newspaper_subscription",
               "item_id": null,
               "started_at": row["starts_at"],
