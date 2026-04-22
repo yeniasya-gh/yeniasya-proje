@@ -196,18 +196,9 @@ class SecureFileService {
         maxTimeoutRetries: 0,
         onProgress: onProgress,
       );
-    } on TimeoutException catch (e, s) {
-      await _logger.logError(
-        service: "SecureFileService",
-        operation: "privateViewPost",
-        message: e.toString(),
-        stackTrace: s.toString(),
-        payload: {
-          "url": normalized,
-          "path": path,
-          "platform": defaultTargetPlatform.toString(),
-        },
-      );
+    } on TimeoutException {
+      // Timeout here usually means the primary private endpoint is slow.
+      // Fall back silently to the token flow so viewing is not blocked.
       return _downloadViaViewToken(path, onProgress: onProgress);
     } catch (e, s) {
       await _logger.logError(

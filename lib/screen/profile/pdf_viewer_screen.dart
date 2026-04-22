@@ -325,6 +325,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
 
   Widget _buildViewer() {
     if (_bytes == null) return _errorView();
+    final isWeb = kIsWeb;
     final isMobile = !kIsWeb;
 
     return SfPdfViewer.memory(
@@ -333,6 +334,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       controller: _controller,
       canShowScrollHead: !kIsWeb,
       canShowScrollStatus: !kIsWeb,
+      enableTextSelection: isWeb,
       canShowPaginationDialog: false,
       maxZoomLevel: _maxZoomLevel,
       pageLayoutMode: PdfPageLayoutMode.continuous,
@@ -1064,6 +1066,9 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   }
 
   void _runSearch() {
+    if (!kIsWeb) {
+      return;
+    }
     final query = _searchController.text.trim();
     if (query.isEmpty) {
       _clearSearch();
