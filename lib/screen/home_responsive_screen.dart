@@ -116,6 +116,7 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
   bool _loadingAccessSheet = false;
   bool _loadingLibraryMagazineIssues = false;
   bool _libraryMagazineIssuesSheetOpen = false;
+  final Map<String, Future<_AccessItem>> _accessItemFutureCache = {};
   bool _deepLinkHandled = false;
   bool _hideMagazines = false;
   bool _hideNewspapers = false;
@@ -1727,6 +1728,24 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     }
   }
 
+  Future<_AccessItem> _resolveAccessItemCached(
+    String type,
+    Map<String, dynamic> entry,
+  ) {
+    final cacheKey = [
+      type,
+      entry["id"]?.toString().trim() ?? "",
+      entry["item_id"]?.toString().trim() ?? "",
+      entry["started_at"]?.toString().trim() ?? "",
+      entry["expires_at"]?.toString().trim() ?? "",
+    ].join("|");
+
+    return _accessItemFutureCache.putIfAbsent(
+      cacheKey,
+      () => _resolveAccessItem(type, entry),
+    );
+  }
+
   Future<void> _openMagazineIssuesFromLibrary(
     int magazineId,
     String name,
@@ -1915,7 +1934,10 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
                           itemBuilder: (_, i) {
                             final entry = entries[i];
                             return FutureBuilder<_AccessItem>(
-                              future: _resolveAccessItem(itemType, entry),
+                              future: _resolveAccessItemCached(
+                                itemType,
+                                entry,
+                              ),
                               builder: (_, snap) {
                                 if (snap.hasError) {
                                   return ListTile(
