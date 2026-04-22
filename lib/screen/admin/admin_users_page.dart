@@ -554,7 +554,7 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
         }
         itemType = "magazine";
         itemId = _asInt(selectedItem["id"]);
-        durationMonths = (selectedSubType["duration_months"] as num?)?.toInt();
+        durationMonths = _asInt(selectedSubType["duration_months"]);
       } else {
         if (selectedItem == null) {
           setSt(() {
@@ -566,7 +566,7 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
           return;
         }
         itemType = "newspaper_subscription";
-        durationMonths = (selectedItem["duration_months"] as num?)?.toInt();
+        durationMonths = _asInt(selectedItem["duration_months"]);
       }
 
       if (durationMonths == null || durationMonths <= 0) {
@@ -589,7 +589,7 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
 
       try {
         final current = await accessService.getLatestGrantableAccessEntry(
-          userId: user["id"] as int,
+          userId: _asInt(user["id"]) ?? 0,
           itemType: itemType,
           itemId: itemId,
         );
@@ -886,7 +886,7 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
 
                               if (selectedCategory == "book") {
                                 itemType = "book";
-                                itemId = selectedItem["id"];
+                                itemId = _asInt(selectedItem["id"]);
                                 price =
                                     double.tryParse(
                                       selectedItem["price"]?.toString() ?? "0",
@@ -905,10 +905,11 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
                                   return;
                                 }
                                 itemType = "magazine";
-                                itemId = selectedItem["id"];
+                                itemId = _asInt(selectedItem["id"]);
                                 final months =
-                                    (selectedSubType["duration_months"] as num?)
-                                        ?.toInt() ??
+                                    _asInt(
+                                      selectedSubType["duration_months"],
+                                    ) ??
                                     1;
                                 expiresAt = _addMonths(DateTime.now(), months);
                                 price = 0; // Manuel tanımlama
@@ -916,14 +917,13 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
                                 itemType = "newspaper_subscription";
                                 itemId = null; // Genel abonelik
                                 final months =
-                                    (selectedItem["duration_months"] as num?)
-                                        ?.toInt() ??
+                                    _asInt(selectedItem["duration_months"]) ??
                                     1;
                                 expiresAt = _addMonths(DateTime.now(), months);
                                 price = 0;
                               } else if (selectedCategory == "ek") {
                                 itemType = "ek";
-                                itemId = selectedItem["id"];
+                                itemId = _asInt(selectedItem["id"]);
                                 price =
                                     double.tryParse(
                                       selectedItem["fiyat"]?.toString() ?? "0",
@@ -932,7 +932,9 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
                               }
 
                               await accessService.grantAccess(
-                                userId: user["id"].toString(),
+                                userId:
+                                    _asInt(user["id"])?.toString() ??
+                                    user["id"].toString(),
                                 items: [
                                   {
                                     "item_type": itemType,
@@ -948,7 +950,7 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
                               try {
                                 final actor = authProvider.user;
                                 await _auditService.logEntry(
-                                  userId: user["id"] as int,
+                                  userId: _asInt(user["id"]) ?? 0,
                                   actorUserId: actor?.id,
                                   action: willExtendExistingSubscription
                                       ? "extend"
