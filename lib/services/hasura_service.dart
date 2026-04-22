@@ -6,8 +6,11 @@ class HasuraService {
   HasuraService({http.Client? client}) : _client = client ?? http.Client();
 
   static const String endpoint = String.fromEnvironment(
-    "HASURA_ENDPOINT",
-    defaultValue: "https://cdn.yeniasyadijital.com/hasura",
+    "GRAPHQL_ENDPOINT",
+    defaultValue: String.fromEnvironment(
+      "HASURA_ENDPOINT",
+      defaultValue: "https://cdn.yeniasyadijital.com/graphql",
+    ),
   );
   static final Uri endpointUri = Uri.parse(endpoint);
   static const Duration timeout = Duration(seconds: 20);
@@ -22,7 +25,7 @@ class HasuraService {
   }) {
     final token = AuthTokenStore.token?.trim();
     if (token == null || token.isEmpty) {
-      throw Exception("Hasura token bulunamadı.");
+      throw Exception("GraphQL token bulunamadı.");
     }
 
     final headers = <String, String>{

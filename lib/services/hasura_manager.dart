@@ -26,7 +26,7 @@ class HasuraManager {
 
       if (kDebugMode) {
         // ignore: avoid_print
-        print("🟦 Hasura request");
+        print("🟦 GraphQL request");
         // ignore: avoid_print
         print("QUERY: ${query.trim()}");
         // ignore: avoid_print
@@ -41,7 +41,7 @@ class HasuraManager {
 
       if (kDebugMode) {
         // ignore: avoid_print
-        print("🟩 Hasura response (${response.statusCode})");
+        print("🟩 GraphQL response (${response.statusCode})");
         // ignore: avoid_print
         print(response.body);
       }
@@ -70,7 +70,7 @@ class HasuraManager {
             : null;
         final rawMessage = firstError != null
             ? firstError["message"]
-            : "Bilinmeyen Hasura hatası";
+            : "Bilinmeyen GraphQL hatası";
         final parsed = ErrorManager.parseGraphQLError(rawMessage);
         unawaited(
           _logger.logError(
@@ -110,10 +110,13 @@ class HasuraManager {
 
   void _ensureSecureEndpoint() {
     if (HasuraService.endpointUri.scheme != "https") {
-      throw Exception("Hasura endpoint must use https.");
+      throw Exception("GraphQL endpoint must use https.");
     }
     if (HasuraService.endpointUri.host != "cdn.yeniasyadijital.com") {
-      throw Exception("Hasura endpoint host not allowed.");
+      throw Exception("GraphQL endpoint host not allowed.");
+    }
+    if (!HasuraService.endpointUri.path.startsWith("/graphql")) {
+      throw Exception("GraphQL endpoint path not allowed.");
     }
   }
 }
