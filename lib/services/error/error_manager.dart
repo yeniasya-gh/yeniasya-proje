@@ -25,6 +25,10 @@ class ErrorManager {
       "dosya 50mb sınırını aşıyor",
       "izin verilmeyen dosya tipi",
       "kapak görseli oluşturulamadı",
+      "kullanıcı bulunamadı",
+      "fcm token",
+      "bildirim gönderilemedi",
+      "geçerli fcm token",
     ];
 
     if (passThroughMarkers.any((marker) => msg.contains(marker))) {
@@ -71,6 +75,14 @@ class ErrorManager {
         msg.contains("future not completed") ||
         msg.contains("zaman aşımı")) {
       return "Sunucu yanıt vermedi. Lütfen tekrar deneyin.";
+    }
+
+    // 📌 Payment / 3D secure failures
+    if (msg.contains("err30002") ||
+        msg.contains("responsecode\": \"99") ||
+        msg.contains("response code: 99") ||
+        msg.contains("declined")) {
+      return "Kart onaylanmadı. Lütfen farklı bir kart deneyin.";
     }
 
     // 📌 Default fallback

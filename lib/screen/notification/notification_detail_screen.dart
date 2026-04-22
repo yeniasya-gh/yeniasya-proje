@@ -5,8 +5,13 @@ import '../../utils/notification_date_formatter.dart';
 
 class NotificationDetailScreen extends StatefulWidget {
   final int notificationId;
+  final Map<String, dynamic>? initialNotification;
 
-  const NotificationDetailScreen({super.key, required this.notificationId});
+  const NotificationDetailScreen({
+    super.key,
+    required this.notificationId,
+    this.initialNotification,
+  });
 
   @override
   State<NotificationDetailScreen> createState() =>
@@ -22,7 +27,20 @@ class _NotificationDetailScreenState extends State<NotificationDetailScreen> {
   @override
   void initState() {
     super.initState();
+    _data = widget.initialNotification;
     _load();
+  }
+
+  String _fallbackTitle() {
+    final title = widget.initialNotification?['title']?.toString().trim();
+    if (title != null && title.isNotEmpty) return title;
+    return "Bildirim";
+  }
+
+  String _fallbackBody() {
+    final body = widget.initialNotification?['body']?.toString().trim();
+    if (body != null && body.isNotEmpty) return body;
+    return "Bildirim içeriği bulunamadı.";
   }
 
   Future<void> _load() async {
@@ -32,7 +50,9 @@ class _NotificationDetailScreenState extends State<NotificationDetailScreen> {
         widget.notificationId,
       );
       if (!mounted) return;
-      setState(() => _data = detail);
+      setState(() {
+        _data = detail ?? _data;
+      });
       if (detail != null && detail["is_read"] != true) {
         try {
           await _service.markNotificationRead(
@@ -125,8 +145,9 @@ class _NotificationDetailScreenState extends State<NotificationDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final title = _data?['title'] ?? '';
-    final body = _data?['body'] ?? '';
+    final hasData = _data != null;
+    final title = _data?['title']?.toString().trim();
+    final body = _data?['body']?.toString().trim();
     final dateOnly = formatNotificationDateOnly(
       _data?['created_at']?.toString(),
     );
@@ -159,9 +180,10 @@ class _NotificationDetailScreenState extends State<NotificationDetailScreen> {
         ],
       ),
       body: SafeArea(
-        child: _loading
+        child: _loading && !hasData
             ? const Center(child: CircularProgressIndicator())
-            : SingleChildScrollView(
+            : hasData
+            ? SingleChildScrollView(
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -233,7 +255,9 @@ class _NotificationDetailScreenState extends State<NotificationDetailScreen> {
                                       ),
                                     const SizedBox(height: 10),
                                     Text(
-                                      title,
+                                      title?.isNotEmpty == true
+                                          ? title!
+                                          : _fallbackTitle(),
                                       style: const TextStyle(
                                         fontSize: 21,
                                         height: 1.2,
@@ -286,7 +310,7 @@ class _NotificationDetailScreenState extends State<NotificationDetailScreen> {
                           const Divider(height: 1),
                           const SizedBox(height: 16),
                           SelectableText(
-                            body,
+                            body?.isNotEmpty == true ? body! : _fallbackBody(),
                             style: const TextStyle(
                               fontSize: 16,
                               height: 1.7,
@@ -298,7 +322,42 @@ class _NotificationDetailScreenState extends State<NotificationDetailScreen> {
                     ),
                   ],
                 ),
-              ),
+              )
+            : _emptyState(),
+      ),
+    );
+  }
+
+  Widget _emptyState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.notifications_off_outlined,
+              size: 56,
+              color: Color(0xFF9CA3AF),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              "Bildirim bulunamadı",
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              "Bu bildirim silinmiş olabilir ya da erişim geçici olarak bulunamıyor.",
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Color(0xFF6B7280)),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Geri Dön"),
+            ),
+          ],
+        ),
       ),
     );
   }

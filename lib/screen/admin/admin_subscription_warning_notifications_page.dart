@@ -54,9 +54,7 @@ class _AdminSubscriptionWarningNotificationsPageState
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      final notifications = await _service.getAdminNotifications(
-        limit: 1000,
-      );
+      final notifications = await _service.getAdminNotifications(limit: 1000);
       if (!mounted) return;
       setState(() => _allItems = notifications);
     } catch (e) {
@@ -79,7 +77,7 @@ class _AdminSubscriptionWarningNotificationsPageState
   }
 
   Future<void> _toggleRead(Map<String, dynamic> notification) async {
-    final id = notification["id"] as int?;
+    final id = _notificationId(notification);
     if (id == null) return;
     final next = notification["is_read"] != true;
     try {
@@ -99,7 +97,7 @@ class _AdminSubscriptionWarningNotificationsPageState
   }
 
   Future<void> _deleteNotification(Map<String, dynamic> notification) async {
-    final id = notification["id"] as int?;
+    final id = _notificationId(notification);
     if (id == null) return;
     final confirmed = await showDialog<bool>(
       context: context,
@@ -153,15 +151,25 @@ class _AdminSubscriptionWarningNotificationsPageState
   }
 
   Future<void> _openDetail(Map<String, dynamic> notification) async {
-    final id = notification["id"] as int?;
+    final id = _notificationId(notification);
     if (id == null) return;
     await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => NotificationDetailScreen(notificationId: id),
+        builder: (_) => NotificationDetailScreen(
+          notificationId: id,
+          initialNotification: notification,
+        ),
       ),
     );
     if (mounted) await _load();
+  }
+
+  int? _notificationId(Map<String, dynamic> notification) {
+    final value = notification["id"];
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? "");
   }
 
   Widget _filterChip(String label, _AdminNotificationFilter filter) {
@@ -265,8 +273,7 @@ class _AdminSubscriptionWarningNotificationsPageState
                                   );
                                   final title =
                                       item["title"]?.toString() ?? "-";
-                                  final body =
-                                      item["body"]?.toString() ?? "";
+                                  final body = item["body"]?.toString() ?? "";
                                   final accent = isRead
                                       ? const Color(0xFF16A34A)
                                       : const Color(0xFFE74C3C);
@@ -306,8 +313,7 @@ class _AdminSubscriptionWarningNotificationsPageState
                                           tooltip: isRead
                                               ? "Okunmadı yap"
                                               : "Okundu yap",
-                                          onPressed: () =>
-                                              _toggleRead(item),
+                                          onPressed: () => _toggleRead(item),
                                           icon: Icon(
                                             isRead
                                                 ? Icons
@@ -341,30 +347,33 @@ class _AdminSubscriptionWarningNotificationsPageState
 
   List<Map<String, dynamic>> get _filteredItems {
     final query = _searchCtrl.text.trim().toLowerCase();
-    final filtered = _allItems.where((item) {
-      final title = (item["title"] ?? "").toString().toLowerCase();
-      final body = (item["body"] ?? "").toString().toLowerCase();
-      final user = item["user"];
-      final userName = user is Map
-          ? (user["name"] ?? "").toString().toLowerCase()
-          : "";
-      final userEmail = user is Map
-          ? (user["email"] ?? "").toString().toLowerCase()
-          : "";
-      final readMatch = switch (_filter) {
-        _AdminNotificationFilter.all => true,
-        _AdminNotificationFilter.read => item["is_read"] == true,
-        _AdminNotificationFilter.unread => item["is_read"] != true,
-      };
-      final searchMatch = query.isEmpty ||
-          title.contains(query) ||
-          body.contains(query) ||
-          userName.contains(query) ||
-          userEmail.contains(query);
-      return readMatch &&
-          searchMatch &&
-          _isSubscriptionWarningNotification(item);
-    }).toList(growable: false);
+    final filtered = _allItems
+        .where((item) {
+          final title = (item["title"] ?? "").toString().toLowerCase();
+          final body = (item["body"] ?? "").toString().toLowerCase();
+          final user = item["user"];
+          final userName = user is Map
+              ? (user["name"] ?? "").toString().toLowerCase()
+              : "";
+          final userEmail = user is Map
+              ? (user["email"] ?? "").toString().toLowerCase()
+              : "";
+          final readMatch = switch (_filter) {
+            _AdminNotificationFilter.all => true,
+            _AdminNotificationFilter.read => item["is_read"] == true,
+            _AdminNotificationFilter.unread => item["is_read"] != true,
+          };
+          final searchMatch =
+              query.isEmpty ||
+              title.contains(query) ||
+              body.contains(query) ||
+              userName.contains(query) ||
+              userEmail.contains(query);
+          return readMatch &&
+              searchMatch &&
+              _isSubscriptionWarningNotification(item);
+        })
+        .toList(growable: false);
     return filtered;
   }
 }

@@ -1,16 +1,105 @@
+import 'dart:async';
 import 'dart:convert';
 
+import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'auth/auth_token_store.dart';
 import 'hasura_manager.dart';
+import '../firebase_options.dart';
 
 class NotificationService {
   final _hasura = HasuraManager.instance;
   final http.Client _http = http.Client();
   static const String _pushApiUrl =
       "https://cdn.yeniasyadijital.com/admin/notifications/send";
+  static StreamSubscription<String>? _tokenRefreshSubscription;
+  static int? _registeredUserId;
+  static bool _tokenRefreshListenerAttached = false;
+
+  Future<void> _ensureFirebaseInitialized() async {
+    if (Firebase.apps.isNotEmpty) return;
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  }
+
+  Future<void> _ensureTokenRefreshListener() async {
+    if (_tokenRefreshListenerAttached) return;
+    final messaging = FirebaseMessaging.instance;
+    _tokenRefreshSubscription?.cancel();
+    _tokenRefreshSubscription = messaging.onTokenRefresh.listen((token) {
+      final userId = _registeredUserId;
+      if (userId == null || token.trim().isEmpty) return;
+      unawaited(
+        _persistDeviceToken(
+          userId: userId,
+          token: token,
+          updatedAt: DateTime.now(),
+        ),
+      );
+    });
+    _tokenRefreshListenerAttached = true;
+  }
+
+  Future<void> _persistDeviceToken({
+    required int userId,
+    required String token,
+    required DateTime updatedAt,
+  }) async {
+    const mutation = r'''
+      mutation UpdateUserToken(
+        $user_id: bigint!,
+        $token: String!,
+        $firebase_token_updated_at: timestamptz!
+      ) {
+        update_users_by_pk(pk_columns: {id: $user_id}, _set: {firebase_token: $token, firebase_token_updated_at: $firebase_token_updated_at}) {
+          id
+        }
+      }
+    ''';
+
+    await _hasura.graphQLRequest(
+      query: mutation,
+      variables: {
+        "user_id": userId,
+        "token": token,
+        "firebase_token_updated_at": updatedAt.toIso8601String(),
+      },
+    );
+  }
+
+  Future<String?> _tryGetFirebaseToken(
+    FirebaseMessaging messaging, {
+    bool forceRefresh = false,
+  }) async {
+    String? token = await messaging.getToken();
+    if ((token == null || token.trim().isEmpty) && forceRefresh) {
+      try {
+        await messaging.deleteToken();
+      } catch (_) {}
+      token = await messaging.getToken();
+    }
+    return token;
+  }
+
+  Future<String?> _waitForApnsToken(FirebaseMessaging messaging) async {
+    final isApplePlatform =
+        !kIsWeb &&
+        (defaultTargetPlatform == TargetPlatform.iOS ||
+            defaultTargetPlatform == TargetPlatform.macOS);
+    if (!isApplePlatform) return null;
+
+    for (var i = 0; i < 10; i++) {
+      final apnsToken = await messaging.getAPNSToken();
+      if (apnsToken != null && apnsToken.trim().isNotEmpty) {
+        return apnsToken;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+    }
+    return messaging.getAPNSToken();
+  }
 
   Future<void> registerDeviceToken({
     required int userId,
@@ -20,6 +109,7 @@ class NotificationService {
     if (kIsWeb) return;
 
     try {
+      await _ensureFirebaseInitialized();
       final messaging = FirebaseMessaging.instance;
       await messaging.setAutoInitEnabled(true);
 
@@ -31,43 +121,47 @@ class NotificationService {
         provisional: true,
       );
 
-      // Önce mevcut token'ı almaya çalış
-      String? token = await messaging.getToken();
-
-      // Token null ise izin iste ve tekrar dene (Android/iOS).
-      if (token == null || forceRefresh) {
-        try {
-          await messaging.deleteToken();
-        } catch (_) {}
-        token = await messaging.getToken();
+      final isApplePlatform =
+          !kIsWeb &&
+          (defaultTargetPlatform == TargetPlatform.iOS ||
+              defaultTargetPlatform == TargetPlatform.macOS);
+      if (isApplePlatform) {
+        await messaging.setForegroundNotificationPresentationOptions(
+          alert: true,
+          badge: true,
+          sound: true,
+        );
+        await _waitForApnsToken(messaging);
       }
 
-      if (token == null) return;
+      _registeredUserId = userId;
+      await _ensureTokenRefreshListener();
 
-      const mutation = r'''
-        mutation UpdateUserToken(
-          $user_id: bigint!,
-          $token: String!,
-          $firebase_token_updated_at: timestamptz!
-        ) {
-          update_users_by_pk(pk_columns: {id: $user_id}, _set: {firebase_token: $token, firebase_token_updated_at: $firebase_token_updated_at}) {
-            id
-          }
-        }
-      ''';
+      final token = await _tryGetFirebaseToken(
+        messaging,
+        forceRefresh: forceRefresh,
+      );
 
-      await _hasura.graphQLRequest(
-        query: mutation,
-        variables: {
-          "user_id": userId,
-          "token": token,
-          "firebase_token_updated_at": DateTime.now().toIso8601String(),
-        },
+      if (token == null || token.trim().isEmpty) {
+        debugPrint(
+          "iOS/Android notification token not ready yet; waiting for refresh.",
+        );
+        return;
+      }
+
+      await _persistDeviceToken(
+        userId: userId,
+        token: token,
+        updatedAt: DateTime.now(),
       );
     } catch (_) {
       // Bildirim izni kapalı veya tarayıcı tarafından engelliyse sessizce yut.
       return;
     }
+  }
+
+  void clearRegisteredUser() {
+    _registeredUserId = null;
   }
 
   Future<List<Map<String, dynamic>>> getTokens() async {
@@ -78,6 +172,8 @@ class NotificationService {
           order_by: {firebase_token_updated_at: desc}
         ) {
           id
+          name
+          email
           firebase_token
           firebase_token_updated_at
         }
@@ -88,8 +184,10 @@ class NotificationService {
     return users
         .map(
           (u) => <String, dynamic>{
-            "id": u["id"],
-            "user_id": u["id"],
+            "id": _asInt(u["id"]) ?? u["id"],
+            "user_id": _asInt(u["id"]) ?? u["id"],
+            "name": u["name"],
+            "email": u["email"],
             "token": u["firebase_token"],
             "platform": null,
             "updated_at": u["firebase_token_updated_at"],
@@ -128,7 +226,9 @@ class NotificationService {
       query: query,
       variables: {"where": where},
     );
-    return List<Map<String, dynamic>>.from(data["notifications"] ?? []);
+    return List<Map<String, dynamic>>.from(
+      data["notifications"] ?? [],
+    ).map(_normalizeNotificationRow).toList(growable: false);
   }
 
   Future<Map<String, dynamic>?> getNotificationDetail(int id) async {
@@ -148,7 +248,9 @@ class NotificationService {
       query: query,
       variables: {"id": id},
     );
-    return data["notifications_by_pk"] as Map<String, dynamic>?;
+    final detail = data["notifications_by_pk"] as Map<String, dynamic>?;
+    if (detail == null) return null;
+    return _normalizeNotificationRow(detail);
   }
 
   Future<List<Map<String, dynamic>>> getAdminNotifications({
@@ -165,6 +267,11 @@ class NotificationService {
           body
           created_at
           is_read
+          user {
+            id
+            name
+            email
+          }
         }
       }
     ''';
@@ -197,7 +304,9 @@ class NotificationService {
       query: query,
       variables: {"where": where, "limit": limit},
     );
-    return List<Map<String, dynamic>>.from(data["notifications"] ?? const []);
+    return List<Map<String, dynamic>>.from(
+      data["notifications"] ?? const [],
+    ).map(_normalizeNotificationRow).toList(growable: false);
   }
 
   Future<Map<String, dynamic>> sendNotification({
@@ -293,5 +402,27 @@ class NotificationService {
     ''';
 
     await _hasura.graphQLRequest(query: mutation, variables: {"id": id});
+  }
+
+  Map<String, dynamic> _normalizeNotificationRow(Map<String, dynamic> row) {
+    final normalized = Map<String, dynamic>.from(row);
+    final id = _asInt(normalized["id"]);
+    if (id != null) normalized["id"] = id;
+    final userId = _asInt(normalized["user_id"]);
+    if (userId != null) normalized["user_id"] = userId;
+    final user = normalized["user"];
+    if (user is Map) {
+      final userMap = Map<String, dynamic>.from(user);
+      final nestedUserId = _asInt(userMap["id"]);
+      if (nestedUserId != null) userMap["id"] = nestedUserId;
+      normalized["user"] = userMap;
+    }
+    return normalized;
+  }
+
+  int? _asInt(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? "");
   }
 }

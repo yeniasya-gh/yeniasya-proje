@@ -203,7 +203,7 @@ class _AdminNotificationsPageState extends State<AdminNotificationsPage> {
   }
 
   Future<void> _toggleRead(Map<String, dynamic> notification) async {
-    final id = notification["id"] as int?;
+    final id = _notificationId(notification);
     if (id == null) return;
     final next = notification["is_read"] != true;
     try {
@@ -223,7 +223,7 @@ class _AdminNotificationsPageState extends State<AdminNotificationsPage> {
   }
 
   Future<void> _deleteNotification(Map<String, dynamic> notification) async {
-    final id = notification["id"] as int?;
+    final id = _notificationId(notification);
     if (id == null) return;
     final confirmed = await showDialog<bool>(
       context: context,
@@ -311,6 +311,13 @@ class _AdminNotificationsPageState extends State<AdminNotificationsPage> {
         ],
       ),
     );
+  }
+
+  int? _notificationId(Map<String, dynamic> notification) {
+    final value = notification["id"];
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? "");
   }
 
   @override

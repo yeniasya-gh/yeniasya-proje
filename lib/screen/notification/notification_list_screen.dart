@@ -59,7 +59,7 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
   }
 
   Future<void> _deleteNotification(Map<String, dynamic> notification) async {
-    final id = notification["id"] as int?;
+    final id = _notificationId(notification);
     if (id == null) return;
     final confirmed = await showDialog<bool>(
       context: context,
@@ -210,7 +210,9 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
       ),
       confirmDismiss: (direction) async {
         if (direction == DismissDirection.startToEnd) {
-          await _service.markNotificationRead(id: n["id"] as int, isRead: true);
+          final id = _notificationId(n);
+          if (id == null) return false;
+          await _service.markNotificationRead(id: id, isRead: true);
           if (mounted) {
             setState(() {
               n["is_read"] = true;
@@ -229,11 +231,22 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
         child: InkWell(
           borderRadius: BorderRadius.circular(18),
           onTap: () async {
+            final id = _notificationId(n);
+            if (id == null) {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text("Bildirim bulunamadı.")),
+                );
+              }
+              return;
+            }
             await Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (_) =>
-                    NotificationDetailScreen(notificationId: n["id"] as int),
+                builder: (_) => NotificationDetailScreen(
+                  notificationId: id,
+                  initialNotification: n,
+                ),
               ),
             );
             if (mounted) await _load();
@@ -348,6 +361,13 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
         ),
       ),
     );
+  }
+
+  int? _notificationId(Map<String, dynamic> notification) {
+    final value = notification["id"];
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? "");
   }
 
   Widget _metaChip({
