@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../services/admin/admin_user_service.dart';
@@ -30,13 +32,18 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
   late final AdminUserService _adminService;
   late final AdminUserAccessAuditService _auditService;
   late final AdminUsersExcelExportService _excelExportService;
+  Timer? _searchDebounce;
 
-  List<Map<String, dynamic>> allUsers = [];
-  List<Map<String, dynamic>> filteredUsers = [];
+  List<Map<String, dynamic>> _users = [];
   List<Map<String, dynamic>> allRoles = [];
 
   bool isLoading = true;
   bool isExporting = false;
+  int _currentPage = 1;
+  int _totalCount = 0;
+  static const int _pageSize = 25;
+  String _currentSearch = "";
+  int _usersRequestSeq = 0;
 
   @override
   void initState() {
@@ -46,60 +53,88 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
     _excelExportService = AdminUsersExcelExportService(
       userService: _adminService,
     );
-    _loadUsers();
+    _loadInitialData();
   }
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     searchCtrl.dispose();
     super.dispose();
   }
 
-  Future<void> _loadUsers() async {
+  Future<void> _loadInitialData() async {
+    await Future.wait([_loadRoles(), _loadUsers(page: 1, search: "")]);
+  }
+
+  Future<void> _loadRoles() async {
+    try {
+      final roles = await _adminService.getAllRoles();
+      if (!mounted) return;
+      setState(() {
+        allRoles = roles;
+      });
+    } catch (e) {
+      if (mounted) {
+        await _showError("Roller yüklenirken hata oluştu:\n$e");
+      }
+    }
+  }
+
+  Future<void> _loadUsers({required int page, String? search}) async {
+    final query = (search ?? searchCtrl.text).trim();
+    final safePage = page < 1 ? 1 : page;
+    final requestSeq = ++_usersRequestSeq;
+
     if (mounted) {
       setState(() => isLoading = true);
     }
 
     try {
-      final users = await _adminService.getAllUsers();
-      final roles = await _adminService.getAllRoles();
+      final result = await _adminService.getUsersPage(
+        search: query,
+        page: safePage,
+        pageSize: _pageSize,
+      );
 
-      if (!mounted) return;
+      final users = List<Map<String, dynamic>>.from(
+        result["users"] ?? const [],
+      );
+      final totalCount = result["totalCount"] is int
+          ? result["totalCount"] as int
+          : int.tryParse(result["totalCount"]?.toString() ?? "") ?? 0;
+      final totalPages = totalCount <= 0
+          ? 1
+          : ((totalCount + _pageSize - 1) ~/ _pageSize);
+      if (safePage > totalPages && totalCount > 0) {
+        await _loadUsers(page: totalPages, search: query);
+        return;
+      }
+
+      if (!mounted || requestSeq != _usersRequestSeq) return;
       setState(() {
-        allUsers = users;
-        filteredUsers = _filterUsers(users, searchCtrl.text);
-        allRoles = roles;
+        _users = users;
+        _totalCount = totalCount;
+        _currentPage = safePage;
+        _currentSearch = query;
       });
     } catch (e) {
       if (mounted) {
         await _showError("Kullanıcılar yüklenirken hata oluştu:\n$e");
       }
     } finally {
-      if (mounted) {
+      if (mounted && requestSeq == _usersRequestSeq) {
         setState(() => isLoading = false);
       }
     }
   }
 
-  void _filter(String text) {
-    setState(() {
-      filteredUsers = _filterUsers(allUsers, text);
+  void _scheduleSearch(String value) {
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 350), () {
+      if (!mounted) return;
+      _loadUsers(page: 1, search: value);
     });
-  }
-
-  List<Map<String, dynamic>> _filterUsers(
-    List<Map<String, dynamic>> users,
-    String text,
-  ) {
-    final query = text.trim().toLowerCase();
-    if (query.isEmpty) return List<Map<String, dynamic>>.from(users);
-    return users
-        .where((u) {
-          final name = (u["name"] ?? "").toString().toLowerCase();
-          final email = (u["email"] ?? "").toString().toLowerCase();
-          return name.contains(query) || email.contains(query);
-        })
-        .toList(growable: false);
   }
 
   // ❗ Hata göstermek için
@@ -129,7 +164,7 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
       final ok = await _adminService.deleteUser(id);
       if (!mounted) return;
       if (ok) {
-        await _loadUsers();
+        await _loadUsers(page: _currentPage, search: searchCtrl.text);
         messenger.showSnackBar(
           const SnackBar(content: Text("Kullanıcı pasif hale getirildi")),
         );
@@ -329,7 +364,7 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
                           if (dialogContext.mounted) {
                             Navigator.of(dialogContext).pop();
                           }
-                          await _loadUsers();
+                          await _loadUsers(page: 1, search: searchCtrl.text);
                           if (!mounted) return;
                           pageMessenger.showSnackBar(
                             const SnackBar(
@@ -444,7 +479,10 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
                       phone: payload["phone"] as String?,
                       roleId: payload["role_id"] as int,
                     );
-                    _loadUsers();
+                    await _loadUsers(
+                      page: _currentPage,
+                      search: searchCtrl.text,
+                    );
                   } catch (e) {
                     await _showError("Güncelleme hatası:\n$e");
                     if (mounted) {
@@ -1030,7 +1068,7 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
         // Arama
         TextField(
           controller: searchCtrl,
-          onChanged: _filter,
+          onChanged: _scheduleSearch,
           decoration: InputDecoration(
             hintText: "Kullanıcı ara...",
             prefixIcon: const Icon(Icons.search),
@@ -1057,72 +1095,127 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
                 ),
               ],
             ),
-            child: SingleChildScrollView(
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(minWidth: double.infinity),
-                  child: DataTable(
-                    headingRowColor: WidgetStateProperty.all(
-                      Colors.grey.shade100,
-                    ),
-                    columns: const [
-                      DataColumn(label: Text("#")),
-                      DataColumn(label: Text("Ad Soyad")),
-                      DataColumn(label: Text("E-posta")),
-                      DataColumn(label: Text("Rol")),
-                      DataColumn(label: Text("İşlem")),
-                    ],
-                    rows: filteredUsers.asMap().entries.map((entry) {
-                      final index = entry.key + 1;
-                      final u = entry.value;
-                      return DataRow(
-                        cells: [
-                          DataCell(Text(index.toString())),
-                          DataCell(Text(u["name"])),
-                          DataCell(Text(u["email"])),
-                          DataCell(Text(u["role"])),
-                          DataCell(
-                            Row(
-                              children: [
-                                IconButton(
-                                  icon: const Icon(
-                                    Icons.add_circle_outline,
-                                    color: Colors.green,
-                                  ),
-                                  onPressed: () => _showGrantAccessDialog(u),
-                                  tooltip: "Erişim Tanımla",
+            child: Column(
+              children: [
+                Expanded(
+                  child: isLoading
+                      ? const Center(child: CircularProgressIndicator())
+                      : _users.isEmpty
+                      ? const Center(child: Text("Kullanıcı bulunamadı."))
+                      : SingleChildScrollView(
+                          child: Center(
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(
+                                minWidth: double.infinity,
+                              ),
+                              child: DataTable(
+                                headingRowColor: WidgetStateProperty.all(
+                                  Colors.grey.shade100,
                                 ),
-                                IconButton(
-                                  icon: const Icon(
-                                    Icons.info_outline,
-                                    color: Colors.teal,
-                                  ),
-                                  onPressed: () => _openUserDetail(u),
-                                ),
-                                IconButton(
-                                  icon: const Icon(
-                                    Icons.edit,
-                                    color: Colors.blue,
-                                  ),
-                                  onPressed: () => _showEditUserDialog(u),
-                                ),
-                                IconButton(
-                                  icon: const Icon(
-                                    Icons.delete,
-                                    color: Colors.red,
-                                  ),
-                                  onPressed: () => _confirmDeleteUser(u),
-                                  tooltip: "Pasife Al",
-                                ),
-                              ],
+                                columns: const [
+                                  DataColumn(label: Text("#")),
+                                  DataColumn(label: Text("Ad Soyad")),
+                                  DataColumn(label: Text("E-posta")),
+                                  DataColumn(label: Text("Rol")),
+                                  DataColumn(label: Text("İşlem")),
+                                ],
+                                rows: _users.asMap().entries.map((entry) {
+                                  final index =
+                                      ((_currentPage - 1) * _pageSize) +
+                                      entry.key +
+                                      1;
+                                  final u = entry.value;
+                                  return DataRow(
+                                    cells: [
+                                      DataCell(Text(index.toString())),
+                                      DataCell(Text(u["name"] ?? "-")),
+                                      DataCell(Text(u["email"] ?? "-")),
+                                      DataCell(Text(u["role"] ?? "-")),
+                                      DataCell(
+                                        Row(
+                                          children: [
+                                            IconButton(
+                                              icon: const Icon(
+                                                Icons.add_circle_outline,
+                                                color: Colors.green,
+                                              ),
+                                              onPressed: () =>
+                                                  _showGrantAccessDialog(u),
+                                              tooltip: "Erişim Tanımla",
+                                            ),
+                                            IconButton(
+                                              icon: const Icon(
+                                                Icons.info_outline,
+                                                color: Colors.teal,
+                                              ),
+                                              onPressed: () =>
+                                                  _openUserDetail(u),
+                                            ),
+                                            IconButton(
+                                              icon: const Icon(
+                                                Icons.edit,
+                                                color: Colors.blue,
+                                              ),
+                                              onPressed: () =>
+                                                  _showEditUserDialog(u),
+                                            ),
+                                            IconButton(
+                                              icon: const Icon(
+                                                Icons.delete,
+                                                color: Colors.red,
+                                              ),
+                                              onPressed: () =>
+                                                  _confirmDeleteUser(u),
+                                              tooltip: "Pasife Al",
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  );
+                                }).toList(),
+                              ),
                             ),
                           ),
-                        ],
-                      );
-                    }).toList(),
-                  ),
+                        ),
                 ),
-              ),
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      "Toplam $_totalCount kullanıcı${_currentSearch.isNotEmpty ? " • Arama: $_currentSearch" : ""} • Sayfa $_currentPage / ${_totalPages()}",
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    Row(
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: (_currentPage <= 1 || isLoading)
+                              ? null
+                              : () => _loadUsers(
+                                  page: _currentPage - 1,
+                                  search: searchCtrl.text,
+                                ),
+                          icon: const Icon(Icons.chevron_left),
+                          label: const Text("Önceki"),
+                        ),
+                        const SizedBox(width: 8),
+                        OutlinedButton.icon(
+                          onPressed:
+                              (_currentPage >= _totalPages() || isLoading)
+                              ? null
+                              : () => _loadUsers(
+                                  page: _currentPage + 1,
+                                  search: searchCtrl.text,
+                                ),
+                          icon: const Icon(Icons.chevron_right),
+                          label: const Text("Sonraki"),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
         ),
@@ -1170,5 +1263,10 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
       default:
         return null;
     }
+  }
+
+  int _totalPages() {
+    if (_totalCount <= 0) return 1;
+    return ((_totalCount + _pageSize - 1) ~/ _pageSize);
   }
 }

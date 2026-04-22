@@ -83,6 +83,70 @@ class AdminUserService {
     }).toList();
   }
 
+  Future<Map<String, dynamic>> getUsersPage({
+    String search = "",
+    int page = 1,
+    int pageSize = 25,
+  }) async {
+    const query = r'''
+      query GetUsersPage($limit: Int!, $offset: Int!) {
+        users(
+          where: {is_active: {_eq: true}},
+          order_by: {id: desc},
+          limit: $limit,
+          offset: $offset
+        ) {
+          id
+          name
+          email
+          phone
+          role_id
+          is_active
+          role { id name }
+        }
+        users_aggregate {
+          aggregate {
+            count
+          }
+        }
+      }
+    ''';
+
+    final normalizedSearch = search.trim();
+    final data = await _hasura.graphQLRequest(
+      query: query,
+      variables: {
+        "limit": pageSize,
+        "offset": ((page <= 1 ? 0 : page - 1) * pageSize),
+        "keyword": normalizedSearch.isEmpty ? null : normalizedSearch,
+      },
+    );
+
+    final users = List<Map<String, dynamic>>.from(data["users"] ?? []);
+    final rawCount = data["users_aggregate"]?["aggregate"]?["count"];
+    final totalCount = rawCount is int
+        ? rawCount
+        : rawCount is num
+        ? rawCount.toInt()
+        : int.tryParse(rawCount?.toString() ?? "") ?? 0;
+
+    final mappedUsers = users
+        .map<Map<String, dynamic>>((u) {
+          return {
+            "id": u["id"],
+            "name": u["name"],
+            "email": u["email"],
+            "phone": u["phone"],
+            "role_id": u["role_id"],
+            "is_active": u["is_active"] == true,
+            "role": u["role"]?["name"] ?? "User",
+          };
+        })
+        .toList(growable: false);
+
+    return {"users": mappedUsers, "totalCount": totalCount};
+  }
+
   Future<Map<String, dynamic>?> getUserDetail(int userId) async {
     const queryWithDeactivatedAt = r'''
       query GetAdminUserDetail($id: bigint!) {
