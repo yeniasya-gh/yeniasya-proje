@@ -5,7 +5,6 @@ import '../../services/address_service.dart';
 import '../../services/error/error_manager.dart';
 import '../../services/auth/auth_provider.dart';
 import '../../services/cart/cart_provider.dart';
-import '../../models/cart_item.dart';
 import '../address/address_form_screen.dart';
 import 'payment_screen.dart';
 
@@ -48,6 +47,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         if (list.isNotEmpty) {
           _deliveryId = _asInt(list.first["id"]);
           _billingId = _asInt(list.first["id"]);
+        } else {
+          _deliveryId = null;
+          _billingId = null;
         }
       });
     } catch (e) {
@@ -113,9 +115,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           child: ElevatedButton(
             onPressed:
                 (_deliveryId != null && (_sameBilling || _billingId != null))
-                ? () {
-                    final userId =
-                        context.read<AuthProvider>().user?.id?.toString();
+                  ? () {
+                    final userIdValue = context.read<AuthProvider>().user?.id;
+                    final userId = userIdValue?.toString();
                     if (userId == null) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(content: Text("Kullanıcı bulunamadı.")),
@@ -234,6 +236,17 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   Widget _addressSection() {
+    final addressIds = _addresses
+        .map((a) => _asInt(a["id"]))
+        .whereType<int>()
+        .toSet();
+    final selectedDeliveryId = addressIds.contains(_deliveryId)
+        ? _deliveryId
+        : (addressIds.isNotEmpty ? addressIds.first : null);
+    final selectedBillingId = addressIds.contains(_billingId)
+        ? _billingId
+        : (addressIds.isNotEmpty ? addressIds.first : null);
+
     if (_addresses.isEmpty) {
       return Container(
         padding: const EdgeInsets.all(16),
@@ -280,7 +293,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           const Text("Adres", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
           const SizedBox(height: 8),
           DropdownButtonFormField<int>(
-            value: _deliveryId,
+            value: selectedDeliveryId,
             items: _addresses
                 .map(
                   (a) => _asInt(a["id"]) == null
@@ -311,7 +324,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             const Text("Fatura Adresi", style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
             const SizedBox(height: 8),
             DropdownButtonFormField<int>(
-              value: _billingId,
+              value: selectedBillingId,
               items: _addresses
                   .map(
                     (a) => _asInt(a["id"]) == null
