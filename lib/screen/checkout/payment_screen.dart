@@ -86,7 +86,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
 
   Future<void> _loadSavedCards() async {
     final user = context.read<AuthProvider>().user;
-    final customer = user?.payUniqe?.trim();
+    final customer = _resolvePaymentCustomerId(user);
     if (customer == null || customer.isEmpty) {
       setState(() {
         _savedCards = const [];
@@ -118,6 +118,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
         _loadingSavedCards = false;
       });
     }
+  }
+
+  String? _resolvePaymentCustomerId(AppUser? user) {
+    if (user == null) return null;
+    final legacy = user.payUniqe?.trim();
+    if (legacy != null && legacy.isNotEmpty) return legacy;
+    return "Customer-${user.id}";
   }
 
   Future<void> _submit() async {
@@ -399,25 +406,61 @@ class _PaymentScreenState extends State<PaymentScreen> {
           .toList();
 
       if (directAccessItems.isNotEmpty) {
-        await _accessService.grantAccess(
-          userId: widget.userId,
-          items: directAccessItems,
-        );
+        try {
+          await _accessService.grantAccess(
+            userId: widget.userId,
+            items: directAccessItems,
+          );
+        } catch (e, st) {
+          unawaited(
+            AppErrorReporter.instance.reportException(
+              service: "PaymentScreen",
+              operation: "grantDirectAccess",
+              error: e,
+              stackTrace: st,
+              payload: {"orderId": orderId, "userId": widget.userId},
+            ),
+          );
+        }
       }
       if (newspaperAccessItems.isNotEmpty) {
         final synced = await _syncNewspaperSubscriptionWithRevenueCat(
           newspaperAccessItems: newspaperAccessItems,
         );
         if (!synced) {
-          await _accessService.grantAccess(
-            userId: widget.userId,
-            items: newspaperAccessItems,
-          );
+          try {
+            await _accessService.grantAccess(
+              userId: widget.userId,
+              items: newspaperAccessItems,
+            );
+          } catch (e, st) {
+            unawaited(
+              AppErrorReporter.instance.reportException(
+                service: "PaymentScreen",
+                operation: "grantNewspaperAccessFallback",
+                error: e,
+                stackTrace: st,
+                payload: {"orderId": orderId, "userId": widget.userId},
+              ),
+            );
+          }
         }
       }
 
       if (promoId != null) {
-        await _promoService.markUsed(promoId);
+        try {
+          await _promoService.markUsed(promoId);
+        } catch (e, st) {
+          unawaited(
+            AppErrorReporter.instance.reportException(
+              service: "PaymentScreen",
+              operation: "markPromoUsed",
+              error: e,
+              stackTrace: st,
+              payload: {"orderId": orderId, "promoId": promoId},
+            ),
+          );
+        }
       }
 
       try {
@@ -442,7 +485,19 @@ class _PaymentScreenState extends State<PaymentScreen> {
       if (mounted) {
         final uid = int.tryParse(widget.userId);
         if (uid != null) {
-          await accessProvider.load(uid);
+          try {
+            await accessProvider.load(uid, force: true);
+          } catch (e, st) {
+            unawaited(
+              AppErrorReporter.instance.reportException(
+                service: "PaymentScreen",
+                operation: "refreshAccessAfterPayment",
+                error: e,
+                stackTrace: st,
+                payload: {"orderId": orderId, "userId": widget.userId},
+              ),
+            );
+          }
         }
       }
 

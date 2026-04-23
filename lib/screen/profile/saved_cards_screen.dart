@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../services/payment_service.dart';
 import '../../services/auth/auth_provider.dart';
+import '../../models/app_user.dart';
 
 class SavedCardsScreen extends StatefulWidget {
   const SavedCardsScreen({super.key});
@@ -29,7 +30,7 @@ class _SavedCardsScreenState extends State<SavedCardsScreen> {
 
   Future<void> _fetchCards() async {
     final user = context.read<AuthProvider>().user;
-    final customerId = user?.payUniqe?.trim();
+    final customerId = _resolvePaymentCustomerId(user);
 
     if (customerId == null || customerId.isEmpty) {
       setState(() {
@@ -66,6 +67,13 @@ class _SavedCardsScreenState extends State<SavedCardsScreen> {
         });
       }
     }
+  }
+
+  String? _resolvePaymentCustomerId(AppUser? user) {
+    if (user == null) return null;
+    final legacy = user.payUniqe?.trim();
+    if (legacy != null && legacy.isNotEmpty) return legacy;
+    return "Customer-${user.id}";
   }
 
   Future<void> _deleteCard(SavedCard card) async {

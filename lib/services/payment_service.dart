@@ -106,22 +106,50 @@ class PaymentService {
     }
 
     final data = jsonDecode(resp.body) as Map<String, dynamic>;
+    final list = (data["cardList"] as List<dynamic>? ?? const []);
     final responseCode = data["responseCode"]?.toString();
     if (responseCode != null &&
         responseCode.isNotEmpty &&
         responseCode != "00") {
+      if (_looksLikeEmptyCardListResponse(data, list)) {
+        return const [];
+      }
       final msg =
           data["errorMsg"]?.toString() ??
           data["responseMsg"]?.toString() ??
           "Kayıtlı kartlar alınamadı.";
       throw PaymentSessionException(msg);
     }
-
-    final list = (data["cardList"] as List<dynamic>? ?? const []);
     return list
         .whereType<Map<String, dynamic>>()
         .map((json) => SavedCard.fromJson(json))
         .toList(growable: false);
+  }
+
+  bool _looksLikeEmptyCardListResponse(
+    Map<String, dynamic> data,
+    List<dynamic> list,
+  ) {
+    if (list.isEmpty) return true;
+    final joined = [
+      data["errorMsg"]?.toString(),
+      data["responseMsg"]?.toString(),
+      data["message"]?.toString(),
+    ].whereType<String>().join(" ").toLowerCase();
+    const markers = [
+      "kart bulunamadı",
+      "kayıtlı kart bulunamadı",
+      "kayıtlı kart yok",
+      "no card",
+      "no cards",
+      "card not found",
+      "customer not found",
+      "no record",
+      "no records",
+      "not found",
+      "empty",
+    ];
+    return markers.any(joined.contains);
   }
 
   Future<void> deleteCard({required String cardToken}) async {
