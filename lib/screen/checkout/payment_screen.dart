@@ -52,9 +52,11 @@ class _PaymentScreenState extends State<PaymentScreen> {
   final _expiryCtrl = TextEditingController();
   final _cvvCtrl = TextEditingController();
   final _cardNameCtrl = TextEditingController();
+  String? _checkoutMerchantPaymentId;
   bool _saveCard = false;
 
   bool _loading = false;
+  bool _submitInProgress = false;
   bool _loadingSavedCards = false;
   List<SavedCard> _savedCards = const [];
   bool _useSavedCard = false;
@@ -128,15 +130,22 @@ class _PaymentScreenState extends State<PaymentScreen> {
   }
 
   Future<void> _submit() async {
+    if (_submitInProgress) return;
+    _submitInProgress = true;
+
     if (_useSavedCard) {
       if (_savedCards.isEmpty) {
+        _submitInProgress = false;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("Kayıtlı kart bulunamadı.")),
         );
         return;
       }
     } else {
-      if (!_formKey.currentState!.validate()) return;
+      if (!_formKey.currentState!.validate()) {
+        _submitInProgress = false;
+        return;
+      }
     }
     FocusScope.of(context).unfocus();
     final cart = context.read<CartProvider>();
@@ -150,6 +159,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
       if (user == null) {
         throw Exception("Kullanici bilgisi bulunamadi.");
       }
+      _checkoutMerchantPaymentId ??= _buildMerchantPaymentId(user.id);
 
       String? cardToken;
       if (_useSavedCard) {
@@ -165,7 +175,6 @@ class _PaymentScreenState extends State<PaymentScreen> {
       final delivery = await _addressService.getAddressById(
         widget.deliveryAddressId,
       );
-      final merchantPaymentId = _buildMerchantPaymentId(user.id);
 
       final sessionPayload = _buildSessionPayload(
         user: user,
@@ -174,7 +183,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         billing: billing,
         delivery: delivery,
         items: cart.items,
-        merchantPaymentId: merchantPaymentId,
+        merchantPaymentId: _checkoutMerchantPaymentId!,
       );
       final sessionToken = await _paymentService.createSession(
         payload: sessionPayload,
@@ -193,7 +202,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         promoDiscountPercent: promo?.discountPercent,
         promoDiscountAmount: discountAmount,
         items: itemsPayload,
-        merchantPaymentId: merchantPaymentId,
+        merchantPaymentId: _checkoutMerchantPaymentId!,
         paymentSessionToken: sessionToken,
         paymentApproved: false,
       );
@@ -255,6 +264,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
           );
           if (mounted) {
             setState(() => _loading = false);
+            _submitInProgress = false;
             final msg =
                 immediateResult.errorMsg ??
                 immediateResult.message ??
@@ -306,7 +316,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         ),
       );
 
-      if (result == null || !result.success) {
+        if (result == null || !result.success) {
         unawaited(
           AppErrorReporter.instance.reportMessage(
             service: "PaymentScreen",
@@ -324,6 +334,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         );
         if (mounted) {
           setState(() => _loading = false);
+          _submitInProgress = false;
           final msg =
               result?.errorMsg ?? result?.message ?? "Odeme tamamlanamadi.";
           ScaffoldMessenger.of(
@@ -363,6 +374,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
     } catch (e) {
       if (mounted) {
         setState(() => _loading = false);
+        _submitInProgress = false;
         if (e is PaymentSessionException) {
           unawaited(
             AppErrorReporter.instance.reportMessage(
@@ -380,6 +392,8 @@ class _PaymentScreenState extends State<PaymentScreen> {
             context,
           ).showSnackBar(SnackBar(content: Text(parsed)));
         }
+      } else {
+        _submitInProgress = false;
       }
     }
   }
@@ -1129,7 +1143,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         child: SizedBox(
           height: 56,
           child: ElevatedButton(
-            onPressed: _loading ? null : _submit,
+            onPressed: (_loading || _submitInProgress) ? null : _submit,
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,
               foregroundColor: Colors.white,
