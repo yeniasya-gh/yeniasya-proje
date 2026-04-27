@@ -1,3 +1,5 @@
+import 'cart_item.dart';
+
 class PromoCode {
   final int id;
   final String code;
@@ -5,6 +7,7 @@ class PromoCode {
   final DateTime startsAt;
   final DateTime endsAt;
   final bool isActive;
+  final List<String> applicableCategories;
 
   PromoCode({
     required this.id,
@@ -13,17 +16,28 @@ class PromoCode {
     required this.startsAt,
     required this.endsAt,
     required this.isActive,
+    this.applicableCategories = const [],
   });
 
   factory PromoCode.fromMap(Map<String, dynamic> json) {
     return PromoCode(
-      id: json["id"] is int ? json["id"] as int : int.tryParse(json["id"]?.toString() ?? "") ?? 0,
+      id: json["id"] is int
+          ? json["id"] as int
+          : int.tryParse(json["id"]?.toString() ?? "") ?? 0,
       code: json["code"]?.toString() ?? "",
-      discountPercent:
-          (json["discount_percent"] is num) ? (json["discount_percent"] as num).toDouble() : double.tryParse(json["discount_percent"]?.toString() ?? "0") ?? 0,
-      startsAt: DateTime.tryParse(json["starts_at"]?.toString() ?? "") ?? DateTime.now(),
-      endsAt: DateTime.tryParse(json["ends_at"]?.toString() ?? "") ?? DateTime.now(),
-      isActive: json["is_active"] == null ? true : json["is_active"] == true || json["is_active"].toString() == "true",
+      discountPercent: (json["discount_percent"] is num)
+          ? (json["discount_percent"] as num).toDouble()
+          : double.tryParse(json["discount_percent"]?.toString() ?? "0") ?? 0,
+      startsAt:
+          DateTime.tryParse(json["starts_at"]?.toString() ?? "") ??
+          DateTime.now(),
+      endsAt:
+          DateTime.tryParse(json["ends_at"]?.toString() ?? "") ??
+          DateTime.now(),
+      isActive: json["is_active"] == null
+          ? true
+          : json["is_active"] == true || json["is_active"].toString() == "true",
+      applicableCategories: _readCategoryList(json["applicable_categories"]),
     );
   }
 
@@ -35,11 +49,80 @@ class PromoCode {
       "starts_at": startsAt.toIso8601String(),
       "ends_at": endsAt.toIso8601String(),
       "is_active": isActive,
+      "applicable_categories": applicableCategories,
     };
   }
 
   bool get isCurrentlyValid {
     final now = DateTime.now();
     return isActive && now.isAfter(startsAt) && now.isBefore(endsAt);
+  }
+
+  bool get hasCategoryRestriction => applicableCategories.isNotEmpty;
+
+  String get scopeLabel {
+    if (applicableCategories.isEmpty) return "Tümü";
+    return applicableCategories.map(_categoryLabel).join(", ");
+  }
+
+  bool isApplicableToItems(List<CartItem> items) {
+    if (applicableCategories.isEmpty) return true;
+    if (items.isEmpty) return false;
+
+    final allowed = applicableCategories.map(_normalizeCategory).toSet();
+    final itemCategories = items
+        .map(_cartItemCategory)
+        .whereType<String>()
+        .map(_normalizeCategory)
+        .toSet();
+    if (itemCategories.isEmpty) return false;
+
+    return itemCategories.difference(allowed).isEmpty;
+  }
+
+  static String? _cartItemCategory(CartItem item) {
+    switch (item.type) {
+      case CartItemType.book:
+        return "book";
+      case CartItemType.magazine:
+        return "magazine";
+      case CartItemType.magazineIssue:
+        return "magazine";
+      case CartItemType.newspaperSubscription:
+        return "subscription";
+      case CartItemType.supplement:
+        return "supplement";
+    }
+  }
+
+  static String _categoryLabel(String raw) {
+    switch (_normalizeCategory(raw)) {
+      case "book":
+        return "Kitap";
+      case "magazine":
+        return "Dergi";
+      case "subscription":
+        return "Abonelik";
+      case "supplement":
+        return "Ek";
+      default:
+        return raw;
+    }
+  }
+
+  static String _normalizeCategory(String raw) {
+    return raw.trim().toLowerCase();
+  }
+
+  static List<String> _readCategoryList(dynamic raw) {
+    if (raw is! Iterable) return const [];
+    final categories = raw
+        .map((value) => value?.toString().trim() ?? "")
+        .map(_normalizeCategory)
+        .where((value) => value.isNotEmpty)
+        .toSet()
+        .toList();
+    categories.sort();
+    return categories;
   }
 }

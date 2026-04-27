@@ -46,13 +46,23 @@ class _CartScreenState extends State<CartScreen> {
     });
 
     try {
-      final promo = await _promoService.validateAndGet(code);
+      final promo = await _promoService.validateAndGet(
+        code,
+        cartItems: cart.items,
+      );
       if (promo == null) {
         cart.clearPromo();
         setState(() => _promoMessage = "Kod bulunamadı veya geçersiz.");
         return;
       }
-      cart.applyPromo(promo);
+      if (!cart.applyPromo(promo)) {
+        cart.clearPromo();
+        setState(
+          () => _promoMessage =
+              "Promosyon kodu seçili ürünler için geçerli değil.",
+        );
+        return;
+      }
       setState(
         () => _promoMessage =
             "${promo.code} kodu uygulandı (%${promo.discountPercent.toStringAsFixed(0)}).",

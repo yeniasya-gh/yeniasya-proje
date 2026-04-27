@@ -15,6 +15,7 @@ class AdminPromoCodeService {
           is_active
           usage_limit
           usage_count
+          applicable_categories
           created_at
         }
       }
@@ -31,6 +32,7 @@ class AdminPromoCodeService {
     required DateTime endsAt,
     bool isActive = true,
     int? usageLimit,
+    List<String> applicableCategories = const [],
   }) async {
     const mutation = r'''
       mutation InsertPromoCode(
@@ -39,7 +41,8 @@ class AdminPromoCodeService {
         $starts_at: timestamptz!,
         $ends_at: timestamptz!,
         $is_active: Boolean!,
-        $usage_limit: Int
+        $usage_limit: Int,
+        $applicable_categories: [String!]
       ) {
         insert_promo_codes_one(object: {
           code: $code,
@@ -47,34 +50,39 @@ class AdminPromoCodeService {
           starts_at: $starts_at,
           ends_at: $ends_at,
           is_active: $is_active,
-          usage_limit: $usage_limit
+          usage_limit: $usage_limit,
+          applicable_categories: $applicable_categories
         }) { id }
       }
     ''';
 
-    await _hasura.graphQLRequest(query: mutation, variables: {
-      "code": code,
-      "discount_percent": discountPercent,
-      "starts_at": startsAt.toIso8601String(),
-      "ends_at": endsAt.toIso8601String(),
-      "is_active": isActive,
-      "usage_limit": usageLimit,
-    });
+    await _hasura.graphQLRequest(
+      query: mutation,
+      variables: {
+        "code": code,
+        "discount_percent": discountPercent,
+        "starts_at": startsAt.toIso8601String(),
+        "ends_at": endsAt.toIso8601String(),
+        "is_active": isActive,
+        "usage_limit": usageLimit,
+        "applicable_categories": applicableCategories,
+      },
+    );
 
     return true;
   }
 
-  Future<bool> toggleActive({
-    required int id,
-    required bool isActive,
-  }) async {
+  Future<bool> toggleActive({required int id, required bool isActive}) async {
     const mutation = r'''
       mutation TogglePromo($id: bigint!, $is_active: Boolean!) {
         update_promo_codes_by_pk(pk_columns: {id: $id}, _set: {is_active: $is_active}) { id }
       }
     ''';
 
-    await _hasura.graphQLRequest(query: mutation, variables: {"id": id, "is_active": isActive});
+    await _hasura.graphQLRequest(
+      query: mutation,
+      variables: {"id": id, "is_active": isActive},
+    );
     return true;
   }
 

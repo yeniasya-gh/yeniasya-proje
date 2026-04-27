@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:YeniAsya/models/cart_item.dart';
+import 'package:YeniAsya/models/promo_code.dart';
 import 'package:YeniAsya/services/cart/cart_provider.dart';
 
 CartItem _magazineCartItem({
@@ -44,6 +45,45 @@ void main() {
       expect(cart.addIfAbsent(threeMonth), isFalse);
       expect(cart.items, hasLength(1));
       expect(cart.items.first.subtitle, '1 Aylık');
+    });
+
+    test('uyumsuz promosyon sepet değişince otomatik temizlenir', () {
+      final cart = CartProvider();
+      final book = CartItem(
+        id: 'book-1',
+        title: 'İşte Hayatım',
+        imageUrl: '',
+        price: 100,
+        quantity: 1,
+        type: CartItemType.book,
+        metadata: {'productId': 1},
+      );
+      final magazine = CartItem(
+        id: 'mag-2',
+        title: 'Dergi',
+        imageUrl: '',
+        price: 50,
+        quantity: 1,
+        type: CartItemType.magazine,
+        metadata: {'productId': 2},
+      );
+      final promo = PromoCode(
+        id: 1,
+        code: 'KITAP10',
+        discountPercent: 10,
+        startsAt: DateTime(2026, 1, 1),
+        endsAt: DateTime(2027, 1, 1),
+        isActive: true,
+        applicableCategories: const ['book'],
+      );
+
+      expect(cart.addIfAbsent(book), isTrue);
+      expect(cart.applyPromo(promo), isTrue);
+      expect(cart.appliedPromo?.code, 'KITAP10');
+
+      expect(cart.addIfAbsent(magazine), isTrue);
+      expect(cart.appliedPromo, isNull);
+      expect(cart.discountAmount, 0);
     });
   });
 }

@@ -12,6 +12,13 @@ class AdminPromoCodesPage extends StatefulWidget {
 }
 
 class _AdminPromoCodesPageState extends State<AdminPromoCodesPage> {
+  static const _scopeOptions = [
+    ("Kitap", "book"),
+    ("Dergi", "magazine"),
+    ("Abonelik", "subscription"),
+    ("Ek", "supplement"),
+  ];
+
   final _service = AdminPromoCodeService();
   final _formKey = GlobalKey<FormState>();
   final _codeCtrl = TextEditingController();
@@ -19,6 +26,7 @@ class _AdminPromoCodesPageState extends State<AdminPromoCodesPage> {
   final _usageLimitCtrl = TextEditingController();
   DateTime? _startAt;
   DateTime? _endAt;
+  final List<String> _selectedScopes = [];
 
   bool _loading = true;
   bool _saving = false;
@@ -46,7 +54,9 @@ class _AdminPromoCodesPageState extends State<AdminPromoCodesPage> {
     } catch (e) {
       final parsed = ErrorManager.parseGraphQLError(e.toString());
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(parsed)));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(parsed)));
       }
     }
     setState(() => _loading = false);
@@ -55,11 +65,15 @@ class _AdminPromoCodesPageState extends State<AdminPromoCodesPage> {
   Future<void> _create() async {
     if (!_formKey.currentState!.validate()) return;
     if (_startAt == null || _endAt == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Başlangıç ve bitiş tarihi seçin")));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Başlangıç ve bitiş tarihi seçin")),
+      );
       return;
     }
     if (_startAt!.isAfter(_endAt!)) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Bitiş tarihi başlangıçtan sonra olmalı")));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Bitiş tarihi başlangıçtan sonra olmalı")),
+      );
       return;
     }
     setState(() => _saving = true);
@@ -69,7 +83,10 @@ class _AdminPromoCodesPageState extends State<AdminPromoCodesPage> {
         discountPercent: double.parse(_percentCtrl.text.trim()),
         startsAt: _startAt!,
         endsAt: _endAt!,
-        usageLimit: _usageLimitCtrl.text.trim().isEmpty ? null : int.parse(_usageLimitCtrl.text.trim()),
+        usageLimit: _usageLimitCtrl.text.trim().isEmpty
+            ? null
+            : int.parse(_usageLimitCtrl.text.trim()),
+        applicableCategories: List<String>.from(_selectedScopes),
       );
       _codeCtrl.clear();
       _percentCtrl.clear();
@@ -77,15 +94,20 @@ class _AdminPromoCodesPageState extends State<AdminPromoCodesPage> {
       setState(() {
         _startAt = null;
         _endAt = null;
+        _selectedScopes.clear();
       });
       await _load();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Promosyon kodu oluşturuldu")));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Promosyon kodu oluşturuldu")),
+        );
       }
     } catch (e) {
       final parsed = ErrorManager.parseGraphQLError(e.toString());
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(parsed)));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(parsed)));
       }
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -99,7 +121,9 @@ class _AdminPromoCodesPageState extends State<AdminPromoCodesPage> {
     } catch (e) {
       final parsed = ErrorManager.parseGraphQLError(e.toString());
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(parsed)));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(parsed)));
       }
     }
   }
@@ -109,12 +133,16 @@ class _AdminPromoCodesPageState extends State<AdminPromoCodesPage> {
       await _service.deletePromoCode(id);
       await _load();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Kod silindi")));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text("Kod silindi")));
       }
     } catch (e) {
       final parsed = ErrorManager.parseGraphQLError(e.toString());
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(parsed)));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(parsed)));
       }
     }
   }
@@ -127,7 +155,10 @@ class _AdminPromoCodesPageState extends State<AdminPromoCodesPage> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text("Promosyon Kodları", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+            const Text(
+              "Promosyon Kodları",
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+            ),
             IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
           ],
         ),
@@ -145,14 +176,23 @@ class _AdminPromoCodesPageState extends State<AdminPromoCodesPage> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(14),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8, offset: const Offset(0, 4))],
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Form(
         key: _formKey,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text("Yeni kod oluştur", style: TextStyle(fontWeight: FontWeight.w700)),
+            const Text(
+              "Yeni kod oluştur",
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
             const SizedBox(height: 12),
             Row(
               children: [
@@ -160,7 +200,8 @@ class _AdminPromoCodesPageState extends State<AdminPromoCodesPage> {
                   child: TextFormField(
                     controller: _codeCtrl,
                     decoration: const InputDecoration(labelText: "Kod"),
-                    validator: (v) => (v == null || v.trim().isEmpty) ? "Kod gerekli" : null,
+                    validator: (v) =>
+                        (v == null || v.trim().isEmpty) ? "Kod gerekli" : null,
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -172,7 +213,8 @@ class _AdminPromoCodesPageState extends State<AdminPromoCodesPage> {
                     validator: (v) {
                       final parsed = double.tryParse(v ?? "");
                       if (parsed == null) return "Geçerli oran girin";
-                      if (parsed <= 0 || parsed > 100) return "0-100 arası olmalı";
+                      if (parsed <= 0 || parsed > 100)
+                        return "0-100 arası olmalı";
                       return null;
                     },
                   ),
@@ -191,6 +233,36 @@ class _AdminPromoCodesPageState extends State<AdminPromoCodesPage> {
               ],
             ),
             const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: _scopeOptions.map((option) {
+                final label = option.$1;
+                final value = option.$2;
+                final selected = _selectedScopes.contains(value);
+                return FilterChip(
+                  label: Text(label),
+                  selected: selected,
+                  onSelected: (isSelected) {
+                    setState(() {
+                      if (isSelected) {
+                        if (!_selectedScopes.contains(value)) {
+                          _selectedScopes.add(value);
+                        }
+                      } else {
+                        _selectedScopes.remove(value);
+                      }
+                    });
+                  },
+                );
+              }).toList(),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              "Boş bırakırsanız tüm kategorilerde geçerli olur.",
+              style: TextStyle(color: Colors.grey.shade700, fontSize: 12),
+            ),
+            const SizedBox(height: 12),
             Row(
               children: [
                 Expanded(
@@ -201,7 +273,9 @@ class _AdminPromoCodesPageState extends State<AdminPromoCodesPage> {
                         labelText: "Başlangıç",
                         border: OutlineInputBorder(),
                       ),
-                      child: Text(_startAt == null ? "Seçiniz" : _formatDate(_startAt!)),
+                      child: Text(
+                        _startAt == null ? "Seçiniz" : _formatDate(_startAt!),
+                      ),
                     ),
                   ),
                 ),
@@ -214,7 +288,9 @@ class _AdminPromoCodesPageState extends State<AdminPromoCodesPage> {
                         labelText: "Bitiş",
                         border: OutlineInputBorder(),
                       ),
-                      child: Text(_endAt == null ? "Seçiniz" : _formatDate(_endAt!)),
+                      child: Text(
+                        _endAt == null ? "Seçiniz" : _formatDate(_endAt!),
+                      ),
                     ),
                   ),
                 ),
@@ -224,7 +300,10 @@ class _AdminPromoCodesPageState extends State<AdminPromoCodesPage> {
                   height: 48,
                   child: ElevatedButton(
                     onPressed: _saving ? null : _create,
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red,
+                      foregroundColor: Colors.white,
+                    ),
                     child: AnimatedBuilder(
                       animation: LoadingManager.instance,
                       builder: (_, __) {
@@ -232,7 +311,10 @@ class _AdminPromoCodesPageState extends State<AdminPromoCodesPage> {
                           return const SizedBox(
                             width: 18,
                             height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
                           );
                         }
                         return const Text("Kaydet");
@@ -262,7 +344,13 @@ class _AdminPromoCodesPageState extends State<AdminPromoCodesPage> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8, offset: const Offset(0, 4))],
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: LayoutBuilder(
         builder: (context, constraints) {
@@ -271,11 +359,14 @@ class _AdminPromoCodesPageState extends State<AdminPromoCodesPage> {
             child: ConstrainedBox(
               constraints: BoxConstraints(minWidth: constraints.maxWidth),
               child: DataTable(
-                headingRowColor: MaterialStateProperty.all(Colors.grey.shade100),
+                headingRowColor: MaterialStateProperty.all(
+                  Colors.grey.shade100,
+                ),
                 columnSpacing: 24,
                 dataRowHeight: 56,
                 columns: const [
                   DataColumn(label: Text("Kod")),
+                  DataColumn(label: Text("Kapsam")),
                   DataColumn(label: Text("%")),
                   DataColumn(label: Text("Başlangıç")),
                   DataColumn(label: Text("Bitiş")),
@@ -287,11 +378,14 @@ class _AdminPromoCodesPageState extends State<AdminPromoCodesPage> {
                   final id = p["id"];
                   final limit = p["usage_limit"];
                   final count = p["usage_count"] ?? 0;
-                  final usageText = (limit == null || limit == 0) ? "Limitsiz ($count)" : "$count / $limit";
+                  final usageText = (limit == null || limit == 0)
+                      ? "Limitsiz ($count)"
+                      : "$count / $limit";
 
                   return DataRow(
                     cells: [
                       DataCell(Text(p["code"]?.toString() ?? "")),
+                      DataCell(Text(_scopeLabel(p["applicable_categories"]))),
                       DataCell(Text("%${p["discount_percent"]}")),
                       DataCell(Text(_formatDateStr(p["starts_at"]))),
                       DataCell(Text(_formatDateStr(p["ends_at"]))),
@@ -315,9 +409,15 @@ class _AdminPromoCodesPageState extends State<AdminPromoCodesPage> {
                                     context: context,
                                     builder: (_) => AlertDialog(
                                       title: const Text("Kodu sil"),
-                                      content: const Text("Bu promosyon kodunu silmek istiyor musunuz?"),
+                                      content: const Text(
+                                        "Bu promosyon kodunu silmek istiyor musunuz?",
+                                      ),
                                       actions: [
-                                        TextButton(onPressed: () => Navigator.pop(context), child: const Text("İptal")),
+                                        TextButton(
+                                          onPressed: () =>
+                                              Navigator.pop(context),
+                                          child: const Text("İptal"),
+                                        ),
                                         TextButton(
                                           onPressed: () {
                                             Navigator.pop(context);
@@ -344,7 +444,9 @@ class _AdminPromoCodesPageState extends State<AdminPromoCodesPage> {
 
   Future<void> _pickDate({required bool isStart}) async {
     final now = DateTime.now();
-    final initial = isStart ? (_startAt ?? now) : (_endAt ?? now.add(const Duration(days: 7)));
+    final initial = isStart
+        ? (_startAt ?? now)
+        : (_endAt ?? now.add(const Duration(days: 7)));
     final picked = await showDatePicker(
       context: context,
       initialDate: initial,
@@ -370,5 +472,33 @@ class _AdminPromoCodesPageState extends State<AdminPromoCodesPage> {
     final parsed = DateTime.tryParse(raw?.toString() ?? "");
     if (parsed == null) return "-";
     return _formatDate(parsed);
+  }
+
+  String _scopeLabel(dynamic raw) {
+    final values = raw is Iterable
+        ? raw
+              .map((value) => value?.toString().trim() ?? "")
+              .where((value) => value.isNotEmpty)
+              .toSet()
+              .toList()
+              .cast<String>()
+        : <String>[];
+    if (values.isEmpty) return "Tümü";
+    return values.map((value) => _scopeDisplayLabel(value)).join(", ");
+  }
+
+  String _scopeDisplayLabel(String raw) {
+    switch (raw.trim().toLowerCase()) {
+      case "book":
+        return "Kitap";
+      case "magazine":
+        return "Dergi";
+      case "subscription":
+        return "Abonelik";
+      case "supplement":
+        return "Ek";
+      default:
+        return raw;
+    }
   }
 }

@@ -1,12 +1,14 @@
-import 'package:collection/collection.dart';
-
-import 'hasura_manager.dart';
+import '../models/cart_item.dart';
 import '../models/promo_code.dart';
+import 'hasura_manager.dart';
 
 class PromoCodeService {
   final _hasura = HasuraManager.instance;
 
-  Future<PromoCode?> validateAndGet(String rawCode) async {
+  Future<PromoCode?> validateAndGet(
+    String rawCode, {
+    List<CartItem> cartItems = const [],
+  }) async {
     final code = rawCode.trim();
     if (code.isEmpty) throw Exception("Kod boş olamaz");
 
@@ -21,13 +23,17 @@ class PromoCodeService {
           is_active
           usage_limit
           usage_count
+          applicable_categories
         }
       }
     ''';
 
-    final data = await _hasura.graphQLRequest(query: query, variables: {"code": code});
+    final data = await _hasura.graphQLRequest(
+      query: query,
+      variables: {"code": code},
+    );
     final list = List<Map<String, dynamic>>.from(data["promo_codes"] ?? []);
-    final found = list.firstOrNull;
+    final found = list.isEmpty ? null : list.first;
     if (found == null) return null;
 
     final promo = PromoCode.fromMap(found);
@@ -48,6 +54,10 @@ class PromoCodeService {
       if (parsedLimit != null && parsedCount >= parsedLimit) {
         throw Exception("Kod kullanım limiti dolmuş");
       }
+    }
+
+    if (!promo.isApplicableToItems(cartItems)) {
+      throw Exception("Promosyon kodu seçili ürünler için geçerli değil.");
     }
 
     return promo;

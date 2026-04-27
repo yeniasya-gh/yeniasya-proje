@@ -15,6 +15,7 @@ class CartProvider with ChangeNotifier {
 
   double get discountAmount {
     if (_promoCode == null) return 0;
+    if (!_promoCode!.isApplicableToItems(_items)) return 0;
     final value = totalPrice * (_promoCode!.discountPercent / 100);
     return value < 0 ? 0 : value;
   }
@@ -43,6 +44,7 @@ class CartProvider with ChangeNotifier {
     final index = _matchIndex(incoming);
     if (index >= 0) return false;
     _items.add(incoming.copyWith(quantity: 1));
+    _clearInvalidPromoIfNeeded();
     notifyListeners();
     return true;
   }
@@ -60,17 +62,13 @@ class CartProvider with ChangeNotifier {
     } else {
       _items[idx] = _items[idx].copyWith(quantity: 1);
     }
-    if (_items.isEmpty) {
-      _promoCode = null;
-    }
+    _clearInvalidPromoIfNeeded();
     notifyListeners();
   }
 
   void remove(String id) {
     _items.removeWhere((e) => e.id == id);
-    if (_items.isEmpty) {
-      _promoCode = null;
-    }
+    _clearInvalidPromoIfNeeded();
     notifyListeners();
   }
 
@@ -80,13 +78,24 @@ class CartProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  void applyPromo(PromoCode promoCode) {
+  bool applyPromo(PromoCode promoCode) {
+    if (!promoCode.isApplicableToItems(_items)) {
+      return false;
+    }
     _promoCode = promoCode;
     notifyListeners();
+    return true;
   }
 
   void clearPromo() {
     _promoCode = null;
     notifyListeners();
+  }
+
+  bool _clearInvalidPromoIfNeeded() {
+    if (_promoCode == null) return false;
+    if (_promoCode!.isApplicableToItems(_items)) return false;
+    _promoCode = null;
+    return true;
   }
 }
