@@ -673,4 +673,35 @@ class ContactService {
     );
     return true;
   }
+
+  Future<List<Map<String, dynamic>>> getMyMessages() async {
+    const query = r'''
+      query MyContactMessages {
+        contact_messages(order_by: [{created_at: desc}, {id: desc}]) {
+          id
+          subject
+          message
+          email
+          user_id
+          created_at
+          reply_message
+          reply_at
+          reply_admin_user_id
+          reply_user {
+            id
+            name
+            email
+            phone
+            role {
+              id
+              name
+            }
+          }
+        }
+      }
+    ''';
+
+    final data = await _hasura.graphQLRequest(query: query);
+    return List<Map<String, dynamic>>.from(data["contact_messages"] ?? []);
+  }
 }

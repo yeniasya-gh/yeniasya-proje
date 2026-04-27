@@ -30,6 +30,8 @@ class _ContactFormState extends State<ContactForm> {
   final _messageCtrl = TextEditingController();
   bool _loading = false;
   String? _selectedTopic;
+  String? _messagesFutureKey;
+  Future<List<Map<String, dynamic>>>? _messagesFuture;
 
   @override
   void dispose() {
@@ -62,6 +64,7 @@ class _ContactFormState extends State<ContactForm> {
         userId: userId,
         email: email,
       );
+      _invalidateMessagesCache();
       if (!mounted) return;
 
       if (widget.popOnSuccess) {
@@ -83,8 +86,28 @@ class _ContactFormState extends State<ContactForm> {
     }
   }
 
+  void _invalidateMessagesCache() {
+    _messagesFutureKey = null;
+    _messagesFuture = null;
+  }
+
+  Future<List<Map<String, dynamic>>>? _resolveMessagesFuture(dynamic user) {
+    if (user == null) return null;
+    final key =
+        "${user.id}|${(user.email ?? "").toString().trim().toLowerCase()}";
+    if (_messagesFutureKey != key) {
+      _messagesFutureKey = key;
+      _messagesFuture = ContactService().getMyMessages();
+    }
+    return _messagesFuture;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final auth = context.watch<AuthProvider>();
+    final currentUser = auth.user;
+    final messagesFuture = _resolveMessagesFuture(currentUser);
+
     return Form(
       key: _formKey,
       child: ListView(
@@ -191,8 +214,223 @@ class _ContactFormState extends State<ContactForm> {
                   : const Text("Gönder"),
             ),
           ),
+          if (currentUser != null) ...[
+            const SizedBox(height: 24),
+            _buildMyMessagesSection(messagesFuture),
+          ],
         ],
       ),
     );
+  }
+
+  Widget _buildMyMessagesSection(
+    Future<List<Map<String, dynamic>>>? messagesFuture,
+  ) {
+    if (messagesFuture == null) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              "Mesajlarım",
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+            ),
+            IconButton(
+              tooltip: "Yenile",
+              onPressed: _loading
+                  ? null
+                  : () {
+                      setState(_invalidateMessagesCache);
+                    },
+              icon: const Icon(Icons.refresh),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        FutureBuilder<List<Map<String, dynamic>>>(
+          future: messagesFuture,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Padding(
+                padding: EdgeInsets.symmetric(vertical: 12),
+                child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+              );
+            }
+            if (snapshot.hasError) {
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Text(
+                  "Mesajlar yüklenemedi.",
+                  style: TextStyle(color: Colors.red.shade700),
+                ),
+              );
+            }
+
+            final items = snapshot.data ?? const [];
+            if (items.isEmpty) {
+              return Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.grey.shade300),
+                ),
+                child: Text(
+                  "Henüz gönderdiğiniz mesaj yok.",
+                  style: TextStyle(color: Colors.grey.shade700),
+                ),
+              );
+            }
+
+            return Column(
+              children: items
+                  .map(
+                    (item) => Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: _contactMessageCard(item),
+                    ),
+                  )
+                  .toList(),
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _contactMessageCard(Map<String, dynamic> item) {
+    final reply = (item["reply_message"]?.toString() ?? "").trim();
+    final replyAt = _formatDateTime(item["reply_at"]);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.grey.shade300),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Text(
+                  _subjectOf(item),
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                _formatDateTime(item["created_at"]),
+                style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _messageOf(item),
+            style: TextStyle(color: Colors.grey.shade800, height: 1.4),
+          ),
+          const SizedBox(height: 12),
+          if (reply.isEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.orange.shade50,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.orange.shade200),
+              ),
+              child: Text(
+                "Henüz cevaplanmadı.",
+                style: TextStyle(
+                  color: Colors.orange.shade800,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            )
+          else
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.green.shade50,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.green.shade200),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.reply_outlined,
+                        size: 18,
+                        color: Colors.green.shade700,
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        replyAt.isEmpty
+                            ? "Cevaplandı"
+                            : "Cevaplandı • $replyAt",
+                        style: TextStyle(
+                          color: Colors.green.shade800,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    reply,
+                    style: TextStyle(color: Colors.green.shade900, height: 1.4),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  String _subjectOf(Map<String, dynamic> item) {
+    final raw = item["subject"]?.toString().trim() ?? "";
+    if (raw.isEmpty) return "Konu";
+    final match = RegExp(r"^\[(.+?)\]\s*(.*)$").firstMatch(raw);
+    if (match == null) return raw;
+    final subject = match.group(2)?.trim() ?? "";
+    return subject.isEmpty ? raw : subject;
+  }
+
+  String _messageOf(Map<String, dynamic> item) {
+    final body = (item["message"]?.toString() ?? "").trim();
+    if (body.isEmpty) return "(Mesaj içeriği boş)";
+    return body
+        .replaceFirst(RegExp(r"^Konu Türü:\s*.+?(?:\r?\n){1,2}"), "")
+        .trim();
+  }
+
+  String _formatDateTime(dynamic value) {
+    final parsed = DateTime.tryParse(value?.toString() ?? "")?.toLocal();
+    if (parsed == null) return "";
+    String two(int v) => v.toString().padLeft(2, "0");
+    return "${two(parsed.day)}.${two(parsed.month)}.${parsed.year} ${two(parsed.hour)}:${two(parsed.minute)}";
   }
 }

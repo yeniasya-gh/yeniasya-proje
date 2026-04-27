@@ -384,6 +384,7 @@ class _AdminContactMessagesPageState extends State<AdminContactMessagesPage> {
                         DataColumn(label: Text("Başlık")),
                         DataColumn(label: Text("Gönderen")),
                         DataColumn(label: Text("Mesaj")),
+                        DataColumn(label: Text("Durum")),
                         DataColumn(label: Text("Kaynak")),
                         DataColumn(label: Text("Aksiyon")),
                       ],
@@ -453,6 +454,7 @@ class _AdminContactMessagesPageState extends State<AdminContactMessagesPage> {
                                 ),
                               ),
                             ),
+                            DataCell(_replyStatusChip(item)),
                             DataCell(_sourceChip(_hasLinkedUser(item))),
                             DataCell(
                               Row(
@@ -561,115 +563,241 @@ class _AdminContactMessagesPageState extends State<AdminContactMessagesPage> {
   }
 
   Future<void> _openMessageDetail(Map<String, dynamic> item) async {
+    final messageId = _asInt(item["id"]);
+    if (messageId == null) return;
     final user = _userOf(item);
     final email = _emailOf(item);
     final messageBody = _messageBodyOf(item);
+    final existingReply = _replyMessageOf(item);
+    final replyAt = _replyAtOf(item);
+    final replyUser = _replyUserOf(item);
+    final replyCtrl = TextEditingController(text: existingReply);
+    var replying = false;
 
     await showDialog<void>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text("Mesaj #${item["id"] ?? "-"}"),
-        content: SizedBox(
-          width: 760,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    _topicChip(_topicOf(item)),
-                    _sourceChip(_hasLinkedUser(item)),
-                    _metaChip(
-                      Icons.schedule_outlined,
-                      _formatDateTime(item["created_at"]),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                _detailSection(
-                  "Başlık",
-                  SelectableText(
-                    _subjectOf(item),
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                _detailSection(
-                  "Gönderen",
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: Text("Mesaj #${item["id"] ?? "-"}"),
+          content: SizedBox(
+            width: 760,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
                     children: [
-                      SelectableText(_senderNameOf(item)),
-                      if (email.isNotEmpty) ...[
-                        const SizedBox(height: 4),
-                        SelectableText(email),
-                      ],
-                      if (_asInt(item["user_id"]) != null) ...[
-                        const SizedBox(height: 4),
-                        SelectableText("Kullanıcı ID: ${item["user_id"]}"),
-                      ],
-                      if ((user?["phone"]?.toString().trim() ?? "").isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 4),
-                          child: SelectableText("Telefon: ${user?["phone"]}"),
-                        ),
-                      if ((user?["role"]?.toString().trim() ?? "").isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 4),
-                          child: SelectableText("Rol: ${user?["role"]}"),
-                        ),
+                      _topicChip(_topicOf(item)),
+                      _sourceChip(_hasLinkedUser(item)),
+                      _replyStatusChip(item),
+                      _metaChip(
+                        Icons.schedule_outlined,
+                        _formatDateTime(item["created_at"]),
+                      ),
                     ],
                   ),
-                ),
-                const SizedBox(height: 12),
-                _detailSection(
-                  "Mesaj",
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade50,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.grey.shade300),
+                  const SizedBox(height: 16),
+                  _detailSection(
+                    "Başlık",
+                    SelectableText(
+                      _subjectOf(item),
+                      style: const TextStyle(fontWeight: FontWeight.w600),
                     ),
-                    child: SelectableText(messageBody),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 12),
+                  _detailSection(
+                    "Gönderen",
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SelectableText(_senderNameOf(item)),
+                        if (email.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          SelectableText(email),
+                        ],
+                        if (_asInt(item["user_id"]) != null) ...[
+                          const SizedBox(height: 4),
+                          SelectableText("Kullanıcı ID: ${item["user_id"]}"),
+                        ],
+                        if ((user?["phone"]?.toString().trim() ?? "")
+                            .isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: SelectableText("Telefon: ${user?["phone"]}"),
+                          ),
+                        if ((user?["role"]?.toString().trim() ?? "").isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: SelectableText("Rol: ${user?["role"]}"),
+                          ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _detailSection(
+                    "Mesaj",
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade50,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.grey.shade300),
+                      ),
+                      child: SelectableText(messageBody),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _detailSection(
+                    "Cevap",
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (existingReply.isNotEmpty)
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.green.shade50,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: Colors.green.shade200),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Icon(
+                                      Icons.reply_outlined,
+                                      size: 18,
+                                      color: Colors.green.shade700,
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      replyAt.isEmpty
+                                          ? "Cevaplandı"
+                                          : "Cevaplandı • $replyAt",
+                                      style: TextStyle(
+                                        color: Colors.green.shade800,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                if (replyUser != null) ...[
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    "Yanıtlayan: ${_replyUserLabel(replyUser)}",
+                                    style: TextStyle(
+                                      color: Colors.green.shade800,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                                const SizedBox(height: 8),
+                                SelectableText(
+                                  existingReply,
+                                  style: TextStyle(
+                                    color: Colors.green.shade900,
+                                    height: 1.4,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: replyCtrl,
+                          maxLines: 5,
+                          decoration: const InputDecoration(
+                            labelText: "Admin cevabı",
+                            hintText: "Bu mesaja verilecek yanıtı yazın",
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
+          actions: [
+            if (email.isNotEmpty)
+              TextButton.icon(
+                onPressed: () => _copyToClipboard(email, "E-posta kopyalandı."),
+                icon: const Icon(Icons.alternate_email),
+                label: const Text("E-postayı Kopyala"),
+              ),
+            TextButton.icon(
+              onPressed: () =>
+                  _copyToClipboard(messageBody, "Mesaj kopyalandı."),
+              icon: const Icon(Icons.copy_all_outlined),
+              label: const Text("Mesajı Kopyala"),
+            ),
+            if (user != null)
+              TextButton.icon(
+                onPressed: () {
+                  Navigator.pop(dialogContext);
+                  _openUserDetail(user);
+                },
+                icon: const Icon(Icons.person_search_outlined),
+                label: const Text("Kullanıcıya Git"),
+              ),
+            TextButton.icon(
+              onPressed: replying
+                  ? null
+                  : () async {
+                      final reply = replyCtrl.text.trim();
+                      if (reply.isEmpty) {
+                        _showSnack("Cevap boş olamaz.", isError: true);
+                        return;
+                      }
+                      setDialogState(() => replying = true);
+                      try {
+                        await _service.replyMessage(
+                          id: messageId,
+                          replyMessage: reply,
+                        );
+                        if (!dialogContext.mounted) return;
+                        Navigator.pop(dialogContext);
+                        await _load();
+                        _showSnack("Cevap kaydedildi.");
+                      } catch (error) {
+                        _showSnack(
+                          ErrorManager.parseGraphQLError(error.toString()),
+                          isError: true,
+                        );
+                      } finally {
+                        if (dialogContext.mounted) {
+                          setDialogState(() => replying = false);
+                        }
+                      }
+                    },
+              icon: replying
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.reply_outlined),
+              label: Text(
+                existingReply.isEmpty ? "Yanıtla" : "Yanıtı Güncelle",
+              ),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text("Kapat"),
+            ),
+          ],
         ),
-        actions: [
-          if (email.isNotEmpty)
-            TextButton.icon(
-              onPressed: () => _copyToClipboard(email, "E-posta kopyalandı."),
-              icon: const Icon(Icons.alternate_email),
-              label: const Text("E-postayı Kopyala"),
-            ),
-          TextButton.icon(
-            onPressed: () => _copyToClipboard(messageBody, "Mesaj kopyalandı."),
-            icon: const Icon(Icons.copy_all_outlined),
-            label: const Text("Mesajı Kopyala"),
-          ),
-          if (user != null)
-            TextButton.icon(
-              onPressed: () {
-                Navigator.pop(dialogContext);
-                _openUserDetail(user);
-              },
-              icon: const Icon(Icons.person_search_outlined),
-              label: const Text("Kullanıcıya Git"),
-            ),
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text("Kapat"),
-          ),
-        ],
       ),
     );
+
+    replyCtrl.dispose();
   }
 
   Future<void> _deleteMessage(Map<String, dynamic> item) async {
@@ -950,6 +1078,33 @@ class _AdminContactMessagesPageState extends State<AdminContactMessagesPage> {
     return cleaned.trim().isEmpty ? body : cleaned.trim();
   }
 
+  String _replyMessageOf(Map<String, dynamic> item) {
+    final reply = (item["reply_message"]?.toString() ?? "").trim();
+    return reply;
+  }
+
+  String _replyAtOf(Map<String, dynamic> item) {
+    final raw = item["reply_at"]?.toString().trim() ?? "";
+    if (raw.isEmpty) return "";
+    final parsed = DateTime.tryParse(raw)?.toLocal();
+    if (parsed == null) return "";
+    String two(int v) => v.toString().padLeft(2, "0");
+    return "${two(parsed.day)}.${two(parsed.month)}.${parsed.year} ${two(parsed.hour)}:${two(parsed.minute)}";
+  }
+
+  Map<String, dynamic>? _replyUserOf(Map<String, dynamic> item) {
+    final replyUser = item["reply_user"];
+    return replyUser is Map<String, dynamic> ? replyUser : null;
+  }
+
+  String _replyUserLabel(Map<String, dynamic> user) {
+    final name = user["name"]?.toString().trim() ?? "";
+    if (name.isNotEmpty) return name;
+    final email = user["email"]?.toString().trim() ?? "";
+    if (email.isNotEmpty) return email;
+    return "Admin";
+  }
+
   String _senderNameOf(Map<String, dynamic> item) {
     final user = _userOf(item);
     final userName = user?["name"]?.toString().trim() ?? "";
@@ -968,6 +1123,28 @@ class _AdminContactMessagesPageState extends State<AdminContactMessagesPage> {
   Map<String, dynamic>? _userOf(Map<String, dynamic> item) {
     final user = item["user"];
     return user is Map<String, dynamic> ? user : null;
+  }
+
+  Widget _replyStatusChip(Map<String, dynamic> item) {
+    final reply = _replyMessageOf(item);
+    final replied = reply.isNotEmpty;
+    final color = replied ? Colors.green : Colors.orange;
+    final label = replied ? "Cevaplandı" : "Bekliyor";
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontWeight: FontWeight.w700,
+          fontSize: 12,
+        ),
+      ),
+    );
   }
 
   DateTime? _dateOf(Map<String, dynamic> item) {

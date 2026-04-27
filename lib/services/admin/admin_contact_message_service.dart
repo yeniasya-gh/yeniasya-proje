@@ -37,6 +37,27 @@ class AdminContactMessageService {
     await _hasura.graphQLRequest(query: mutation, variables: {"id": id});
   }
 
+  Future<void> replyMessage({
+    required int id,
+    required String replyMessage,
+  }) async {
+    const mutation = r'''
+      mutation UpdateContactMessageReply($id: bigint!, $reply_message: String!) {
+        update_contact_messages_by_pk(
+          pk_columns: {id: $id},
+          _set: {reply_message: $reply_message}
+        ) {
+          id
+        }
+      }
+    ''';
+
+    await _hasura.graphQLRequest(
+      query: mutation,
+      variables: {"id": id, "reply_message": replyMessage},
+    );
+  }
+
   Future<List<Map<String, dynamic>>> _fetchMessages() async {
     const queryWithCreatedAt = r'''
       query AdminContactMessages {
@@ -47,6 +68,19 @@ class AdminContactMessageService {
           email
           user_id
           created_at
+          reply_message
+          reply_at
+          reply_admin_user_id
+          reply_user {
+            id
+            name
+            email
+            phone
+            role {
+              id
+              name
+            }
+          }
         }
       }
     ''';
@@ -65,6 +99,19 @@ class AdminContactMessageService {
             message
             email
             user_id
+            reply_message
+            reply_at
+            reply_admin_user_id
+            reply_user {
+              id
+              name
+              email
+              phone
+              role {
+                id
+                name
+              }
+            }
           }
         }
       ''';
