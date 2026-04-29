@@ -77,6 +77,26 @@ class ErrorManager {
       return "Sunucu yanıt vermedi. Lütfen tekrar deneyin.";
     }
 
+    // 📌 Promo code / campaign scope failures
+    if (msg.contains("promosyon kodu") &&
+        (msg.contains("geçerli değil") ||
+            msg.contains("uygun değil") ||
+            msg.contains("kullanılamaz"))) {
+      return "Bu promosyon kodu seçili ürün için kullanılamaz.";
+    }
+    if (msg.contains("promosyon kodu") &&
+        (msg.contains("bulunamadı") || msg.contains("geçersiz"))) {
+      return "Promosyon kodu bulunamadı veya geçersiz.";
+    }
+    if (msg.contains("kod kullanım limiti dolmuş") ||
+        msg.contains("kullanım limiti dolmuş")) {
+      return "Bu promosyon kodunun kullanım limiti doldu.";
+    }
+    if (msg.contains("kod henüz aktif değil") ||
+        msg.contains("henüz aktif değil")) {
+      return "Bu promosyon kodu henüz aktif değil.";
+    }
+
     // 📌 Payment / 3D secure failures
     if (msg.contains("err30002") ||
         msg.contains("responsecode\": \"99") ||
