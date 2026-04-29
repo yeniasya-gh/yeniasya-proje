@@ -42,6 +42,15 @@ class _AdminReviewsPageState extends State<AdminReviewsPage> {
     try {
       await _service.updateStatus(id: id, status: status);
       await _load();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              status == "published" ? "Yorum onaylandı" : "Yorum reddedildi",
+            ),
+          ),
+        );
+      }
     } catch (e) {
       final parsed = ErrorManager.parseGraphQLError(e.toString());
       if (mounted) {
@@ -136,7 +145,8 @@ class _AdminReviewsPageState extends State<AdminReviewsPage> {
                   DataColumn(label: Text("Aksiyon")),
                 ],
                 rows: _reviews.map((r) {
-                  final status = (r["status"] ?? "").toString();
+                  final status = (r["status"] ?? "").toString().trim().toLowerCase();
+                  final reviewId = _reviewIdOf(r);
                   return DataRow(
                     onSelectChanged: (_) => _openReviewDetail(r),
                     cells: [
@@ -188,22 +198,16 @@ class _AdminReviewsPageState extends State<AdminReviewsPage> {
                                 color: Colors.green,
                               ),
                               tooltip: "Onayla",
-                              onPressed: status == "published"
+                              onPressed: reviewId == null || status == "published"
                                   ? null
-                                  : () => _updateStatus(
-                                      r["id"] as int,
-                                      "published",
-                                    ),
+                                  : () => _updateStatus(reviewId, "published"),
                             ),
                             IconButton(
                               icon: const Icon(Icons.block, color: Colors.red),
                               tooltip: "Reddet",
-                              onPressed: status == "rejected"
+                              onPressed: reviewId == null || status == "rejected"
                                   ? null
-                                  : () => _updateStatus(
-                                      r["id"] as int,
-                                      "rejected",
-                                    ),
+                                  : () => _updateStatus(reviewId, "rejected"),
                             ),
                             IconButton(
                               icon: const Icon(
@@ -211,7 +215,9 @@ class _AdminReviewsPageState extends State<AdminReviewsPage> {
                                 color: Colors.black54,
                               ),
                               tooltip: "Sil",
-                              onPressed: () => _confirmDelete(r["id"] as int),
+                              onPressed: reviewId == null
+                                  ? null
+                                  : () => _confirmDelete(reviewId),
                             ),
                           ],
                         ),
@@ -228,9 +234,10 @@ class _AdminReviewsPageState extends State<AdminReviewsPage> {
   }
 
   Widget _statusChip(String status) {
+    final normalized = status.trim().toLowerCase();
     Color color;
     String label;
-    switch (status) {
+    switch (normalized) {
       case "published":
         color = Colors.green;
         label = "Onaylandı";
@@ -291,7 +298,7 @@ class _AdminReviewsPageState extends State<AdminReviewsPage> {
             .toString();
     final comment = review["comment"]?.toString().trim() ?? "-";
     final rating = review["rating"]?.toString() ?? "-";
-    final status = (review["status"] ?? "").toString();
+    final status = (review["status"] ?? "").toString().trim().toLowerCase();
 
     showDialog(
       context: context,
@@ -362,7 +369,7 @@ class _AdminReviewsPageState extends State<AdminReviewsPage> {
   }
 
   String _statusLabel(String status) {
-    switch (status) {
+    switch (status.trim().toLowerCase()) {
       case "published":
         return "Onaylandı";
       case "rejected":
@@ -393,5 +400,12 @@ class _AdminReviewsPageState extends State<AdminReviewsPage> {
         ],
       ),
     );
+  }
+
+  int? _reviewIdOf(Map<String, dynamic> review) {
+    final raw = review["id"];
+    if (raw is int) return raw;
+    if (raw is num) return raw.toInt();
+    return int.tryParse(raw?.toString() ?? "");
   }
 }
