@@ -33,6 +33,7 @@ class AuthProvider with ChangeNotifier {
   bool _sessionMonitorBusy = false;
   AuthLogoutReason? _lastLogoutReason;
   DateTime? _loginGraceUntil;
+  int _sessionMutationId = 0;
 
   Future<void> Function(AuthLogoutReason reason)? onLogout;
 
@@ -175,6 +176,10 @@ class AuthProvider with ChangeNotifier {
     );
   }
 
+  void _touchSessionMutation() {
+    _sessionMutationId += 1;
+  }
+
   Future<void> _clearLoginGracePeriod() async {
     _loginGraceUntil = null;
     final prefs = await SharedPreferences.getInstance();
@@ -199,6 +204,7 @@ class AuthProvider with ChangeNotifier {
     final expiresAt = _expiresAtFromPayload(data);
 
     await AuthTokenStore.save(token: token, expiresAt: expiresAt);
+    _touchSessionMutation();
     unawaited(AppErrorReporter.instance.flushPending());
 
     _user = null;
@@ -227,6 +233,7 @@ class AuthProvider with ChangeNotifier {
   }
 
   Future<void> loadSession() async {
+    final sessionMutationIdAtStart = _sessionMutationId;
     try {
       final prefs = await SharedPreferences.getInstance();
       await AuthTokenStore.load();
@@ -242,13 +249,22 @@ class AuthProvider with ChangeNotifier {
           !AuthTokenStore.isExpired;
 
       if (!hasValidToken) {
+        if (sessionMutationIdAtStart != _sessionMutationId) {
+          return;
+        }
         await _clearLoginGracePeriod();
+        if (sessionMutationIdAtStart != _sessionMutationId) {
+          return;
+        }
         await _activateGuestSession();
         return;
       }
 
       final rawUser = prefs.getString(keyUserJson);
       if (rawUser == null || rawUser.isEmpty) {
+        if (sessionMutationIdAtStart != _sessionMutationId) {
+          return;
+        }
         await _activateGuestSession(clearSavedUser: false);
         return;
       }
@@ -280,6 +296,9 @@ class AuthProvider with ChangeNotifier {
             );
             return;
           }
+          if (sessionMutationIdAtStart != _sessionMutationId) {
+            return;
+          }
           debugPrint("🔴 [Auth] stored session revoked during loadSession: $e");
           await logout(
             bootstrapGuest: false,
@@ -293,7 +312,13 @@ class AuthProvider with ChangeNotifier {
       // If stored auth data is stale/corrupted, clear it instead of crashing on launch.
       debugPrint("🔴 [Auth] loadSession failed, switching to guest: $e");
       try {
+        if (sessionMutationIdAtStart != _sessionMutationId) {
+          return;
+        }
         await _clearLoginGracePeriod();
+        if (sessionMutationIdAtStart != _sessionMutationId) {
+          return;
+        }
         await _activateGuestSession();
       } catch (guestError) {
         debugPrint("🔴 [Auth] guest session bootstrap failed: $guestError");
@@ -403,6 +428,7 @@ class AuthProvider with ChangeNotifier {
       final expiresAt = _expiresAtFromPayload(data);
 
       await AuthTokenStore.save(token: token, expiresAt: expiresAt);
+      _touchSessionMutation();
       _isLoggedIn = true;
       _user = user;
       await _saveSession(user: user, expiresAt: expiresAt);
@@ -723,6 +749,7 @@ class AuthProvider with ChangeNotifier {
         throw Exception("Token alınamadı.");
       }
       await AuthTokenStore.save(token: token, expiresAt: expiresAt);
+      _touchSessionMutation();
       _isLoggedIn = true;
       _user = user;
       await _saveSession(user: user, expiresAt: expiresAt);
@@ -770,6 +797,7 @@ class AuthProvider with ChangeNotifier {
       }
 
       await AuthTokenStore.save(token: token, expiresAt: expiresAt);
+      _touchSessionMutation();
       _isLoggedIn = true;
       _user = user;
       await _saveSession(user: user, expiresAt: expiresAt);
@@ -848,6 +876,7 @@ class AuthProvider with ChangeNotifier {
     AuthLogoutReason reason = AuthLogoutReason.manual,
     String? message,
   }) async {
+    _touchSessionMutation();
     NotificationService().clearRegisteredUser();
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(keyUserJson);
@@ -1042,6 +1071,7 @@ class AuthProvider with ChangeNotifier {
     final expiresAt =
         AuthTokenStore.expiresAt ?? DateTime.now().add(const Duration(days: 1));
     await _saveSession(user: user, expiresAt: expiresAt);
+    _touchSessionMutation();
     await _markLoginGracePeriod();
     _scheduleSessionMonitor();
     notifyListeners();

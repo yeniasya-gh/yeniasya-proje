@@ -13008,7 +13008,9 @@ _.e=null
 _.f=!1
 _.x=_.w=_.r=null
 _.y=!1
-_.as=_.Q=_.z=null
+_.Q=_.z=null
+_.as=0
+_.at=null
 _.dx$=0
 _.dy$=c
 _.fx$=_.fr$=0},
@@ -66339,7 +66341,7 @@ n=t.Q0
 m=t.tN
 l=new A.LO(new A.yl($.dz(),A.zG()),A.y(["book",A.bg(f),"magazine",A.bg(f),"magazine_issue",A.bg(f),g,A.bg(f),"ek",A.bg(f)],r,t.ik),A.y(["book",A.w(f,n),"magazine",A.w(f,n),"magazine_issue",A.w(f,n),g,A.w(f,n),"ek",A.w(f,n)],r,m),A.y(["book",A.w(f,n),"magazine",A.w(f,n),"magazine_issue",A.w(f,n),g,A.w(f,n),"ek",A.w(f,n)],r,m),q)
 m=A.bPA()
-p.as=new A.bLB(o,l,s)
+p.at=new A.bLB(o,l,s)
 q=A.ccz(new A.Mw(s,h),A.b([A.aC9(p,t.d),A.aC9(o,t.BW),A.aC9(l,t.N7),A.aC9(new A.T3(m,q),t.p7)],t.Ds))
 if($.av==null)A.c_5()
 f=$.av
@@ -88661,7 +88663,8 @@ if(n==null||n.length===0)throw A.d(A.aU("Guest token al\u0131namad\u0131."))
 m=q.Jq(o)
 s=7
 return A.c(A.vU(m,n),$async$u_)
-case 7:$.iW().G2()
+case 7:++q.as
+$.iW().G2()
 q.c=null
 q.d=!1
 q.e=null
@@ -88700,12 +88703,13 @@ break
 case 9:case 1:return A.i(q,r)
 case 2:return A.h(o.at(-1),r)}})
 return A.j($async$zM,r)},
-nG(){var s=0,r=A.k(t.H),q,p=2,o=[],n=this,m,l,k,j,i,h,g,f,e,d,c,b,a,a0,a1,a2,a3,a4,a5,a6,a7,a8,a9,b0
-var $async$nG=A.f(function(b1,b2){if(b1===1){o.push(b2)
-s=p}while(true)switch(s){case 0:p=4
+nG(){var s=0,r=A.k(t.H),q,p=2,o=[],n=this,m,l,k,j,i,h,g,f,e,d,c,b,a,a0,a1,a2,a3,a4,a5,a6,a7,a8,a9,b0,b1
+var $async$nG=A.f(function(b2,b3){if(b2===1){o.push(b3)
+s=p}while(true)switch(s){case 0:a8=n.as
+p=4
 s=7
 return A.c(A.jZ(),$async$nG)
-case 7:m=b2
+case 7:m=b3
 s=8
 return A.c(A.a3l(),$async$nG)
 case 8:l=A.ba(J.n(m.a,"auth_login_grace_until"))
@@ -88724,16 +88728,19 @@ b=!b}else b=a0
 a0=b}i=a0
 s=!i?9:10
 break
-case 9:s=11
+case 9:if(!J.l(a8,n.as)){s=1
+break}s=11
 return A.c(n.zq(),$async$nG)
-case 11:s=12
+case 11:if(!J.l(a8,n.as)){s=1
+break}s=12
 return A.c(n.ahK(),$async$nG)
 case 12:s=1
 break
 case 10:h=A.ba(J.n(m.a,"session_user_json"))
 s=h==null||h.length===0?13:14
 break
-case 13:s=15
+case 13:if(!J.l(a8,n.as)){s=1
+break}s=15
 return A.c(n.ahL(!1),$async$nG)
 case 15:s=1
 break
@@ -88767,12 +88774,13 @@ case 21:p=4
 s=19
 break
 case 17:p=16
-a8=o.pop()
-e=A.N(a8)
+a9=o.pop()
+e=A.N(a9)
 s=n.apt(e)?22:23
 break
 case 22:if(n.apw()){A.h4().$1("\ud83d\udd36 [Auth] stored session invalid during login grace period: "+A.t(e))
 s=1
+break}if(!J.l(a8,n.as)){s=1
 break}A.h4().$1("\ud83d\udd34 [Auth] stored session revoked during loadSession: "+A.t(e))
 s=24
 return A.c(n.oC(!1,u.o,B.la),$async$nG)
@@ -88786,20 +88794,22 @@ case 19:p=2
 s=6
 break
 case 4:p=3
-a9=o.pop()
-d=A.N(a9)
+b0=o.pop()
+d=A.N(b0)
 A.h4().$1("\ud83d\udd34 [Auth] loadSession failed, switching to guest: "+A.t(d))
 p=26
-s=29
+if(!J.l(a8,n.as)){s=1
+break}s=29
 return A.c(n.zq(),$async$nG)
-case 29:s=30
+case 29:if(!J.l(a8,n.as)){s=1
+break}s=30
 return A.c(n.ahK(),$async$nG)
 case 30:p=3
 s=28
 break
 case 26:p=25
-b0=o.pop()
-c=A.N(b0)
+b1=o.pop()
+c=A.N(b1)
 A.h4().$1("\ud83d\udd34 [Auth] guest session bootstrap failed: "+A.t(c))
 b=n.w
 if(b!=null)b.bc(0)
@@ -88886,7 +88896,8 @@ s=1
 break}j=n.Jq(m)
 s=8
 return A.c(A.vU(j,k),$async$u6)
-case 8:n.d=!0
+case 8:++n.as
+n.d=!0
 n.c=l
 s=9
 return A.c(n.ur(j,l),$async$u6)
@@ -89087,7 +89098,8 @@ j=n.Jq(m)
 if(k==null||k.length===0){h=A.aU("Token al\u0131namad\u0131.")
 throw A.d(h)}s=8
 return A.c(A.vU(j,k),$async$yg)
-case 8:n.d=!0
+case 8:++n.as
+n.d=!0
 n.c=l
 s=9
 return A.c(n.ur(j,l),$async$yg)
@@ -89144,7 +89156,8 @@ j=n.Jq(m)
 if(k==null||k.length===0){f=A.aU("Token al\u0131namad\u0131.")
 throw A.d(f)}s=8
 return A.c(A.vU(j,k),$async$r_)
-case 8:n.d=!0
+case 8:++n.as
+n.d=!0
 n.c=l
 s=9
 return A.c(n.ur(j,l),$async$r_)
@@ -89235,7 +89248,8 @@ oC(a,b,c){return this.bye(a,b,c)},
 aBL(){return this.oC(!0,null,B.XR)},
 bye(a,b,c){var s=0,r=A.k(t.H),q=1,p=[],o=this,n,m,l,k,j
 var $async$oC=A.f(function(d,e){if(d===1){p.push(e)
-s=q}while(true)switch(s){case 0:$.dz()
+s=q}while(true)switch(s){case 0:++o.as
+$.dz()
 A.hF()
 $.ccV=null
 s=2
@@ -89275,7 +89289,7 @@ s=12
 break
 case 9:s=1
 break
-case 12:case 8:l=o.as
+case 12:case 8:l=o.at
 s=l!=null?14:15
 break
 case 14:s=16
@@ -89474,7 +89488,8 @@ q.z=q.r=null
 p=$.MJ
 s=2
 return A.c(q.ur(p==null?new A.bf(Date.now(),0,!1).kL(864e8):p,a),$async$uu)
-case 2:s=3
+case 2:++q.as
+s=3
 return A.c(q.qo(),$async$uu)
 case 3:q.L2()
 q.a4()
