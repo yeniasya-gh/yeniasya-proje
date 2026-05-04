@@ -32,6 +32,7 @@ class AuthProvider with ChangeNotifier {
   Timer? _sessionMonitorTimer;
   bool _sessionMonitorBusy = false;
   AuthLogoutReason? _lastLogoutReason;
+  DateTime? _loginGraceUntil;
 
   Future<void> Function(AuthLogoutReason reason)? onLogout;
 
@@ -54,6 +55,7 @@ class AuthProvider with ChangeNotifier {
       _lastLogoutReason == AuthLogoutReason.accountDeleted;
 
   static const keyUserJson = "session_user_json";
+  static const keyLoginGraceUntil = "auth_login_grace_until";
 
   String _generateNonce([int length = 32]) {
     const charset =
@@ -156,6 +158,29 @@ class AuthProvider with ChangeNotifier {
         message.contains("unauthorized");
   }
 
+  bool _isWithinLoginGracePeriod() {
+    final graceUntil = _loginGraceUntil;
+    if (graceUntil == null) return false;
+    return DateTime.now().isBefore(graceUntil);
+  }
+
+  Future<void> _markLoginGracePeriod({
+    Duration duration = const Duration(minutes: 10),
+  }) async {
+    _loginGraceUntil = DateTime.now().add(duration);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      keyLoginGraceUntil,
+      _loginGraceUntil!.toIso8601String(),
+    );
+  }
+
+  Future<void> _clearLoginGracePeriod() async {
+    _loginGraceUntil = null;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(keyLoginGraceUntil);
+  }
+
   Future<void> _activateGuestSession({
     bool clearSavedUser = true,
     bool notify = true,
@@ -205,6 +230,9 @@ class AuthProvider with ChangeNotifier {
     try {
       final prefs = await SharedPreferences.getInstance();
       await AuthTokenStore.load();
+      final rawGraceUntil = prefs.getString(keyLoginGraceUntil);
+      _loginGraceUntil =
+          rawGraceUntil == null ? null : DateTime.tryParse(rawGraceUntil);
       final token = AuthTokenStore.token?.trim();
       final expiresAt = AuthTokenStore.expiresAt;
       final hasValidToken =
@@ -214,6 +242,7 @@ class AuthProvider with ChangeNotifier {
           !AuthTokenStore.isExpired;
 
       if (!hasValidToken) {
+        await _clearLoginGracePeriod();
         await _activateGuestSession();
         return;
       }
@@ -242,8 +271,15 @@ class AuthProvider with ChangeNotifier {
 
       try {
         await _authApi.getMe();
+        await _markLoginGracePeriod();
       } catch (e) {
         if (_isSessionInvalidError(e)) {
+          if (_isWithinLoginGracePeriod()) {
+            debugPrint(
+              "🔶 [Auth] stored session invalid during login grace period: $e",
+            );
+            return;
+          }
           debugPrint("🔴 [Auth] stored session revoked during loadSession: $e");
           await logout(
             bootstrapGuest: false,
@@ -257,6 +293,7 @@ class AuthProvider with ChangeNotifier {
       // If stored auth data is stale/corrupted, clear it instead of crashing on launch.
       debugPrint("🔴 [Auth] loadSession failed, switching to guest: $e");
       try {
+        await _clearLoginGracePeriod();
         await _activateGuestSession();
       } catch (guestError) {
         debugPrint("🔴 [Auth] guest session bootstrap failed: $guestError");
@@ -323,7 +360,11 @@ class AuthProvider with ChangeNotifier {
     _cancelSessionMonitor();
     if (!_isLoggedIn || _user == null) return;
 
-    _sessionMonitorTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+    final interval = kIsWeb
+        ? const Duration(seconds: 30)
+        : const Duration(seconds: 5);
+
+    _sessionMonitorTimer = Timer.periodic(interval, (_) {
       if (!_isLoggedIn || _user == null || _sessionMonitorBusy) return;
       _sessionMonitorBusy = true;
       unawaited(() async {
@@ -365,6 +406,7 @@ class AuthProvider with ChangeNotifier {
       _isLoggedIn = true;
       _user = user;
       await _saveSession(user: user, expiresAt: expiresAt);
+      await _markLoginGracePeriod();
       _scheduleExpiry(expiresAt);
       _scheduleSessionMonitor();
       await NotificationService().registerDeviceToken(
@@ -684,6 +726,7 @@ class AuthProvider with ChangeNotifier {
       _isLoggedIn = true;
       _user = user;
       await _saveSession(user: user, expiresAt: expiresAt);
+      await _markLoginGracePeriod();
       _scheduleExpiry(expiresAt);
       _scheduleSessionMonitor();
       await NotificationService().registerDeviceToken(
@@ -730,6 +773,7 @@ class AuthProvider with ChangeNotifier {
       _isLoggedIn = true;
       _user = user;
       await _saveSession(user: user, expiresAt: expiresAt);
+      await _markLoginGracePeriod();
       _scheduleExpiry(expiresAt);
       await NotificationService().registerDeviceToken(
         userId: user.id,
@@ -804,9 +848,11 @@ class AuthProvider with ChangeNotifier {
     AuthLogoutReason reason = AuthLogoutReason.manual,
     String? message,
   }) async {
+    NotificationService().clearRegisteredUser();
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(keyUserJson);
     await _clearUserLocalState(prefs);
+    await _clearLoginGracePeriod();
     _expiryTimer?.cancel();
     _expiryTimer = null;
     _cancelSessionMonitor();
@@ -839,11 +885,19 @@ class AuthProvider with ChangeNotifier {
       final updatedJson = await _authApi.getMe();
       final updatedUser = AppUser.fromAuthJson(updatedJson);
       if (_sameUser(current, updatedUser)) {
+        await _markLoginGracePeriod();
         return;
       }
       await _setCurrentUser(updatedUser);
+      await _markLoginGracePeriod();
     } catch (e) {
       if (_isSessionInvalidError(e)) {
+        if (_isWithinLoginGracePeriod()) {
+          debugPrint(
+            "🔶 [Auth] refreshUser invalid during login grace period: $e",
+          );
+          return;
+        }
         debugPrint("🔴 [Auth] refreshUser detected revoked session: $e");
         await logout(
           bootstrapGuest: false,
@@ -988,6 +1042,7 @@ class AuthProvider with ChangeNotifier {
     final expiresAt =
         AuthTokenStore.expiresAt ?? DateTime.now().add(const Duration(days: 1));
     await _saveSession(user: user, expiresAt: expiresAt);
+    await _markLoginGracePeriod();
     _scheduleSessionMonitor();
     notifyListeners();
   }
