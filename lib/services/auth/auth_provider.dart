@@ -9,7 +9,7 @@ import 'package:crypto/crypto.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import '../../models/app_user.dart';
 import 'auth_api_service.dart';
-import 'auth_token_store.dart';
+import 'auth_token_store.dart' show AuthTokenStore, AuthTokenKind;
 import 'user_service.dart';
 import '../error/app_error_reporter.dart';
 import '../notification_service.dart';
@@ -170,14 +170,17 @@ class AuthProvider with ChangeNotifier {
     bool notify = true,
   }) {
     return _runSerializedAuthMutation(() async {
-      // If a real user has already been authenticated (e.g. login completed
-      // while we were queued behind another mutation), do not overwrite the
-      // session with a guest token.
+      // Don't downgrade an authenticated session to guest. Both checks matter:
+      // in-memory state is the fast path; AuthTokenStore.isAuthenticated also
+      // catches the case where another tab/instance just persisted an auth
+      // token to localStorage but our in-memory state hasn't caught up.
       if (_isLoggedIn && _user != null) return;
+      if (AuthTokenStore.isAuthenticated) return;
 
       _cancelSessionMonitor();
       final prefs = await SharedPreferences.getInstance();
       if (_isLoggedIn && _user != null) return;
+      if (AuthTokenStore.isAuthenticated) return;
 
       if (clearSavedUser) {
         await prefs.remove(keyUserJson);
@@ -187,6 +190,7 @@ class AuthProvider with ChangeNotifier {
       // The guest token call is the longest await here; a concurrent login
       // can complete during this window. Re-check before mutating storage.
       if (_isLoggedIn && _user != null) return;
+      if (AuthTokenStore.isAuthenticated) return;
 
       final token = _tokenFromPayload(data);
       if (token == null || token.isEmpty) {
@@ -194,7 +198,14 @@ class AuthProvider with ChangeNotifier {
       }
       final expiresAt = _expiresAtFromPayload(data);
 
-      await AuthTokenStore.save(token: token, expiresAt: expiresAt);
+      // Storage layer also refuses guest writes over an existing auth token —
+      // last line of defence for any remaining race.
+      final saved = await AuthTokenStore.save(
+        token: token,
+        expiresAt: expiresAt,
+        kind: AuthTokenKind.guest,
+      );
+      if (!saved) return;
       unawaited(AppErrorReporter.instance.flushPending());
 
       _user = null;
@@ -229,19 +240,26 @@ class AuthProvider with ChangeNotifier {
       await AuthTokenStore.load();
       final token = AuthTokenStore.token?.trim();
       final expiresAt = AuthTokenStore.expiresAt;
+      final kind = AuthTokenStore.kind;
       final hasValidToken =
           token != null &&
           token.isNotEmpty &&
           expiresAt != null &&
           !AuthTokenStore.isExpired;
 
-      if (!hasValidToken) {
+      // Only restore an authenticated session when the stored kind says so.
+      // A leftover guest token from a previous session should fall through to
+      // the guest-bootstrap path, not pretend to be a logged-in user.
+      if (!hasValidToken || kind != AuthTokenKind.auth) {
         await _activateGuestSession();
         return;
       }
 
       final rawUser = prefs.getString(keyUserJson);
       if (rawUser == null || rawUser.isEmpty) {
+        // We have an auth token but lost the user payload — clear and restart
+        // as guest rather than leaving a half-restored session.
+        await AuthTokenStore.clear();
         await _activateGuestSession(clearSavedUser: false);
         return;
       }
@@ -384,7 +402,11 @@ class AuthProvider with ChangeNotifier {
         }
         final expiresAt = _expiresAtFromPayload(data);
 
-        await AuthTokenStore.save(token: token, expiresAt: expiresAt);
+        await AuthTokenStore.save(
+          token: token,
+          expiresAt: expiresAt,
+          kind: AuthTokenKind.auth,
+        );
         _isLoggedIn = true;
         _user = user;
         await _saveSession(user: user, expiresAt: expiresAt);
@@ -705,7 +727,11 @@ class AuthProvider with ChangeNotifier {
         if (token == null || token.isEmpty) {
           throw Exception("Token alınamadı.");
         }
-        await AuthTokenStore.save(token: token, expiresAt: expiresAt);
+        await AuthTokenStore.save(
+          token: token,
+          expiresAt: expiresAt,
+          kind: AuthTokenKind.auth,
+        );
         _isLoggedIn = true;
         _user = user;
         await _saveSession(user: user, expiresAt: expiresAt);
@@ -753,7 +779,11 @@ class AuthProvider with ChangeNotifier {
           throw Exception("Token alınamadı.");
         }
 
-        await AuthTokenStore.save(token: token, expiresAt: expiresAt);
+        await AuthTokenStore.save(
+          token: token,
+          expiresAt: expiresAt,
+          kind: AuthTokenKind.auth,
+        );
         _isLoggedIn = true;
         _user = user;
         await _saveSession(user: user, expiresAt: expiresAt);
@@ -933,7 +963,11 @@ class AuthProvider with ChangeNotifier {
         throw Exception("Token alınamadı.");
       }
 
-      await AuthTokenStore.save(token: token, expiresAt: expiresAt);
+      await AuthTokenStore.save(
+        token: token,
+        expiresAt: expiresAt,
+        kind: AuthTokenKind.auth,
+      );
       await _saveSession(user: updatedUser, expiresAt: expiresAt);
       await _setCurrentUser(updatedUser);
       _scheduleExpiry(expiresAt);
