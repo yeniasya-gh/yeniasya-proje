@@ -33,8 +33,6 @@ class AuthProvider with ChangeNotifier {
   bool _sessionMonitorBusy = false;
   AuthLogoutReason? _lastLogoutReason;
   DateTime? _loginGraceUntil;
-  int _sessionMutationId = 0;
-  Future<void> _authMutationTail = Future.value();
 
   Future<void> Function(AuthLogoutReason reason)? onLogout;
 
@@ -177,16 +175,6 @@ class AuthProvider with ChangeNotifier {
     );
   }
 
-  void _touchSessionMutation() {
-    _sessionMutationId += 1;
-  }
-
-  Future<T> _runSerializedAuthMutation<T>(Future<T> Function() action) {
-    final operation = _authMutationTail.then((_) => action());
-    _authMutationTail = operation.then((_) {}, onError: (_) {});
-    return operation;
-  }
-
   Future<void> _clearLoginGracePeriod() async {
     _loginGraceUntil = null;
     final prefs = await SharedPreferences.getInstance();
@@ -194,18 +182,6 @@ class AuthProvider with ChangeNotifier {
   }
 
   Future<void> _activateGuestSession({
-    bool clearSavedUser = true,
-    bool notify = true,
-  }) {
-    return _runSerializedAuthMutation(() async {
-      await _activateGuestSessionInternal(
-        clearSavedUser: clearSavedUser,
-        notify: notify,
-      );
-    });
-  }
-
-  Future<void> _activateGuestSessionInternal({
     bool clearSavedUser = true,
     bool notify = true,
   }) async {
@@ -223,7 +199,6 @@ class AuthProvider with ChangeNotifier {
     final expiresAt = _expiresAtFromPayload(data);
 
     await AuthTokenStore.save(token: token, expiresAt: expiresAt);
-    _touchSessionMutation();
     unawaited(AppErrorReporter.instance.flushPending());
 
     _user = null;
@@ -252,7 +227,6 @@ class AuthProvider with ChangeNotifier {
   }
 
   Future<void> loadSession() async {
-    final sessionMutationIdAtStart = _sessionMutationId;
     try {
       final prefs = await SharedPreferences.getInstance();
       await AuthTokenStore.load();
@@ -268,22 +242,13 @@ class AuthProvider with ChangeNotifier {
           !AuthTokenStore.isExpired;
 
       if (!hasValidToken) {
-        if (sessionMutationIdAtStart != _sessionMutationId) {
-          return;
-        }
         await _clearLoginGracePeriod();
-        if (sessionMutationIdAtStart != _sessionMutationId) {
-          return;
-        }
         await _activateGuestSession();
         return;
       }
 
       final rawUser = prefs.getString(keyUserJson);
       if (rawUser == null || rawUser.isEmpty) {
-        if (sessionMutationIdAtStart != _sessionMutationId) {
-          return;
-        }
         await _activateGuestSession(clearSavedUser: false);
         return;
       }
@@ -315,9 +280,6 @@ class AuthProvider with ChangeNotifier {
             );
             return;
           }
-          if (sessionMutationIdAtStart != _sessionMutationId) {
-            return;
-          }
           debugPrint("🔴 [Auth] stored session revoked during loadSession: $e");
           await logout(
             bootstrapGuest: false,
@@ -331,13 +293,7 @@ class AuthProvider with ChangeNotifier {
       // If stored auth data is stale/corrupted, clear it instead of crashing on launch.
       debugPrint("🔴 [Auth] loadSession failed, switching to guest: $e");
       try {
-        if (sessionMutationIdAtStart != _sessionMutationId) {
-          return;
-        }
         await _clearLoginGracePeriod();
-        if (sessionMutationIdAtStart != _sessionMutationId) {
-          return;
-        }
         await _activateGuestSession();
       } catch (guestError) {
         debugPrint("🔴 [Auth] guest session bootstrap failed: $guestError");
@@ -428,64 +384,61 @@ class AuthProvider with ChangeNotifier {
     required String email,
     required String name,
     String? phone,
-  }) {
-    return _runSerializedAuthMutation(() async {
-      try {
-        final data = await _authApi.socialLogin(
-          email: email,
-          provider: provider,
-          name: name,
-          phone: phone,
-        );
-        final user = AppUser.fromAuthJson(data["user"] as Map<String, dynamic>);
-        final token = _tokenFromPayload(data);
-        if (token == null || token.isEmpty) {
-          return SocialLoginResult(
-            error:
-                "${provider.toUpperCase()} girişi için token alınamadı. Lütfen tekrar deneyin.",
-          );
-        }
-        final expiresAt = _expiresAtFromPayload(data);
-
-        await AuthTokenStore.save(token: token, expiresAt: expiresAt);
-        _touchSessionMutation();
-        _isLoggedIn = true;
-        _user = user;
-        await _saveSession(user: user, expiresAt: expiresAt);
-        await _markLoginGracePeriod();
-        _scheduleExpiry(expiresAt);
-        _scheduleSessionMonitor();
-        await NotificationService().registerDeviceToken(
-          userId: user.id,
-          forceRefresh: true,
-        );
-        _needsEmailVerification = false;
-        _verificationEmailHint = null;
-        _lastLogoutReason = null;
-        _errorMessage = null;
-        notifyListeners();
-        return SocialLoginResult(user: user);
-      } catch (e) {
-        final msg = e.toString();
-        final lower = msg.toLowerCase();
-        if (msg.contains("SOCIAL_USER_NOT_FOUND") ||
-            msg.contains("USER_NOT_FOUND") ||
-            lower.contains("kullanıcı bulunamadı")) {
-          return SocialLoginResult(
-            draft: SocialDraft(
-              email: email,
-              name: name,
-              phone: phone,
-              provider: provider,
-            ),
-          );
-        }
+  }) async {
+    try {
+      final data = await _authApi.socialLogin(
+        email: email,
+        provider: provider,
+        name: name,
+        phone: phone,
+      );
+      final user = AppUser.fromAuthJson(data["user"] as Map<String, dynamic>);
+      final token = _tokenFromPayload(data);
+      if (token == null || token.isEmpty) {
         return SocialLoginResult(
           error:
-              "${provider.toUpperCase()} hesabı ile giriş tamamlanamadı. Lütfen tekrar deneyin.",
+              "${provider.toUpperCase()} girişi için token alınamadı. Lütfen tekrar deneyin.",
         );
       }
-    });
+      final expiresAt = _expiresAtFromPayload(data);
+
+      await AuthTokenStore.save(token: token, expiresAt: expiresAt);
+      _isLoggedIn = true;
+      _user = user;
+      await _saveSession(user: user, expiresAt: expiresAt);
+      await _markLoginGracePeriod();
+      _scheduleExpiry(expiresAt);
+      _scheduleSessionMonitor();
+      await NotificationService().registerDeviceToken(
+        userId: user.id,
+        forceRefresh: true,
+      );
+      _needsEmailVerification = false;
+      _verificationEmailHint = null;
+      _lastLogoutReason = null;
+      _errorMessage = null;
+      notifyListeners();
+      return SocialLoginResult(user: user);
+    } catch (e) {
+      final msg = e.toString();
+      final lower = msg.toLowerCase();
+      if (msg.contains("SOCIAL_USER_NOT_FOUND") ||
+          msg.contains("USER_NOT_FOUND") ||
+          lower.contains("kullanıcı bulunamadı")) {
+        return SocialLoginResult(
+          draft: SocialDraft(
+            email: email,
+            name: name,
+            phone: phone,
+            provider: provider,
+          ),
+        );
+      }
+      return SocialLoginResult(
+        error:
+            "${provider.toUpperCase()} hesabı ile giriş tamamlanamadı. Lütfen tekrar deneyin.",
+      );
+    }
   }
 
   Future<SocialLoginResult> signInWithGoogle() async {
@@ -754,109 +707,103 @@ class AuthProvider with ChangeNotifier {
     required String name,
     required String provider,
     String? phone,
-  }) {
-    return _runSerializedAuthMutation(() async {
-      try {
-        _errorMessage = null;
-        final data = await _authApi.socialRegister(
-          name: name,
-          email: email,
-          provider: provider,
-          phone: phone,
-        );
-        final user = AppUser.fromAuthJson(data["user"] as Map<String, dynamic>);
-        final token = _tokenFromPayload(data);
-        final expiresAt = _expiresAtFromPayload(data);
-        if (token == null || token.isEmpty) {
-          throw Exception("Token alınamadı.");
-        }
-        await AuthTokenStore.save(token: token, expiresAt: expiresAt);
-        _touchSessionMutation();
-        _isLoggedIn = true;
-        _user = user;
-        await _saveSession(user: user, expiresAt: expiresAt);
-        await _markLoginGracePeriod();
-        _scheduleExpiry(expiresAt);
-        _scheduleSessionMonitor();
-        await NotificationService().registerDeviceToken(
-          userId: user.id,
-          forceRefresh: true,
-        );
-        _needsEmailVerification = false;
-        _verificationEmailHint = null;
-        _lastLogoutReason = null;
-        _errorMessage = null;
-        notifyListeners();
-        return user;
-      } catch (e) {
-        _isLoggedIn = false;
-        _user = null;
-        _needsEmailVerification = false;
-        _verificationEmailHint = null;
-        _lastLogoutReason = null;
-        _errorMessage = e.toString().replaceFirst("Exception:", "").trim();
-        notifyListeners();
-        return null;
+  }) async {
+    try {
+      _errorMessage = null;
+      final data = await _authApi.socialRegister(
+        name: name,
+        email: email,
+        provider: provider,
+        phone: phone,
+      );
+      final user = AppUser.fromAuthJson(data["user"] as Map<String, dynamic>);
+      final token = _tokenFromPayload(data);
+      final expiresAt = _expiresAtFromPayload(data);
+      if (token == null || token.isEmpty) {
+        throw Exception("Token alınamadı.");
       }
-    });
+      await AuthTokenStore.save(token: token, expiresAt: expiresAt);
+      _isLoggedIn = true;
+      _user = user;
+      await _saveSession(user: user, expiresAt: expiresAt);
+      await _markLoginGracePeriod();
+      _scheduleExpiry(expiresAt);
+      _scheduleSessionMonitor();
+      await NotificationService().registerDeviceToken(
+        userId: user.id,
+        forceRefresh: true,
+      );
+      _needsEmailVerification = false;
+      _verificationEmailHint = null;
+      _lastLogoutReason = null;
+      _errorMessage = null;
+      notifyListeners();
+      return user;
+    } catch (e) {
+      _isLoggedIn = false;
+      _user = null;
+      _needsEmailVerification = false;
+      _verificationEmailHint = null;
+      _lastLogoutReason = null;
+      _errorMessage = e.toString().replaceFirst("Exception:", "").trim();
+      notifyListeners();
+      return null;
+    }
   }
 
   Future<AppUser?> login(
     String email,
     String password, {
     bool rememberMe = false,
-  }) {
-    return _runSerializedAuthMutation(() async {
-      _errorMessage = null;
-      _needsEmailVerification = false;
-      _verificationEmailHint = null;
-      try {
-        final data = await _authApi.login(email: email, password: password);
-        final user = AppUser.fromAuthJson(data["user"] as Map<String, dynamic>);
-        final token = _tokenFromPayload(data);
-        final expiresAt = _expiresAtFromPayload(data);
+  }) async {
+    _errorMessage = null;
+    _needsEmailVerification = false;
+    _verificationEmailHint = null;
+    try {
+      final data = await _authApi.login(email: email, password: password);
+      final user = AppUser.fromAuthJson(data["user"] as Map<String, dynamic>);
+      final token = _tokenFromPayload(data);
+      final expiresAt = _expiresAtFromPayload(data);
 
-        if (token == null || token.isEmpty) {
-          throw Exception("Token alınamadı.");
-        }
-
-        await AuthTokenStore.save(token: token, expiresAt: expiresAt);
-        _touchSessionMutation();
-        _isLoggedIn = true;
-        _user = user;
-        await _saveSession(user: user, expiresAt: expiresAt);
-        await _markLoginGracePeriod();
-        _scheduleExpiry(expiresAt);
-        await NotificationService().registerDeviceToken(
-          userId: user.id,
-          forceRefresh: true,
-        );
-
-        final prefs = await SharedPreferences.getInstance();
-        if (rememberMe) {
-          await prefs.setString("saved_email", email.trim().toLowerCase());
-        } else {
-          await prefs.remove("saved_email");
-        }
-      } catch (e) {
-        _isLoggedIn = false;
-        _user = null;
-        final msg = e.toString();
-        if (msg.contains("INVALID_CREDENTIALS")) {
-          _errorMessage = "E-posta veya şifre hatalı.";
-        } else if (msg.contains("EMAIL_NOT_VERIFIED")) {
-          _needsEmailVerification = true;
-          _verificationEmailHint = email.trim().toLowerCase();
-          _errorMessage =
-              "Hesabınızı onaylayın. E-posta adresinize gönderilen bağlantı ile hesabınızı aktifleştirin.";
-        } else {
-          _errorMessage = e.toString().replaceFirst("Exception:", "").trim();
-        }
+      if (token == null || token.isEmpty) {
+        throw Exception("Token alınamadı.");
       }
 
-      notifyListeners();
-      return _user;
-    });
+      await AuthTokenStore.save(token: token, expiresAt: expiresAt);
+      _isLoggedIn = true;
+      _user = user;
+      await _saveSession(user: user, expiresAt: expiresAt);
+      await _markLoginGracePeriod();
+      _scheduleExpiry(expiresAt);
+      await NotificationService().registerDeviceToken(
+        userId: user.id,
+        forceRefresh: true,
+      );
+
+      final prefs = await SharedPreferences.getInstance();
+      if (rememberMe) {
+        await prefs.setString("saved_email", email.trim().toLowerCase());
+      } else {
+        await prefs.remove("saved_email");
+      }
+    } catch (e) {
+      _isLoggedIn = false;
+      _user = null;
+      final msg = e.toString();
+      if (msg.contains("INVALID_CREDENTIALS")) {
+        _errorMessage = "E-posta veya şifre hatalı.";
+      } else if (msg.contains("EMAIL_NOT_VERIFIED")) {
+        _needsEmailVerification = true;
+        _verificationEmailHint = email.trim().toLowerCase();
+        _errorMessage =
+            "Hesabınızı onaylayın. E-posta adresinize gönderilen bağlantı ile hesabınızı aktifleştirin.";
+      } else {
+        _errorMessage = e.toString().replaceFirst("Exception:", "").trim();
+      }
+    }
+
+    notifyListeners();
+    return _user;
   }
 
   Future<bool> register({
@@ -901,7 +848,6 @@ class AuthProvider with ChangeNotifier {
     AuthLogoutReason reason = AuthLogoutReason.manual,
     String? message,
   }) async {
-    _touchSessionMutation();
     NotificationService().clearRegisteredUser();
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(keyUserJson);
@@ -1096,7 +1042,6 @@ class AuthProvider with ChangeNotifier {
     final expiresAt =
         AuthTokenStore.expiresAt ?? DateTime.now().add(const Duration(days: 1));
     await _saveSession(user: user, expiresAt: expiresAt);
-    _touchSessionMutation();
     await _markLoginGracePeriod();
     _scheduleSessionMonitor();
     notifyListeners();
