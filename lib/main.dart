@@ -107,7 +107,11 @@ class _AppBootstrapState extends State<AppBootstrap>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _ready = kIsWeb;
+    // Wait for _bootstrap() to finish before rendering. Previously web rendered
+    // immediately while loadSession() ran in parallel, which let the user click
+    // "Giriş Yap" mid-bootstrap and made login race with the guest-token call —
+    // whichever resolved last won AuthTokenStore, leaving the auth token
+    // overwritten by guest and graphql 401-ing.
     _authProvider = context.read<AuthProvider>();
     _authProvider?.removeListener(_handleAuthChanged);
     _authProvider?.addListener(_handleAuthChanged);
