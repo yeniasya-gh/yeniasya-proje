@@ -94,6 +94,10 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _primePostLoginState() async {
+    if (kIsWeb) {
+      debugPrint("🔵 [Login] skip post-login prime on web");
+      return;
+    }
     final user = context.read<AuthProvider>().user;
     if (user == null) return;
     try {
@@ -114,7 +118,7 @@ class _LoginScreenState extends State<LoginScreen> {
       final result = await auth.signInWithGoogle();
 
       if (result.user != null) {
-        await _primePostLoginState();
+        unawaited(_primePostLoginState());
         _goHome();
         return;
       }
@@ -131,7 +135,7 @@ class _LoginScreenState extends State<LoginScreen> {
           builder: (_) => SocialRegisterBottomSheet(draft: result.draft!),
         );
         if (completed == true && mounted) {
-          await _primePostLoginState();
+          unawaited(_primePostLoginState());
           _goHome();
         }
         return;
@@ -432,15 +436,15 @@ class _LoginScreenState extends State<LoginScreen> {
                                     ? () async {
                                         setState(() => isLoading = true);
                                         try {
-                                          await auth.login(
-                                            emailCtrl.text.trim(),
-                                            passwordCtrl.text.trim(),
-                                            rememberMe: rememberMe,
-                                          );
-                                          if (auth.isLoggedIn) {
-                                            await _primePostLoginState();
-                                            _goHome();
-                                          }
+                                        await auth.login(
+                                          emailCtrl.text.trim(),
+                                          passwordCtrl.text.trim(),
+                                          rememberMe: rememberMe,
+                                        );
+                                        if (auth.isLoggedIn) {
+                                          unawaited(_primePostLoginState());
+                                          _goHome();
+                                        }
                                         } finally {
                                           if (mounted) {
                                             setState(() => isLoading = false);

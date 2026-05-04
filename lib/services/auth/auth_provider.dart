@@ -31,7 +31,9 @@ class AuthProvider with ChangeNotifier {
   Timer? _expiryTimer;
   Timer? _sessionMonitorTimer;
   bool _sessionMonitorBusy = false;
+  bool _authTransitionInProgress = false;
   AuthLogoutReason? _lastLogoutReason;
+  static const keyAuthLoginGraceUntil = "auth_login_grace_until";
 
   Future<void> Function(AuthLogoutReason reason)? onLogout;
 
@@ -54,6 +56,26 @@ class AuthProvider with ChangeNotifier {
       _lastLogoutReason == AuthLogoutReason.accountDeleted;
 
   static const keyUserJson = "session_user_json";
+  static const keyAuthPendingLogin = "auth_pending_login";
+
+  Future<void> _setAuthLoginGrace(SharedPreferences prefs) async {
+    await prefs.setInt(
+      keyAuthLoginGraceUntil,
+      DateTime.now()
+          .add(const Duration(seconds: 30))
+          .millisecondsSinceEpoch,
+    );
+  }
+
+  bool _isAuthLoginGraceActive(SharedPreferences prefs) {
+    final raw = prefs.getInt(keyAuthLoginGraceUntil);
+    if (raw == null || raw <= 0) return false;
+    return DateTime.now().millisecondsSinceEpoch < raw;
+  }
+
+  Future<void> _clearAuthLoginGrace(SharedPreferences prefs) async {
+    await prefs.remove(keyAuthLoginGraceUntil);
+  }
 
   String _generateNonce([int length = 32]) {
     const charset =
@@ -159,14 +181,47 @@ class AuthProvider with ChangeNotifier {
   Future<void> _activateGuestSession({
     bool clearSavedUser = true,
     bool notify = true,
+    String? expectedToken,
+    String source = "unknown",
   }) async {
+    if (_user != null || _isLoggedIn) {
+      debugPrint(
+        "🔵 [Auth] activateGuestSession skipped source=$source because authenticated user already exists",
+      );
+      return;
+    }
+    final tokenAtStart = expectedToken ?? AuthTokenStore.token?.trim();
+    debugPrint(
+      "🔵 [Auth] activateGuestSession start source=$source inProgress=$_authTransitionInProgress token=${tokenAtStart ?? 'null'}",
+    );
+    if (_authTransitionInProgress) return;
     _cancelSessionMonitor();
     final prefs = await SharedPreferences.getInstance();
+    if (_isAuthLoginGraceActive(prefs)) {
+      debugPrint(
+        "🔵 [Auth] activateGuestSession skipped source=$source because auth login grace is active",
+      );
+      return;
+    }
+    if (prefs.getBool(keyAuthPendingLogin) == true) {
+      debugPrint(
+        "🔵 [Auth] activateGuestSession skipped source=$source because pending login exists",
+      );
+      return;
+    }
     if (clearSavedUser) {
       await prefs.remove(keyUserJson);
     }
 
     final data = await _authApi.guestToken();
+    if (_authTransitionInProgress ||
+        _hasAuthTokenChanged(tokenAtStart) ||
+        prefs.getBool(keyAuthPendingLogin) == true) {
+      debugPrint(
+        "🔵 [Auth] activateGuestSession aborted source=$source inProgress=$_authTransitionInProgress tokenChanged=${_hasAuthTokenChanged(tokenAtStart)} pendingLogin=${prefs.getBool(keyAuthPendingLogin) == true}",
+      );
+      return;
+    }
     final token = _tokenFromPayload(data);
     if (token == null || token.isEmpty) {
       throw Exception("Guest token alınamadı.");
@@ -184,6 +239,7 @@ class AuthProvider with ChangeNotifier {
     _lastLogoutReason = null;
     _scheduleExpiry(expiresAt);
     if (notify) notifyListeners();
+    debugPrint("🟢 [Auth] activateGuestSession applied source=$source");
   }
 
   Future<void> _handleTokenExpiry() async {
@@ -192,7 +248,10 @@ class AuthProvider with ChangeNotifier {
       return;
     }
     try {
-      await _activateGuestSession(clearSavedUser: false);
+      await _activateGuestSession(
+        clearSavedUser: false,
+        source: "handleTokenExpiry",
+      );
     } catch (e) {
       debugPrint("🔴 [Auth] guest token refresh failed: $e");
       await AuthTokenStore.clear();
@@ -202,25 +261,67 @@ class AuthProvider with ChangeNotifier {
   }
 
   Future<void> loadSession() async {
+    String? tokenAtStart;
     try {
+      debugPrint("🔵 [Auth] loadSession start");
       final prefs = await SharedPreferences.getInstance();
+      if (prefs.getBool(keyAuthPendingLogin) == true) {
+        debugPrint("🔵 [Auth] loadSession skipped because pending login exists");
+        return;
+      }
       await AuthTokenStore.load();
       final token = AuthTokenStore.token?.trim();
+      tokenAtStart = token;
       final expiresAt = AuthTokenStore.expiresAt;
       final hasValidToken =
           token != null &&
           token.isNotEmpty &&
           expiresAt != null &&
           !AuthTokenStore.isExpired;
+      final authLoginGraceActive = _isAuthLoginGraceActive(prefs);
+      debugPrint(
+        "🔵 [Auth] loadSession token=${token ?? 'null'} hasValidToken=$hasValidToken inProgress=$_authTransitionInProgress grace=$authLoginGraceActive",
+      );
 
       if (!hasValidToken) {
-        await _activateGuestSession();
+        if (authLoginGraceActive) {
+          debugPrint(
+            "🔵 [Auth] loadSession skip guest (invalid token) because auth login grace is active",
+          );
+          return;
+        }
+        if (_authTransitionInProgress || _hasAuthTokenChanged(tokenAtStart)) {
+          debugPrint(
+            "🔵 [Auth] loadSession skip guest (invalid token) inProgress=$_authTransitionInProgress tokenChanged=${_hasAuthTokenChanged(tokenAtStart)}",
+          );
+          return;
+        }
+        await _activateGuestSession(
+          expectedToken: tokenAtStart,
+          source: "loadSession_invalid_token",
+        );
         return;
       }
 
       final rawUser = prefs.getString(keyUserJson);
       if (rawUser == null || rawUser.isEmpty) {
-        await _activateGuestSession(clearSavedUser: false);
+        if (authLoginGraceActive) {
+          debugPrint(
+            "🔵 [Auth] loadSession skip guest (missing user) because auth login grace is active",
+          );
+          return;
+        }
+        if (_authTransitionInProgress || _hasAuthTokenChanged(tokenAtStart)) {
+          debugPrint(
+            "🔵 [Auth] loadSession skip guest (missing user) inProgress=$_authTransitionInProgress tokenChanged=${_hasAuthTokenChanged(tokenAtStart)}",
+          );
+          return;
+        }
+        await _activateGuestSession(
+          clearSavedUser: false,
+          expectedToken: tokenAtStart,
+          source: "loadSession_missing_user",
+        );
         return;
       }
 
@@ -232,18 +333,33 @@ class AuthProvider with ChangeNotifier {
       final userMap = Map<String, dynamic>.from(decoded);
       _user = AppUser.fromJson(userMap);
       _isLoggedIn = true;
+      debugPrint(
+        "🟢 [Auth] loadSession applied user=${_user?.id} tokenChanged=${_hasAuthTokenChanged(tokenAtStart)} inProgress=$_authTransitionInProgress",
+      );
       _errorMessage = null;
       _needsEmailVerification = false;
       _verificationEmailHint = null;
 
+      if (_authTransitionInProgress || _hasAuthTokenChanged(tokenAtStart)) {
+        return;
+      }
       _scheduleExpiry(expiresAt);
       _scheduleSessionMonitor();
       notifyListeners();
 
+      if (_authTransitionInProgress || _hasAuthTokenChanged(tokenAtStart)) {
+        return;
+      }
       try {
         await _authApi.getMe();
       } catch (e) {
         if (_isSessionInvalidError(e)) {
+          if (_authTransitionInProgress || _hasAuthTokenChanged(tokenAtStart)) {
+            debugPrint(
+              "🔵 [Auth] loadSession skip logout after invalid session due transition inProgress=$_authTransitionInProgress tokenChanged=${_hasAuthTokenChanged(tokenAtStart)}",
+            );
+            return;
+          }
           debugPrint("🔴 [Auth] stored session revoked during loadSession: $e");
           await logout(
             bootstrapGuest: false,
@@ -257,7 +373,16 @@ class AuthProvider with ChangeNotifier {
       // If stored auth data is stale/corrupted, clear it instead of crashing on launch.
       debugPrint("🔴 [Auth] loadSession failed, switching to guest: $e");
       try {
-        await _activateGuestSession();
+        if (_authTransitionInProgress || _hasAuthTokenChanged(tokenAtStart)) {
+          debugPrint(
+            "🔵 [Auth] loadSession skip guest after error inProgress=$_authTransitionInProgress tokenChanged=${_hasAuthTokenChanged(tokenAtStart)}",
+          );
+          return;
+        }
+        await _activateGuestSession(
+          expectedToken: tokenAtStart,
+          source: "loadSession_error",
+        );
       } catch (guestError) {
         debugPrint("🔴 [Auth] guest session bootstrap failed: $guestError");
         _expiryTimer?.cancel();
@@ -271,6 +396,11 @@ class AuthProvider with ChangeNotifier {
         notifyListeners();
       }
     }
+  }
+
+  bool _hasAuthTokenChanged(String? tokenAtStart) {
+    final current = AuthTokenStore.token?.trim();
+    return current != tokenAtStart;
   }
 
   Future<void> _saveSession({
@@ -344,6 +474,9 @@ class AuthProvider with ChangeNotifier {
     required String name,
     String? phone,
   }) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(keyAuthPendingLogin, true);
+    _authTransitionInProgress = true;
     try {
       final data = await _authApi.socialLogin(
         email: email,
@@ -365,6 +498,7 @@ class AuthProvider with ChangeNotifier {
       _isLoggedIn = true;
       _user = user;
       await _saveSession(user: user, expiresAt: expiresAt);
+      await _setAuthLoginGrace(prefs);
       _scheduleExpiry(expiresAt);
       _scheduleSessionMonitor();
       await NotificationService().registerDeviceToken(
@@ -396,6 +530,10 @@ class AuthProvider with ChangeNotifier {
         error:
             "${provider.toUpperCase()} hesabı ile giriş tamamlanamadı. Lütfen tekrar deneyin.",
       );
+    } finally {
+      _authTransitionInProgress = false;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(keyAuthPendingLogin);
     }
   }
 
@@ -666,6 +804,8 @@ class AuthProvider with ChangeNotifier {
     required String provider,
     String? phone,
   }) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(keyAuthPendingLogin, true);
     try {
       _errorMessage = null;
       final data = await _authApi.socialRegister(
@@ -684,6 +824,7 @@ class AuthProvider with ChangeNotifier {
       _isLoggedIn = true;
       _user = user;
       await _saveSession(user: user, expiresAt: expiresAt);
+      await _setAuthLoginGrace(prefs);
       _scheduleExpiry(expiresAt);
       _scheduleSessionMonitor();
       await NotificationService().registerDeviceToken(
@@ -705,6 +846,8 @@ class AuthProvider with ChangeNotifier {
       _errorMessage = e.toString().replaceFirst("Exception:", "").trim();
       notifyListeners();
       return null;
+    } finally {
+      await prefs.remove(keyAuthPendingLogin);
     }
   }
 
@@ -713,6 +856,10 @@ class AuthProvider with ChangeNotifier {
     String password, {
     bool rememberMe = false,
   }) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(keyAuthPendingLogin, true);
+    _authTransitionInProgress = true;
+    debugPrint("🔵 [Auth] login start email=${email.trim().toLowerCase()}");
     _errorMessage = null;
     _needsEmailVerification = false;
     _verificationEmailHint = null;
@@ -730,19 +877,21 @@ class AuthProvider with ChangeNotifier {
       _isLoggedIn = true;
       _user = user;
       await _saveSession(user: user, expiresAt: expiresAt);
+      await _setAuthLoginGrace(prefs);
       _scheduleExpiry(expiresAt);
       await NotificationService().registerDeviceToken(
         userId: user.id,
         forceRefresh: true,
       );
+      debugPrint("🟢 [Auth] login success user=${user.id}");
 
-      final prefs = await SharedPreferences.getInstance();
       if (rememberMe) {
         await prefs.setString("saved_email", email.trim().toLowerCase());
       } else {
         await prefs.remove("saved_email");
       }
     } catch (e) {
+      debugPrint("🔴 [Auth] login failed: $e");
       _isLoggedIn = false;
       _user = null;
       final msg = e.toString();
@@ -756,6 +905,9 @@ class AuthProvider with ChangeNotifier {
       } else {
         _errorMessage = e.toString().replaceFirst("Exception:", "").trim();
       }
+    } finally {
+      _authTransitionInProgress = false;
+      await prefs.remove(keyAuthPendingLogin);
     }
 
     notifyListeners();
@@ -804,9 +956,14 @@ class AuthProvider with ChangeNotifier {
     AuthLogoutReason reason = AuthLogoutReason.manual,
     String? message,
   }) async {
+    debugPrint(
+      "🔴 [Auth] logout start reason=$reason bootstrapGuest=$bootstrapGuest currentUser=${_user?.id}",
+    );
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(keyUserJson);
     await _clearUserLocalState(prefs);
+    await prefs.remove(keyAuthPendingLogin);
+    await _clearAuthLoginGrace(prefs);
     _expiryTimer?.cancel();
     _expiryTimer = null;
     _cancelSessionMonitor();
@@ -821,7 +978,11 @@ class AuthProvider with ChangeNotifier {
 
     if (bootstrapGuest) {
       try {
-        await _activateGuestSession(clearSavedUser: false, notify: false);
+        await _activateGuestSession(
+          clearSavedUser: false,
+          notify: false,
+          source: "logout_bootstrap_guest",
+        );
       } catch (e) {
         debugPrint("🔴 [Auth] guest session bootstrap failed on logout: $e");
       }
@@ -830,17 +991,21 @@ class AuthProvider with ChangeNotifier {
       await onLogout!.call(reason);
     }
     notifyListeners();
+    debugPrint("🟠 [Auth] logout completed reason=$reason bootstrapGuest=$bootstrapGuest");
   }
 
   Future<void> refreshUser() async {
     final current = _user;
     if (current == null) return;
+    debugPrint("🔵 [Auth] refreshUser start currentUser=${current.id}");
     try {
       final updatedJson = await _authApi.getMe();
       final updatedUser = AppUser.fromAuthJson(updatedJson);
       if (_sameUser(current, updatedUser)) {
+        debugPrint("🟢 [Auth] refreshUser unchanged user=${current.id}");
         return;
       }
+      debugPrint("🟢 [Auth] refreshUser updated user=${updatedUser.id}");
       await _setCurrentUser(updatedUser);
     } catch (e) {
       if (_isSessionInvalidError(e)) {
@@ -852,6 +1017,7 @@ class AuthProvider with ChangeNotifier {
         );
         return;
       }
+      debugPrint("🔴 [Auth] refreshUser failed: $e");
       rethrow;
     }
   }

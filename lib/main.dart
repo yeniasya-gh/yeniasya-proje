@@ -109,6 +109,8 @@ class _AppBootstrapState extends State<AppBootstrap>
     WidgetsBinding.instance.addObserver(this);
     _ready = kIsWeb;
     _authProvider = context.read<AuthProvider>();
+    _authProvider?.removeListener(_handleAuthChanged);
+    _authProvider?.addListener(_handleAuthChanged);
     unawaited(_bootstrap());
   }
 
@@ -159,8 +161,6 @@ class _AppBootstrapState extends State<AppBootstrap>
     _lastRevenueCatIdentity = authProvider.isLoggedIn && user != null
         ? "user:${user.id}"
         : "guest";
-    _authProvider?.removeListener(_handleAuthChanged);
-    _authProvider?.addListener(_handleAuthChanged);
 
     if (user != null) {
       await revenueCatService.syncWithAuthUser(user);
