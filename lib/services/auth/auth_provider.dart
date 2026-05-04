@@ -341,6 +341,12 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
+  // JS `setTimeout` stores the delay as a signed 32-bit int (~24.8 days).
+  // Anything larger overflows and the timer fires immediately on the web,
+  // which would log the user out the moment they sign in (auth tokens are
+  // valid for ~90 days). Cap the delay and re-arm when the timer fires.
+  static const Duration _maxJsTimerDelay = Duration(days: 24);
+
   void _scheduleExpiry(DateTime expiresAt) {
     _expiryTimer?.cancel();
     final diff = expiresAt.difference(DateTime.now());
@@ -348,8 +354,14 @@ class AuthProvider with ChangeNotifier {
       unawaited(_handleTokenExpiry());
       return;
     }
-    _expiryTimer = Timer(diff, () {
-      unawaited(_handleTokenExpiry());
+    final scheduled = diff > _maxJsTimerDelay ? _maxJsTimerDelay : diff;
+    _expiryTimer = Timer(scheduled, () {
+      if (DateTime.now().isAfter(expiresAt)) {
+        unawaited(_handleTokenExpiry());
+      } else {
+        // Long expiry — re-arm for the remaining time.
+        _scheduleExpiry(expiresAt);
+      }
     });
   }
 
