@@ -9,8 +9,6 @@ import '../../services/auth/auth_provider.dart';
 import '../../services/revenuecat_service.dart';
 import '../register/register_bottom_sheet.dart';
 import '../register/social_register_bottom_sheet.dart';
-import '../home_responsive_screen.dart';
-import '../../utils/launch_uri.dart';
 import 'password_reset_screen.dart';
 import 'email_verification_screen.dart';
 import '../../main.dart';
@@ -65,14 +63,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
   void _goHome() {
     if (!mounted) return;
-    final nav = rootNavigatorKey.currentState;
-    if (nav == null) return;
-    nav.pushAndRemoveUntil(
-      MaterialPageRoute(
-        builder: (_) => HomeResponsiveScreen(initialUri: currentLaunchUri()),
-      ),
-      (route) => false,
-    );
+    // AppBootstrap switches to the home screen as soon as auth becomes valid.
+    // Avoid pushing a second home route here, which can produce duplicate
+    // navigation and stale stack state on web.
   }
 
   Future<void> _handleBackAction() async {
@@ -115,7 +108,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (result.user != null) {
         await _primePostLoginState();
-        _goHome();
         return;
       }
 
@@ -132,7 +124,6 @@ class _LoginScreenState extends State<LoginScreen> {
         );
         if (completed == true && mounted) {
           await _primePostLoginState();
-          _goHome();
         }
         return;
       }
@@ -156,7 +147,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (result.user != null) {
         await _primePostLoginState();
-        _goHome();
         return;
       }
 
@@ -173,7 +163,6 @@ class _LoginScreenState extends State<LoginScreen> {
         );
         if (completed == true && mounted) {
           await _primePostLoginState();
-          _goHome();
         }
         return;
       }
@@ -439,7 +428,6 @@ class _LoginScreenState extends State<LoginScreen> {
                                           );
                                           if (auth.isLoggedIn) {
                                             await _primePostLoginState();
-                                            _goHome();
                                           }
                                         } finally {
                                           if (mounted) {
