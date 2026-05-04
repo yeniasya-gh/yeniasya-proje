@@ -32,6 +32,9 @@ class AuthProvider with ChangeNotifier {
   Timer? _sessionMonitorTimer;
   bool _sessionMonitorBusy = false;
   AuthLogoutReason? _lastLogoutReason;
+  // Serializes auth state mutations so a concurrent guest bootstrap on web
+  // can't overwrite the token of an in-flight email/password or social login.
+  Future<void> _authMutationTail = Future<void>.value();
 
   Future<void> Function(AuthLogoutReason reason)? onLogout;
 
@@ -156,34 +159,53 @@ class AuthProvider with ChangeNotifier {
         message.contains("unauthorized");
   }
 
+  Future<T> _runSerializedAuthMutation<T>(Future<T> Function() action) {
+    final next = _authMutationTail.then((_) => action());
+    _authMutationTail = next.then<void>((_) {}, onError: (_) {});
+    return next;
+  }
+
   Future<void> _activateGuestSession({
     bool clearSavedUser = true,
     bool notify = true,
-  }) async {
-    _cancelSessionMonitor();
-    final prefs = await SharedPreferences.getInstance();
-    if (clearSavedUser) {
-      await prefs.remove(keyUserJson);
-    }
+  }) {
+    return _runSerializedAuthMutation(() async {
+      // If a real user has already been authenticated (e.g. login completed
+      // while we were queued behind another mutation), do not overwrite the
+      // session with a guest token.
+      if (_isLoggedIn && _user != null) return;
 
-    final data = await _authApi.guestToken();
-    final token = _tokenFromPayload(data);
-    if (token == null || token.isEmpty) {
-      throw Exception("Guest token alınamadı.");
-    }
-    final expiresAt = _expiresAtFromPayload(data);
+      _cancelSessionMonitor();
+      final prefs = await SharedPreferences.getInstance();
+      if (_isLoggedIn && _user != null) return;
 
-    await AuthTokenStore.save(token: token, expiresAt: expiresAt);
-    unawaited(AppErrorReporter.instance.flushPending());
+      if (clearSavedUser) {
+        await prefs.remove(keyUserJson);
+      }
 
-    _user = null;
-    _isLoggedIn = false;
-    _errorMessage = null;
-    _needsEmailVerification = false;
-    _verificationEmailHint = null;
-    _lastLogoutReason = null;
-    _scheduleExpiry(expiresAt);
-    if (notify) notifyListeners();
+      final data = await _authApi.guestToken();
+      // The guest token call is the longest await here; a concurrent login
+      // can complete during this window. Re-check before mutating storage.
+      if (_isLoggedIn && _user != null) return;
+
+      final token = _tokenFromPayload(data);
+      if (token == null || token.isEmpty) {
+        throw Exception("Guest token alınamadı.");
+      }
+      final expiresAt = _expiresAtFromPayload(data);
+
+      await AuthTokenStore.save(token: token, expiresAt: expiresAt);
+      unawaited(AppErrorReporter.instance.flushPending());
+
+      _user = null;
+      _isLoggedIn = false;
+      _errorMessage = null;
+      _needsEmailVerification = false;
+      _verificationEmailHint = null;
+      _lastLogoutReason = null;
+      _scheduleExpiry(expiresAt);
+      if (notify) notifyListeners();
+    });
   }
 
   Future<void> _handleTokenExpiry() async {
@@ -343,60 +365,62 @@ class AuthProvider with ChangeNotifier {
     required String email,
     required String name,
     String? phone,
-  }) async {
-    try {
-      final data = await _authApi.socialLogin(
-        email: email,
-        provider: provider,
-        name: name,
-        phone: phone,
-      );
-      final user = AppUser.fromAuthJson(data["user"] as Map<String, dynamic>);
-      final token = _tokenFromPayload(data);
-      if (token == null || token.isEmpty) {
+  }) {
+    return _runSerializedAuthMutation(() async {
+      try {
+        final data = await _authApi.socialLogin(
+          email: email,
+          provider: provider,
+          name: name,
+          phone: phone,
+        );
+        final user = AppUser.fromAuthJson(data["user"] as Map<String, dynamic>);
+        final token = _tokenFromPayload(data);
+        if (token == null || token.isEmpty) {
+          return SocialLoginResult(
+            error:
+                "${provider.toUpperCase()} girişi için token alınamadı. Lütfen tekrar deneyin.",
+          );
+        }
+        final expiresAt = _expiresAtFromPayload(data);
+
+        await AuthTokenStore.save(token: token, expiresAt: expiresAt);
+        _isLoggedIn = true;
+        _user = user;
+        await _saveSession(user: user, expiresAt: expiresAt);
+        _scheduleExpiry(expiresAt);
+        _scheduleSessionMonitor();
+        await NotificationService().registerDeviceToken(
+          userId: user.id,
+          forceRefresh: true,
+        );
+        _needsEmailVerification = false;
+        _verificationEmailHint = null;
+        _lastLogoutReason = null;
+        _errorMessage = null;
+        notifyListeners();
+        return SocialLoginResult(user: user);
+      } catch (e) {
+        final msg = e.toString();
+        final lower = msg.toLowerCase();
+        if (msg.contains("SOCIAL_USER_NOT_FOUND") ||
+            msg.contains("USER_NOT_FOUND") ||
+            lower.contains("kullanıcı bulunamadı")) {
+          return SocialLoginResult(
+            draft: SocialDraft(
+              email: email,
+              name: name,
+              phone: phone,
+              provider: provider,
+            ),
+          );
+        }
         return SocialLoginResult(
           error:
-              "${provider.toUpperCase()} girişi için token alınamadı. Lütfen tekrar deneyin.",
+              "${provider.toUpperCase()} hesabı ile giriş tamamlanamadı. Lütfen tekrar deneyin.",
         );
       }
-      final expiresAt = _expiresAtFromPayload(data);
-
-      await AuthTokenStore.save(token: token, expiresAt: expiresAt);
-      _isLoggedIn = true;
-      _user = user;
-      await _saveSession(user: user, expiresAt: expiresAt);
-      _scheduleExpiry(expiresAt);
-      _scheduleSessionMonitor();
-      await NotificationService().registerDeviceToken(
-        userId: user.id,
-        forceRefresh: true,
-      );
-      _needsEmailVerification = false;
-      _verificationEmailHint = null;
-      _lastLogoutReason = null;
-      _errorMessage = null;
-      notifyListeners();
-      return SocialLoginResult(user: user);
-    } catch (e) {
-      final msg = e.toString();
-      final lower = msg.toLowerCase();
-      if (msg.contains("SOCIAL_USER_NOT_FOUND") ||
-          msg.contains("USER_NOT_FOUND") ||
-          lower.contains("kullanıcı bulunamadı")) {
-        return SocialLoginResult(
-          draft: SocialDraft(
-            email: email,
-            name: name,
-            phone: phone,
-            provider: provider,
-          ),
-        );
-      }
-      return SocialLoginResult(
-        error:
-            "${provider.toUpperCase()} hesabı ile giriş tamamlanamadı. Lütfen tekrar deneyin.",
-      );
-    }
+    });
   }
 
   Future<SocialLoginResult> signInWithGoogle() async {
@@ -665,101 +689,106 @@ class AuthProvider with ChangeNotifier {
     required String name,
     required String provider,
     String? phone,
-  }) async {
-    try {
-      _errorMessage = null;
-      final data = await _authApi.socialRegister(
-        name: name,
-        email: email,
-        provider: provider,
-        phone: phone,
-      );
-      final user = AppUser.fromAuthJson(data["user"] as Map<String, dynamic>);
-      final token = _tokenFromPayload(data);
-      final expiresAt = _expiresAtFromPayload(data);
-      if (token == null || token.isEmpty) {
-        throw Exception("Token alınamadı.");
+  }) {
+    return _runSerializedAuthMutation(() async {
+      try {
+        _errorMessage = null;
+        final data = await _authApi.socialRegister(
+          name: name,
+          email: email,
+          provider: provider,
+          phone: phone,
+        );
+        final user = AppUser.fromAuthJson(data["user"] as Map<String, dynamic>);
+        final token = _tokenFromPayload(data);
+        final expiresAt = _expiresAtFromPayload(data);
+        if (token == null || token.isEmpty) {
+          throw Exception("Token alınamadı.");
+        }
+        await AuthTokenStore.save(token: token, expiresAt: expiresAt);
+        _isLoggedIn = true;
+        _user = user;
+        await _saveSession(user: user, expiresAt: expiresAt);
+        _scheduleExpiry(expiresAt);
+        _scheduleSessionMonitor();
+        await NotificationService().registerDeviceToken(
+          userId: user.id,
+          forceRefresh: true,
+        );
+        _needsEmailVerification = false;
+        _verificationEmailHint = null;
+        _lastLogoutReason = null;
+        _errorMessage = null;
+        notifyListeners();
+        return user;
+      } catch (e) {
+        _isLoggedIn = false;
+        _user = null;
+        _needsEmailVerification = false;
+        _verificationEmailHint = null;
+        _lastLogoutReason = null;
+        _errorMessage = e.toString().replaceFirst("Exception:", "").trim();
+        notifyListeners();
+        return null;
       }
-      await AuthTokenStore.save(token: token, expiresAt: expiresAt);
-      _isLoggedIn = true;
-      _user = user;
-      await _saveSession(user: user, expiresAt: expiresAt);
-      _scheduleExpiry(expiresAt);
-      _scheduleSessionMonitor();
-      await NotificationService().registerDeviceToken(
-        userId: user.id,
-        forceRefresh: true,
-      );
-      _needsEmailVerification = false;
-      _verificationEmailHint = null;
-      _lastLogoutReason = null;
-      _errorMessage = null;
-      notifyListeners();
-      return user;
-    } catch (e) {
-      _isLoggedIn = false;
-      _user = null;
-      _needsEmailVerification = false;
-      _verificationEmailHint = null;
-      _lastLogoutReason = null;
-      _errorMessage = e.toString().replaceFirst("Exception:", "").trim();
-      notifyListeners();
-      return null;
-    }
+    });
   }
 
   Future<AppUser?> login(
     String email,
     String password, {
     bool rememberMe = false,
-  }) async {
-    _errorMessage = null;
-    _needsEmailVerification = false;
-    _verificationEmailHint = null;
-    try {
-      final data = await _authApi.login(email: email, password: password);
-      final user = AppUser.fromAuthJson(data["user"] as Map<String, dynamic>);
-      final token = _tokenFromPayload(data);
-      final expiresAt = _expiresAtFromPayload(data);
+  }) {
+    return _runSerializedAuthMutation(() async {
+      _errorMessage = null;
+      _needsEmailVerification = false;
+      _verificationEmailHint = null;
+      try {
+        final data = await _authApi.login(email: email, password: password);
+        final user = AppUser.fromAuthJson(data["user"] as Map<String, dynamic>);
+        final token = _tokenFromPayload(data);
+        final expiresAt = _expiresAtFromPayload(data);
 
-      if (token == null || token.isEmpty) {
-        throw Exception("Token alınamadı.");
+        if (token == null || token.isEmpty) {
+          throw Exception("Token alınamadı.");
+        }
+
+        await AuthTokenStore.save(token: token, expiresAt: expiresAt);
+        _isLoggedIn = true;
+        _user = user;
+        await _saveSession(user: user, expiresAt: expiresAt);
+        _scheduleExpiry(expiresAt);
+        _scheduleSessionMonitor();
+        await NotificationService().registerDeviceToken(
+          userId: user.id,
+          forceRefresh: true,
+        );
+
+        final prefs = await SharedPreferences.getInstance();
+        if (rememberMe) {
+          await prefs.setString("saved_email", email.trim().toLowerCase());
+        } else {
+          await prefs.remove("saved_email");
+        }
+      } catch (e) {
+        _isLoggedIn = false;
+        _user = null;
+        final msg = e.toString();
+        if (msg.contains("INVALID_CREDENTIALS")) {
+          _errorMessage = "E-posta veya şifre hatalı.";
+        } else if (msg.contains("EMAIL_NOT_VERIFIED")) {
+          _needsEmailVerification = true;
+          _verificationEmailHint = email.trim().toLowerCase();
+          _errorMessage =
+              "Hesabınızı onaylayın. E-posta adresinize gönderilen bağlantı ile hesabınızı aktifleştirin.";
+        } else {
+          _errorMessage = e.toString().replaceFirst("Exception:", "").trim();
+        }
       }
 
-      await AuthTokenStore.save(token: token, expiresAt: expiresAt);
-      _isLoggedIn = true;
-      _user = user;
-      await _saveSession(user: user, expiresAt: expiresAt);
-      _scheduleExpiry(expiresAt);
-      await NotificationService().registerDeviceToken(
-        userId: user.id,
-        forceRefresh: true,
-      );
-
-      final prefs = await SharedPreferences.getInstance();
-      if (rememberMe) {
-        await prefs.setString("saved_email", email.trim().toLowerCase());
-      } else {
-        await prefs.remove("saved_email");
-      }
-    } catch (e) {
-      _isLoggedIn = false;
-      _user = null;
-      final msg = e.toString();
-      if (msg.contains("INVALID_CREDENTIALS")) {
-        _errorMessage = "E-posta veya şifre hatalı.";
-      } else if (msg.contains("EMAIL_NOT_VERIFIED")) {
-        _needsEmailVerification = true;
-        _verificationEmailHint = email.trim().toLowerCase();
-        _errorMessage =
-            "Hesabınızı onaylayın. E-posta adresinize gönderilen bağlantı ile hesabınızı aktifleştirin.";
-      } else {
-        _errorMessage = e.toString().replaceFirst("Exception:", "").trim();
-      }
-    }
-
-    notifyListeners();
-    return _user;
+      notifyListeners();
+      return _user;
+    });
   }
 
   Future<bool> register({
