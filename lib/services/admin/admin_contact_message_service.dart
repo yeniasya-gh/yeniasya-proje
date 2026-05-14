@@ -1,30 +1,113 @@
 import '../hasura_manager.dart';
 
+class AdminContactMessagesPageResult {
+  final List<Map<String, dynamic>> items;
+  final int totalCount;
+
+  const AdminContactMessagesPageResult({
+    required this.items,
+    required this.totalCount,
+  });
+}
+
 class AdminContactMessageService {
   final _hasura = HasuraManager.instance;
 
   Future<List<Map<String, dynamic>>> getAll() async {
     final messages = await _fetchMessages();
-    final userIds =
-        messages
-            .map((item) => _asInt(item["user_id"]))
-            .whereType<int>()
-            .toSet()
-            .toList()
-          ..sort();
+    return _attachUsers(messages);
+  }
 
-    final usersById = userIds.isEmpty
-        ? <int, Map<String, dynamic>>{}
-        : await _fetchUsersByIds(userIds);
-
-    return messages.map((item) {
-      final normalized = Map<String, dynamic>.from(item);
-      final userId = _asInt(normalized["user_id"]);
-      if (userId != null && usersById[userId] != null) {
-        normalized["user"] = usersById[userId];
+  Future<AdminContactMessagesPageResult> listMessagesPage({
+    required String keyword,
+    required String source,
+    required String replyStatus,
+    required String sort,
+    required DateTime? startDate,
+    required DateTime? endDate,
+    required int page,
+    required int pageSize,
+  }) async {
+    const query = r'''
+      query ListContactMessagesPage(
+        $keyword: String
+        $source: String
+        $reply_status: String
+        $start_date: String
+        $end_date: String
+        $sort: String
+        $page: Int!
+        $page_size: Int!
+      ) {
+        contact_messages(
+          keyword: $keyword
+          source: $source
+          reply_status: $reply_status
+          start_date: $start_date
+          end_date: $end_date
+          sort: $sort
+          page: $page
+          page_size: $page_size
+        ) {
+          id
+          subject
+          message
+          email
+          user_id
+          created_at
+          reply_message
+          reply_at
+          reply_admin_user_id
+          user {
+            id
+            name
+            email
+            phone
+            role {
+              id
+              name
+            }
+          }
+          reply_user {
+            id
+            name
+            email
+            phone
+            role {
+              id
+              name
+            }
+          }
+        }
+        contact_messages_aggregate {
+          aggregate {
+            count
+          }
+        }
       }
-      return normalized;
-    }).toList();
+    ''';
+
+    final data = await _hasura.graphQLRequest(
+      query: query,
+      variables: {
+        "keyword": keyword,
+        "source": source,
+        "reply_status": replyStatus,
+        "start_date": _formatDateOnly(startDate),
+        "end_date": _formatDateOnly(endDate),
+        "sort": sort,
+        "page": page,
+        "page_size": pageSize,
+      },
+    );
+
+    return AdminContactMessagesPageResult(
+      items: List<Map<String, dynamic>>.from(data["contact_messages"] ?? []),
+      totalCount: _asInt(
+            data["contact_messages_aggregate"]?["aggregate"]?["count"],
+          ) ??
+          0,
+    );
   }
 
   Future<void> deleteMessage(int id) async {
@@ -71,6 +154,16 @@ class AdminContactMessageService {
           reply_message
           reply_at
           reply_admin_user_id
+          user {
+            id
+            name
+            email
+            phone
+            role {
+              id
+              name
+            }
+          }
           reply_user {
             id
             name
@@ -102,6 +195,16 @@ class AdminContactMessageService {
             reply_message
             reply_at
             reply_admin_user_id
+            user {
+              id
+              name
+              email
+              phone
+              role {
+                id
+                name
+              }
+            }
             reply_user {
               id
               name
@@ -119,6 +222,31 @@ class AdminContactMessageService {
       final data = await _hasura.graphQLRequest(query: fallbackQuery);
       return List<Map<String, dynamic>>.from(data["contact_messages"] ?? []);
     }
+  }
+
+  Future<List<Map<String, dynamic>>> _attachUsers(
+    List<Map<String, dynamic>> messages,
+  ) async {
+    final userIds =
+        messages
+            .map((item) => _asInt(item["user_id"]))
+            .whereType<int>()
+            .toSet()
+            .toList()
+          ..sort();
+
+    final usersById = userIds.isEmpty
+        ? <int, Map<String, dynamic>>{}
+        : await _fetchUsersByIds(userIds);
+
+    return messages.map((item) {
+      final normalized = Map<String, dynamic>.from(item);
+      final userId = _asInt(normalized["user_id"]);
+      if (userId != null && usersById[userId] != null) {
+        normalized["user"] = usersById[userId];
+      }
+      return normalized;
+    }).toList();
   }
 
   Future<Map<int, Map<String, dynamic>>> _fetchUsersByIds(List<int> ids) async {
@@ -164,6 +292,14 @@ class AdminContactMessageService {
             text.contains("column") ||
             text.contains("query") ||
             text.contains("cannot"));
+  }
+
+  String _formatDateOnly(DateTime? value) {
+    if (value == null) return "";
+    final yyyy = value.year.toString().padLeft(4, "0");
+    final mm = value.month.toString().padLeft(2, "0");
+    final dd = value.day.toString().padLeft(2, "0");
+    return "$yyyy-$mm-$dd";
   }
 
   int? _asInt(dynamic value) {

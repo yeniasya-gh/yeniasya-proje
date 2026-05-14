@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -8,7 +10,9 @@ import 'admin_user_detail_page.dart';
 
 enum _ContactSourceFilter { all, linkedUser, anonymous }
 
-enum _ContactSortOption { newestFirst, oldestFirst }
+enum _ContactReplyFilter { all, replied, unreplied }
+
+enum _ContactSortOption { newestFirst, oldestFirst, replyNewestFirst, replyOldestFirst }
 
 class AdminContactMessagesPage extends StatefulWidget {
   const AdminContactMessagesPage({super.key});
@@ -25,10 +29,17 @@ class _AdminContactMessagesPageState extends State<AdminContactMessagesPage> {
   final _searchCtrl = TextEditingController();
 
   bool _loading = true;
+  Timer? _searchDebounce;
   int? _deletingId;
+  int _currentPage = 1;
+  int _pageSize = 20;
+  int _totalCount = 0;
   String _selectedTopic = _allTopics;
   _ContactSourceFilter _sourceFilter = _ContactSourceFilter.all;
+  _ContactReplyFilter _replyFilter = _ContactReplyFilter.all;
   _ContactSortOption _sortOption = _ContactSortOption.newestFirst;
+  DateTime? _startDate;
+  DateTime? _endDate;
 
   List<Map<String, dynamic>> _messages = [];
 
@@ -41,18 +52,57 @@ class _AdminContactMessagesPageState extends State<AdminContactMessagesPage> {
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _searchCtrl
       ..removeListener(_handleSearchChanged)
       ..dispose();
     super.dispose();
   }
 
-  Future<void> _load() async {
+  Future<void> _load({int? page}) async {
     setState(() => _loading = true);
     try {
-      final items = await _service.getAll();
+      final requestedPage = page ?? _currentPage;
+      final result = await _service.listMessagesPage(
+        keyword: _searchCtrl.text,
+        source: switch (_sourceFilter) {
+          _ContactSourceFilter.all => "all",
+          _ContactSourceFilter.linkedUser => "linked",
+          _ContactSourceFilter.anonymous => "anonymous",
+        },
+        replyStatus: switch (_replyFilter) {
+          _ContactReplyFilter.all => "all",
+          _ContactReplyFilter.replied => "replied",
+          _ContactReplyFilter.unreplied => "unreplied",
+        },
+        sort: switch (_sortOption) {
+          _ContactSortOption.newestFirst => "created_desc",
+          _ContactSortOption.oldestFirst => "created_asc",
+          _ContactSortOption.replyNewestFirst => "reply_desc",
+          _ContactSortOption.replyOldestFirst => "reply_asc",
+        },
+        startDate: _startDate,
+        endDate: _endDate,
+        page: requestedPage,
+        pageSize: _pageSize,
+      );
       if (!mounted) return;
-      setState(() => _messages = items);
+      final totalPages = _totalPagesFor(result.totalCount, _pageSize);
+      final safePage = totalPages == 0
+          ? 1
+          : requestedPage.clamp(1, totalPages);
+      if (safePage != requestedPage) {
+        if (mounted) {
+          setState(() => _currentPage = safePage);
+        }
+        await _load(page: safePage);
+        return;
+      }
+      setState(() {
+        _messages = result.items;
+        _totalCount = result.totalCount;
+        _currentPage = safePage;
+      });
     } catch (error) {
       _showSnack(
         ErrorManager.parseGraphQLError(error.toString()),
@@ -65,77 +115,14 @@ class _AdminContactMessagesPageState extends State<AdminContactMessagesPage> {
 
   void _handleSearchChanged() {
     if (mounted) setState(() {});
-  }
-
-  List<String> get _topicOptions {
-    final options = _messages.map(_topicOf).toSet().toList()
-      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
-    return options;
-  }
-
-  List<Map<String, dynamic>> get _filteredMessages {
-    final query = _searchCtrl.text.trim().toLowerCase();
-    final filtered = _messages.where((item) {
-      final matchesTopic =
-          _selectedTopic == _allTopics || _topicOf(item) == _selectedTopic;
-      final matchesSource = switch (_sourceFilter) {
-        _ContactSourceFilter.all => true,
-        _ContactSourceFilter.linkedUser => _hasLinkedUser(item),
-        _ContactSourceFilter.anonymous => !_hasLinkedUser(item),
-      };
-
-      if (!matchesTopic || !matchesSource) return false;
-      if (query.isEmpty) return true;
-
-      final haystack = [
-        item["id"]?.toString() ?? "",
-        _topicOf(item),
-        _subjectOf(item),
-        _messageBodyOf(item),
-        _emailOf(item),
-        _senderNameOf(item),
-        item["user_id"]?.toString() ?? "",
-      ].join(" ").toLowerCase();
-
-      return haystack.contains(query);
-    }).toList();
-
-    filtered.sort((a, b) {
-      final leftDate = _dateOf(a);
-      final rightDate = _dateOf(b);
-      final leftId = _asInt(a["id"]) ?? 0;
-      final rightId = _asInt(b["id"]) ?? 0;
-
-      final result = switch (_sortOption) {
-        _ContactSortOption.newestFirst => _compareDateDesc(
-          leftDate,
-          rightDate,
-          leftId,
-          rightId,
-        ),
-        _ContactSortOption.oldestFirst => _compareDateAsc(
-          leftDate,
-          rightDate,
-          leftId,
-          rightId,
-        ),
-      };
-
-      return result;
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 300), () {
+      if (mounted) _load(page: 1);
     });
-
-    return filtered;
   }
 
   @override
   Widget build(BuildContext context) {
-    final filtered = _filteredMessages;
-    final totalCount = _messages.length;
-    final filteredCount = filtered.length;
-    final linkedCount = _messages.where(_hasLinkedUser).length;
-    final anonymousCount = totalCount - linkedCount;
-    final recentCount = _messages.where(_isRecentMessage).length;
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -150,54 +137,27 @@ class _AdminContactMessagesPageState extends State<AdminContactMessagesPage> {
               spacing: 8,
               runSpacing: 8,
               children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 12),
+                  child: Text(
+                    "Toplam: $_totalCount",
+                    style: const TextStyle(
+                      color: Colors.black54,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
                 OutlinedButton.icon(
-                  onPressed: filtered.isEmpty ? null : _copyFilteredList,
+                  onPressed: _messages.isEmpty ? null : _copyCurrentPageList,
                   icon: const Icon(Icons.copy_all_outlined),
-                  label: const Text("Filtreliyi Kopyala"),
+                  label: const Text("Görüneni Kopyala"),
                 ),
                 IconButton(
                   tooltip: "Yenile",
-                  onPressed: _load,
+                  onPressed: () => _load(page: _currentPage),
                   icon: const Icon(Icons.refresh),
                 ),
               ],
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        Wrap(
-          spacing: 12,
-          runSpacing: 12,
-          children: [
-            _statCard(
-              label: "Toplam Mesaj",
-              value: totalCount.toString(),
-              icon: Icons.mail_outline,
-              color: Colors.blueGrey,
-            ),
-            _statCard(
-              label: "Filtrelenen",
-              value: filteredCount.toString(),
-              icon: Icons.filter_alt_outlined,
-              color: Colors.deepPurple,
-            ),
-            _statCard(
-              label: "Kullanıcılı",
-              value: linkedCount.toString(),
-              icon: Icons.verified_user_outlined,
-              color: Colors.green,
-            ),
-            _statCard(
-              label: "Anonim",
-              value: anonymousCount.toString(),
-              icon: Icons.person_off_outlined,
-              color: Colors.orange,
-            ),
-            _statCard(
-              label: "Son 7 Gün",
-              value: recentCount.toString(),
-              icon: Icons.schedule_outlined,
-              color: Colors.redAccent,
             ),
           ],
         ),
@@ -207,9 +167,15 @@ class _AdminContactMessagesPageState extends State<AdminContactMessagesPage> {
         Expanded(
           child: _loading
               ? const AdminLoadingIndicator()
-              : filtered.isEmpty
+              : _messages.isEmpty
               ? _emptyState()
-              : _buildTable(filtered),
+              : Column(
+                  children: [
+                    Expanded(child: _buildTable(_messages)),
+                    const SizedBox(height: 12),
+                    _paginationBar(),
+                  ],
+                ),
         ),
       ],
     );
@@ -232,9 +198,9 @@ class _AdminContactMessagesPageState extends State<AdminContactMessagesPage> {
       ),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final wide = constraints.maxWidth >= 1100;
+          final wide = constraints.maxWidth >= 1180;
           final fieldWidth = wide
-              ? ((constraints.maxWidth - 36) / 4).clamp(220.0, 320.0)
+              ? ((constraints.maxWidth - 48) / 3).clamp(240.0, 360.0)
               : constraints.maxWidth;
 
           return Wrap(
@@ -263,31 +229,6 @@ class _AdminContactMessagesPageState extends State<AdminContactMessagesPage> {
               ),
               SizedBox(
                 width: fieldWidth,
-                child: DropdownButtonFormField<String>(
-                  initialValue: _selectedTopic,
-                  decoration: const InputDecoration(
-                    labelText: "Konu Türü",
-                    border: OutlineInputBorder(),
-                  ),
-                  items: [
-                    const DropdownMenuItem<String>(
-                      value: _allTopics,
-                      child: Text("Tüm Konular"),
-                    ),
-                    ..._topicOptions.map(
-                      (topic) => DropdownMenuItem<String>(
-                        value: topic,
-                        child: Text(topic),
-                      ),
-                    ),
-                  ],
-                  onChanged: (value) {
-                    setState(() => _selectedTopic = value ?? _allTopics);
-                  },
-                ),
-              ),
-              SizedBox(
-                width: fieldWidth,
                 child: DropdownButtonFormField<_ContactSourceFilter>(
                   initialValue: _sourceFilter,
                   decoration: const InputDecoration(
@@ -301,16 +242,46 @@ class _AdminContactMessagesPageState extends State<AdminContactMessagesPage> {
                     ),
                     DropdownMenuItem(
                       value: _ContactSourceFilter.linkedUser,
-                      child: Text("Giriş Yapmış Kullanıcı"),
+                      child: Text("Kullanıcılı"),
                     ),
                     DropdownMenuItem(
                       value: _ContactSourceFilter.anonymous,
-                      child: Text("Anonim / E-posta"),
+                      child: Text("Anonim"),
                     ),
                   ],
                   onChanged: (value) {
                     if (value == null) return;
                     setState(() => _sourceFilter = value);
+                    _load(page: 1);
+                  },
+                ),
+              ),
+              SizedBox(
+                width: fieldWidth,
+                child: DropdownButtonFormField<_ContactReplyFilter>(
+                  initialValue: _replyFilter,
+                  decoration: const InputDecoration(
+                    labelText: "Cevap Durumu",
+                    border: OutlineInputBorder(),
+                  ),
+                  items: const [
+                    DropdownMenuItem(
+                      value: _ContactReplyFilter.all,
+                      child: Text("Tümü"),
+                    ),
+                    DropdownMenuItem(
+                      value: _ContactReplyFilter.replied,
+                      child: Text("Cevaplanan"),
+                    ),
+                    DropdownMenuItem(
+                      value: _ContactReplyFilter.unreplied,
+                      child: Text("Cevapsız"),
+                    ),
+                  ],
+                  onChanged: (value) {
+                    if (value == null) return;
+                    setState(() => _replyFilter = value);
+                    _load(page: 1);
                   },
                 ),
               ),
@@ -325,17 +296,89 @@ class _AdminContactMessagesPageState extends State<AdminContactMessagesPage> {
                   items: const [
                     DropdownMenuItem(
                       value: _ContactSortOption.newestFirst,
-                      child: Text("En Yeni İlk"),
+                      child: Text("En yeni"),
                     ),
                     DropdownMenuItem(
                       value: _ContactSortOption.oldestFirst,
-                      child: Text("En Eski İlk"),
+                      child: Text("En eski"),
+                    ),
+                    DropdownMenuItem(
+                      value: _ContactSortOption.replyNewestFirst,
+                      child: Text("Cevap yeni"),
+                    ),
+                    DropdownMenuItem(
+                      value: _ContactSortOption.replyOldestFirst,
+                      child: Text("Cevap eski"),
                     ),
                   ],
                   onChanged: (value) {
                     if (value == null) return;
                     setState(() => _sortOption = value);
+                    _load(page: 1);
                   },
+                ),
+              ),
+              SizedBox(
+                width: fieldWidth,
+                child: DropdownButtonFormField<int>(
+                  initialValue: _pageSize,
+                  decoration: const InputDecoration(
+                    labelText: "Sayfa Boyutu",
+                    border: OutlineInputBorder(),
+                  ),
+                  items: const [10, 20, 50]
+                      .map(
+                        (size) => DropdownMenuItem(
+                          value: size,
+                          child: Text("$size / sayfa"),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (value) {
+                    if (value == null) return;
+                    setState(() => _pageSize = value);
+                    _load(page: 1);
+                  },
+                ),
+              ),
+              SizedBox(
+                width: fieldWidth,
+                child: OutlinedButton.icon(
+                  onPressed: _pickStartDate,
+                  icon: const Icon(Icons.date_range_outlined),
+                  label: Text(
+                    _startDate == null
+                        ? "Tek tarih"
+                        : "Başlangıç: ${_formatDateOnly(_startDate)}",
+                  ),
+                ),
+              ),
+              SizedBox(
+                width: fieldWidth,
+                child: OutlinedButton.icon(
+                  onPressed: _pickEndDate,
+                  icon: const Icon(Icons.event_outlined),
+                  label: Text(
+                    _endDate == null
+                        ? "Bitiş"
+                        : "Bitiş: ${_formatDateOnly(_endDate)}",
+                  ),
+                ),
+              ),
+              SizedBox(
+                width: fieldWidth,
+                child: OutlinedButton.icon(
+                  onPressed: (_startDate == null && _endDate == null)
+                      ? null
+                      : () {
+                          setState(() {
+                            _startDate = null;
+                            _endDate = null;
+                          });
+                          _load(page: 1);
+                        },
+                  icon: const Icon(Icons.clear_all_outlined),
+                  label: const Text("Tarihleri Temizle"),
                 ),
               ),
             ],
@@ -375,17 +418,16 @@ class _AdminContactMessagesPageState extends State<AdminContactMessagesPage> {
                       headingRowColor: WidgetStatePropertyAll(
                         Colors.grey.shade100,
                       ),
-                      columnSpacing: 16,
+                      columnSpacing: 18,
                       dataRowMinHeight: 72,
-                      dataRowMaxHeight: 92,
+                      dataRowMaxHeight: 104,
                       columns: const [
-                        DataColumn(label: Text("Tarih")),
-                        DataColumn(label: Text("Konu Türü")),
-                        DataColumn(label: Text("Başlık")),
+                        DataColumn(label: Text("Konu")),
                         DataColumn(label: Text("Gönderen")),
+                        DataColumn(label: Text("Tarih")),
+                        DataColumn(label: Text("Başlık")),
                         DataColumn(label: Text("Mesaj")),
-                        DataColumn(label: Text("Durum")),
-                        DataColumn(label: Text("Kaynak")),
+                        DataColumn(label: Text("Cevap")),
                         DataColumn(label: Text("Aksiyon")),
                       ],
                       rows: items.map((item) {
@@ -400,15 +442,11 @@ class _AdminContactMessagesPageState extends State<AdminContactMessagesPage> {
                         return DataRow(
                           onSelectChanged: (_) => _openMessageDetail(item),
                           cells: [
-                            DataCell(Text(_formatDateTime(item["created_at"]))),
-                            DataCell(_topicChip(_topicOf(item))),
                             DataCell(
                               SizedBox(
-                                width: 240,
+                                width: 190,
                                 child: Text(
-                                  _subjectOf(item),
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
+                                  _topicLabel(item),
                                   style: const TextStyle(
                                     fontWeight: FontWeight.w600,
                                   ),
@@ -417,7 +455,7 @@ class _AdminContactMessagesPageState extends State<AdminContactMessagesPage> {
                             ),
                             DataCell(
                               SizedBox(
-                                width: 240,
+                                width: 250,
                                 child: Column(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -435,12 +473,28 @@ class _AdminContactMessagesPageState extends State<AdminContactMessagesPage> {
                                         senderSubtitle,
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          color: Colors.grey.shade700,
-                                          fontSize: 12,
-                                        ),
+                                      style: TextStyle(
+                                        color: Colors.grey.shade700,
+                                        fontSize: 12,
                                       ),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    _sourceChip(_hasLinkedUser(item)),
                                   ],
+                                ),
+                              ),
+                            ),
+                            DataCell(Text(_formatDateTime(item["created_at"]))),
+                            DataCell(
+                              SizedBox(
+                                width: 230,
+                                child: Text(
+                                  _subjectOf(item),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                  ),
                                 ),
                               ),
                             ),
@@ -455,7 +509,6 @@ class _AdminContactMessagesPageState extends State<AdminContactMessagesPage> {
                               ),
                             ),
                             DataCell(_replyStatusChip(item)),
-                            DataCell(_sourceChip(_hasLinkedUser(item))),
                             DataCell(
                               Row(
                                 mainAxisSize: MainAxisSize.min,
@@ -521,6 +574,38 @@ class _AdminContactMessagesPageState extends State<AdminContactMessagesPage> {
     );
   }
 
+  Widget _paginationBar() {
+    final totalPages = _totalPagesFor(_totalCount, _pageSize);
+    final safeTotalPages = totalPages == 0 ? 1 : totalPages;
+    if (safeTotalPages <= 1) {
+      return Align(
+        alignment: Alignment.centerRight,
+        child: Text("Sayfa 1 / $safeTotalPages"),
+      );
+    }
+
+    final canPrev = _currentPage > 1;
+    final canNext = _currentPage < safeTotalPages;
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text("Sayfa $_currentPage / $safeTotalPages"),
+        Row(
+          children: [
+            IconButton(
+              onPressed: canPrev ? () => _goToPage(_currentPage - 1) : null,
+              icon: const Icon(Icons.chevron_left),
+            ),
+            IconButton(
+              onPressed: canNext ? () => _goToPage(_currentPage + 1) : null,
+              icon: const Icon(Icons.chevron_right),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
   Widget _emptyState() {
     return Container(
       width: double.infinity,
@@ -551,7 +636,7 @@ class _AdminContactMessagesPageState extends State<AdminContactMessagesPage> {
           ),
           const SizedBox(height: 6),
           Text(
-            _messages.isEmpty
+            _totalCount == 0
                 ? "Henüz bize ulaşın formundan kayıt oluşmamış."
                 : "Arama veya filtreleri değiştirip tekrar deneyin.",
             style: TextStyle(color: Colors.grey.shade700),
@@ -851,14 +936,14 @@ class _AdminContactMessagesPageState extends State<AdminContactMessagesPage> {
     ).push(MaterialPageRoute(builder: (_) => AdminUserDetailPage(user: user)));
   }
 
-  Future<void> _copyFilteredList() async {
+  Future<void> _copyCurrentPageList() async {
     final lines = <String>[
-      "id\ttarih\tkonu_turu\tbaslik\tgonderen\temail\tuser_id\tmesaj",
-      for (final item in _filteredMessages)
+      "id\ttarih\tkonu\tbaslik\tgonderen\temail\tuser_id\tmesaj",
+      for (final item in _messages)
         [
           item["id"]?.toString() ?? "",
           _formatDateTime(item["created_at"]),
-          _topicOf(item),
+          _topicLabel(item),
           _subjectOf(item),
           _senderNameOf(item),
           _emailOf(item),
@@ -869,7 +954,7 @@ class _AdminContactMessagesPageState extends State<AdminContactMessagesPage> {
 
     await _copyToClipboard(
       lines.join("\n"),
-      "Filtrelenmiş mesaj listesi panoya kopyalandı.",
+      "Görünen mesajlar panoya kopyalandı.",
     );
   }
 
@@ -1034,6 +1119,10 @@ class _AdminContactMessagesPageState extends State<AdminContactMessagesPage> {
     );
   }
 
+  bool _hasReply(Map<String, dynamic> item) {
+    return _replyMessageOf(item).isNotEmpty || _replyAtOf(item).isNotEmpty;
+  }
+
   bool _hasLinkedUser(Map<String, dynamic> item) =>
       _asInt(item["user_id"]) != null;
 
@@ -1057,6 +1146,10 @@ class _AdminContactMessagesPageState extends State<AdminContactMessagesPage> {
     ).firstMatch(body);
     final topic = taggedBody?.group(1)?.trim() ?? "";
     return topic.isEmpty ? "Genel" : topic;
+  }
+
+  String _topicLabel(Map<String, dynamic> item) {
+    return _topicOf(item);
   }
 
   String _subjectOf(Map<String, dynamic> item) {
@@ -1151,6 +1244,61 @@ class _AdminContactMessagesPageState extends State<AdminContactMessagesPage> {
     final raw = item["created_at"]?.toString().trim();
     if (raw == null || raw.isEmpty) return null;
     return DateTime.tryParse(raw)?.toLocal();
+  }
+
+  String _formatDateOnly(DateTime? value) {
+    if (value == null) return "-";
+    final yyyy = value.year.toString().padLeft(4, "0");
+    final mm = value.month.toString().padLeft(2, "0");
+    final dd = value.day.toString().padLeft(2, "0");
+    return "$dd.$mm.$yyyy";
+  }
+
+  int _totalPagesFor(int totalCount, int pageSize) {
+    if (totalCount <= 0) return 0;
+    final safePageSize = pageSize < 1 ? 1 : pageSize;
+    return ((totalCount + safePageSize - 1) ~/ safePageSize);
+  }
+
+  void _goToPage(int page) {
+    final totalPages = _totalPagesFor(_totalCount, _pageSize);
+    final safePage = page.clamp(1, totalPages == 0 ? 1 : totalPages);
+    if (safePage == _currentPage) return;
+    _load(page: safePage);
+  }
+
+  Future<void> _pickStartDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _startDate ?? DateTime.now(),
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      _startDate = picked;
+      if (_endDate != null && _endDate!.isBefore(_startDate!)) {
+        _endDate = _startDate;
+      }
+    });
+    await _load(page: 1);
+  }
+
+  Future<void> _pickEndDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _endDate ?? _startDate ?? DateTime.now(),
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      _endDate = picked;
+      if (_startDate != null && _startDate!.isAfter(_endDate!)) {
+        _startDate = _endDate;
+      }
+    });
+    await _load(page: 1);
   }
 
   String _formatDateTime(dynamic value) {
