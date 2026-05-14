@@ -9,6 +9,16 @@ import 'auth/auth_token_store.dart';
 import 'hasura_manager.dart';
 import '../firebase_options.dart';
 
+class AdminNotificationsPageResult {
+  final List<Map<String, dynamic>> items;
+  final int totalCount;
+
+  const AdminNotificationsPageResult({
+    required this.items,
+    required this.totalCount,
+  });
+}
+
 class NotificationService {
   final _hasura = HasuraManager.instance;
   final http.Client _http = http.Client();
@@ -307,6 +317,69 @@ class NotificationService {
     return List<Map<String, dynamic>>.from(
       data["notifications"] ?? const [],
     ).map(_normalizeNotificationRow).toList(growable: false);
+  }
+
+  Future<AdminNotificationsPageResult> listAdminNotificationsPage({
+    String keyword = "",
+    bool? isRead,
+    int page = 1,
+    int pageSize = 20,
+  }) async {
+    const query = r'''
+      query ListAdminNotificationsPage(
+        $keyword: String
+        $is_read: Boolean
+        $page: Int!
+        $page_size: Int!
+      ) {
+        notifications(
+          keyword: $keyword
+          is_read: $is_read
+          page: $page
+          page_size: $page_size
+        ) {
+          id
+          user_id
+          title
+          body
+          created_at
+          is_read
+          user {
+            id
+            name
+            email
+          }
+        }
+        notifications_aggregate(
+          keyword: $keyword
+          is_read: $is_read
+        ) {
+          aggregate {
+            count
+          }
+        }
+      }
+    ''';
+
+    final data = await _hasura.graphQLRequest(
+      query: query,
+      variables: {
+        "keyword": keyword.trim().isEmpty ? null : keyword.trim(),
+        "is_read": isRead,
+        "page": page < 1 ? 1 : page,
+        "page_size": pageSize < 1 ? 20 : pageSize,
+      },
+    );
+
+    return AdminNotificationsPageResult(
+      items: List<Map<String, dynamic>>.from(data["notifications"] ?? const [])
+          .map(_normalizeNotificationRow)
+          .toList(growable: false),
+      totalCount: _asInt(
+            data["notifications_aggregate"]?["aggregate"]?["count"],
+          ) ??
+          0,
+    );
   }
 
   Future<Map<String, dynamic>> sendNotification({
