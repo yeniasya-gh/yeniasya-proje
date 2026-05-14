@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../../services/admin/admin_review_service.dart';
 import '../../services/error/error_manager.dart';
@@ -12,21 +14,77 @@ class AdminReviewsPage extends StatefulWidget {
 
 class _AdminReviewsPageState extends State<AdminReviewsPage> {
   final _service = AdminReviewService();
+  final TextEditingController _searchCtrl = TextEditingController();
   bool _loading = true;
   List<Map<String, dynamic>> _reviews = [];
+  Timer? _searchDebounce;
+  int _currentPage = 1;
+  int _pageSize = 20;
+  int _totalCount = 0;
+  String _statusFilter = "all";
+  String _sort = "created_desc";
+
+  static const _statusFilters = [
+    ("all", "Tümü"),
+    ("pending", "Beklemede"),
+    ("published", "Onaylananlar"),
+    ("rejected", "Reddedilenler"),
+  ];
+
+  static const _sortOptions = [
+    ("created_desc", "En yeni"),
+    ("created_asc", "En eski"),
+    ("rating_desc", "En yüksek puan"),
+    ("rating_asc", "En düşük puan"),
+  ];
 
   @override
   void initState() {
     super.initState();
+    _searchCtrl.addListener(_onSearchChanged);
     _load();
   }
 
-  Future<void> _load() async {
+  @override
+  void dispose() {
+    _searchDebounce?.cancel();
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  void _onSearchChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 300), () {
+      if (mounted) {
+        _load(page: 1);
+      }
+    });
+  }
+
+  Future<void> _load({int? page}) async {
     setState(() => _loading = true);
     try {
-      // ürün filtresi yok: hepsini çek
-      final data = await _service.getAll();
-      setState(() => _reviews = data);
+      final requestedPage = page ?? _currentPage;
+      final result = await _service.listReviewsPage(
+        keyword: _searchCtrl.text,
+        status: _statusFilter,
+        sort: _sort,
+        page: requestedPage,
+        pageSize: _pageSize,
+      );
+      final totalPages = _totalPagesFor(result.totalCount, _pageSize);
+      if (requestedPage > totalPages && totalPages > 0) {
+        await _load(page: totalPages);
+        return;
+      }
+      setState(() {
+        _reviews = result.items;
+        _totalCount = result.totalCount;
+        _currentPage = totalPages == 0 ? 1 : requestedPage;
+      });
     } catch (e) {
       final parsed = ErrorManager.parseGraphQLError(e.toString());
       if (mounted) {
@@ -34,8 +92,11 @@ class _AdminReviewsPageState extends State<AdminReviewsPage> {
           context,
         ).showSnackBar(SnackBar(content: Text(parsed)));
       }
+    } finally {
+      if (mounted) {
+        setState(() => _loading = false);
+      }
     }
-    setState(() => _loading = false);
   }
 
   Future<void> _updateStatus(int id, String status) async {
@@ -80,6 +141,37 @@ class _AdminReviewsPageState extends State<AdminReviewsPage> {
     }
   }
 
+  int _totalPagesFor(int totalCount, int pageSize) {
+    if (totalCount <= 0) return 0;
+    final safePageSize = pageSize < 1 ? 1 : pageSize;
+    return ((totalCount + safePageSize - 1) ~/ safePageSize);
+  }
+
+  void _setStatusFilter(String value) {
+    if (_statusFilter == value) return;
+    setState(() => _statusFilter = value);
+    _load(page: 1);
+  }
+
+  void _setSort(String? value) {
+    if (value == null || _sort == value) return;
+    setState(() => _sort = value);
+    _load(page: 1);
+  }
+
+  void _setPageSize(int value) {
+    if (_pageSize == value) return;
+    setState(() => _pageSize = value);
+    _load(page: 1);
+  }
+
+  void _goToPage(int page) {
+    final safeTotalPages = _totalPagesFor(_totalCount, _pageSize);
+    final safePage = page.clamp(1, safeTotalPages == 0 ? 1 : safeTotalPages);
+    if (safePage == _currentPage) return;
+    _load(page: safePage);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -92,7 +184,82 @@ class _AdminReviewsPageState extends State<AdminReviewsPage> {
               "Yorumlar",
               style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
             ),
-            IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  "Toplam: $_totalCount",
+                  style: const TextStyle(color: Colors.black54),
+                ),
+                const SizedBox(width: 8),
+                IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
+              ],
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _searchCtrl,
+          decoration: InputDecoration(
+            labelText: "Yorum, kullanıcı veya ürün ara",
+            prefixIcon: const Icon(Icons.search),
+            suffixIcon: _searchCtrl.text.trim().isEmpty
+                ? null
+                : IconButton(
+                    onPressed: () {
+                      _searchCtrl.clear();
+                      _load(page: 1);
+                    },
+                    icon: const Icon(Icons.clear),
+                  ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: _statusFilters
+              .map(
+                (filter) => ChoiceChip(
+                  label: Text(filter.$2),
+                  selected: _statusFilter == filter.$1,
+                  onSelected: (_) => _setStatusFilter(filter.$1),
+                ),
+              )
+              .toList(),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            DropdownButton<String>(
+              value: _sort,
+              underline: const SizedBox.shrink(),
+              items: _sortOptions
+                  .map(
+                    (option) => DropdownMenuItem(
+                      value: option.$1,
+                      child: Text(option.$2),
+                    ),
+                  )
+                  .toList(),
+              onChanged: _setSort,
+            ),
+            const SizedBox(width: 16),
+            DropdownButton<int>(
+              value: _pageSize,
+              underline: const SizedBox.shrink(),
+              items: const [10, 20, 50]
+                  .map(
+                    (size) => DropdownMenuItem(
+                      value: size,
+                      child: Text("$size / sayfa"),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (value) {
+                if (value != null) _setPageSize(value);
+              },
+            ),
           ],
         ),
         const SizedBox(height: 12),
@@ -101,7 +268,13 @@ class _AdminReviewsPageState extends State<AdminReviewsPage> {
               ? const AdminLoadingIndicator()
               : _reviews.isEmpty
               ? const Center(child: Text("Yorum bulunamadı."))
-              : _table(),
+              : Column(
+                  children: [
+                    Expanded(child: _table()),
+                    const SizedBox(height: 12),
+                    _paginationBar(),
+                  ],
+                ),
         ),
       ],
     );
@@ -230,6 +403,37 @@ class _AdminReviewsPageState extends State<AdminReviewsPage> {
           );
         },
       ),
+    );
+  }
+
+  Widget _paginationBar() {
+    final totalPages = _totalPagesFor(_totalCount, _pageSize);
+    if (totalPages <= 1) {
+      return Align(
+        alignment: Alignment.centerRight,
+        child: Text("Sayfa 1 / ${totalPages == 0 ? 1 : totalPages}"),
+      );
+    }
+
+    final canPrev = _currentPage > 1;
+    final canNext = _currentPage < totalPages;
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text("Sayfa $_currentPage / $totalPages"),
+        Row(
+          children: [
+            IconButton(
+              onPressed: canPrev ? () => _goToPage(_currentPage - 1) : null,
+              icon: const Icon(Icons.chevron_left),
+            ),
+            IconButton(
+              onPressed: canNext ? () => _goToPage(_currentPage + 1) : null,
+              icon: const Icon(Icons.chevron_right),
+            ),
+          ],
+        ),
+      ],
     );
   }
 

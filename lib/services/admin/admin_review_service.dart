@@ -1,5 +1,15 @@
 import '../hasura_manager.dart';
 
+class AdminReviewsPageResult {
+  final List<Map<String, dynamic>> items;
+  final int totalCount;
+
+  const AdminReviewsPageResult({
+    required this.items,
+    required this.totalCount,
+  });
+}
+
 class AdminReviewService {
   final _hasura = HasuraManager.instance;
 
@@ -73,6 +83,68 @@ class AdminReviewService {
     return List<Map<String, dynamic>>.from(data["product_reviews"] ?? []);
   }
 
+  Future<AdminReviewsPageResult> listReviewsPage({
+    String keyword = "",
+    String status = "all",
+    String sort = "created_desc",
+    int page = 1,
+    int pageSize = 20,
+  }) async {
+    const query = r'''
+      query ListReviewsPage(
+        $keyword: String
+        $status: String
+        $sort: String
+        $limit: Int!
+        $offset: Int!
+      ) {
+        product_reviews {
+          id
+          product_type
+          product_id
+          product_title
+          user_id
+          user_name
+          user_email
+          rating
+          comment
+          status
+          created_at
+        }
+        product_reviews_aggregate {
+          aggregate {
+            count
+          }
+        }
+      }
+    ''';
+
+    final safePage = page < 1 ? 1 : page;
+    final safePageSize = pageSize < 1 ? 20 : pageSize;
+    final offset = (safePage - 1) * safePageSize;
+
+    final data = await _hasura.graphQLRequest(
+      query: query,
+      variables: {
+        "keyword": keyword.trim().isEmpty ? null : keyword.trim(),
+        "status": status.trim().isEmpty ? "all" : status.trim(),
+        "sort": sort.trim().isEmpty ? "created_desc" : sort.trim(),
+        "limit": safePageSize,
+        "offset": offset,
+      },
+    );
+
+    final items = List<Map<String, dynamic>>.from(
+      data["product_reviews"] ?? const [],
+    );
+    final totalCount = _toInt(
+          data["product_reviews_aggregate"]?["aggregate"]?["count"],
+        ) ??
+        items.length;
+
+    return AdminReviewsPageResult(items: items, totalCount: totalCount);
+  }
+
   Future<void> updateStatus({
     required int id,
     required String status,
@@ -92,5 +164,12 @@ class AdminReviewService {
       }
     ''';
     await _hasura.graphQLRequest(query: mutation, variables: {"id": id});
+  }
+
+  int? _toInt(dynamic value) {
+    if (value == null) return null;
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value.toString());
   }
 }
