@@ -889,8 +889,10 @@ class AdminUserService {
         query: mutation,
         variables: {"id": id},
       );
-      final affected =
-          data["update_user_content_access"]?["affected_rows"] as int? ?? 0;
+      final affected = int.tryParse(
+            data["update_user_content_access"]?["affected_rows"]?.toString() ?? "",
+          ) ??
+          0;
       if (affected > 0) return;
       throw Exception("Erişim pasife çekilemedi.");
     } catch (error) {
@@ -916,8 +918,10 @@ class AdminUserService {
         query: mutation,
         variables: {"id": id.toString()},
       );
-      final affected =
-          data["update_manual_newspaper_users"]?["affected_rows"] as int? ?? 0;
+      final affected = int.tryParse(
+            data["update_manual_newspaper_users"]?["affected_rows"]?.toString() ?? "",
+          ) ??
+          0;
       if (affected > 0) return;
       throw Exception("Manuel erişim pasife çekilemedi.");
     } catch (error) {

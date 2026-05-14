@@ -211,12 +211,17 @@ class _AdminAuthorCategoryPageState extends State<AdminAuthorCategoryPage>
                 "id": author["id"],
                 "name": ctrl.text.trim(),
               };
+              final authorId = _asInt(payload["id"]);
+              if (authorId == null) {
+                await _showError("Geçersiz yazar id'si");
+                return;
+              }
 
               Navigator.pop(context);
 
               try {
                 await _authorService.updateAuthor(
-                  payload["id"] as int,
+                  authorId,
                   payload["name"] as String,
                 );
                 _loadAuthors();
@@ -259,12 +264,17 @@ class _AdminAuthorCategoryPageState extends State<AdminAuthorCategoryPage>
                 "id": category["id"],
                 "name": ctrl.text.trim(),
               };
+              final categoryId = _asInt(payload["id"]);
+              if (categoryId == null) {
+                await _showError("Geçersiz kategori id'si");
+                return;
+              }
 
               Navigator.pop(context);
 
               try {
                 await _categoryService.updateCategory(
-                  payload["id"] as int,
+                  categoryId,
                   payload["name"] as String,
                 );
                 _loadCategories();
@@ -294,6 +304,13 @@ class _AdminAuthorCategoryPageState extends State<AdminAuthorCategoryPage>
   void _deleteCategory(int id) async {
     await _categoryService.deleteCategory(id);
     _loadCategories();
+  }
+
+  int? _asInt(dynamic value) {
+    if (value == null) return null;
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value.toString());
   }
 
   @override

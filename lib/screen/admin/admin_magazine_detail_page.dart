@@ -119,9 +119,7 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
       setState(() {
         _reviews = List<Map<String, dynamic>>.from(data["reviews"] ?? []);
         _avgRating = (data["average"] as double?) ?? 0;
-        _reviewCount = data["count"] is int
-            ? data["count"] as int
-            : int.tryParse(data["count"]?.toString() ?? "0") ?? 0;
+        _reviewCount = int.tryParse(data["count"]?.toString() ?? "") ?? 0;
       });
     } catch (e) {
       await _showError(e.toString());
@@ -359,7 +357,11 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
                       setState(() => _submitting = true);
                       setStateDialog(() {});
 
-                      final issueNumber = int.parse(issueCtrl.text.trim());
+                      final issueNumber = int.tryParse(issueCtrl.text.trim());
+                      if (issueNumber == null) {
+                        await _showError("Geçerli bir sayı girin");
+                        return;
+                      }
                       final price = _parsePrice(priceCtrl.text.trim());
                       if (price == null || price < 0) return;
                       try {
@@ -611,9 +613,14 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
                       if (!formKey.currentState!.validate()) return;
                       setStateDialog(() => submitting = true);
 
-                      final issueNumber = int.parse(issueCtrl.text.trim());
-                      final price = _parsePrice(priceCtrl.text.trim());
-                      if (price == null || price < 0) return;
+                            final issueNumber = int.tryParse(
+                              issueCtrl.text.trim(),
+                            );
+                            if (issueNumber == null) {
+                              throw Exception("Geçerli bir sayı girin");
+                            }
+                            final price = _parsePrice(priceCtrl.text.trim());
+                            if (price == null || price < 0) return;
                       try {
                         await runAdminUploadTask(
                           context,
@@ -926,8 +933,11 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
                                     Icons.delete,
                                     color: Colors.red,
                                   ),
-                                  onPressed: () =>
-                                      _deleteIssue(_asInt(issue["id"]) ?? 0),
+                                  onPressed: () {
+                                    final issueId = _asInt(issue["id"]);
+                                    if (issueId == null) return;
+                                    _deleteIssue(issueId);
+                                  },
                                 ),
                               ],
                             ),

@@ -68,6 +68,13 @@ class _PaymentScreenState extends State<PaymentScreen> {
   final _addressService = AddressService();
   final _revenueCatBackendService = RevenueCatBackendService();
 
+  int? _asInt(dynamic value) {
+    if (value == null) return null;
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value.toString());
+  }
+
   @override
   void initState() {
     super.initState();
@@ -207,7 +214,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
         paymentApproved: false,
       );
 
-      final orderId = createdOrder["id"] as int?;
+      final orderId = _asInt(createdOrder["id"]);
       if (orderId == null) {
         throw Exception("Siparis olusturulamadi.");
       }
@@ -686,7 +693,7 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 item.metadata?["description"]?.toString() ??
                 "",
             "quantity": item.quantity,
-            "amount": double.parse(item.price.toStringAsFixed(2)),
+          "amount": double.tryParse(item.price.toStringAsFixed(2)) ?? item.price,
           },
         )
         .toList();

@@ -226,7 +226,10 @@ class UserService {
       variables: {"id": id, "current": currentHashed, "next": newHashed},
     );
 
-    final rows = data["update_users"]?["affected_rows"] as int? ?? 0;
+    final rows = int.tryParse(
+          data["update_users"]?["affected_rows"]?.toString() ?? "",
+        ) ??
+        0;
     return rows > 0;
   }
 

@@ -91,7 +91,7 @@ class _AdminBooksPageState extends State<AdminBooksPage> {
     Map<String, dynamic> book,
     bool isPublished,
   ) async {
-    final id = book["id"] as int?;
+    final id = _asInt(book["id"]);
     if (id == null || _publicationBusyIds.contains(id)) return;
 
     setState(() => _publicationBusyIds.add(id));
@@ -288,8 +288,8 @@ class _AdminBooksPageState extends State<AdminBooksPage> {
     // Fetch authors and categories
     final authors = await AdminAuthorService().getAllAuthors();
     final categories = await AdminCategoryService().getAllCategories();
-    int? selectedAuthorId = initial?["author_id"] as int?;
-    int? selectedCategoryId = initial?["category_id"] as int?;
+    int? selectedAuthorId = _asInt(initial?["author_id"]);
+    int? selectedCategoryId = _asInt(initial?["category_id"]);
 
     Uint8List? pickedCoverBytes;
     String? pickedCoverName;
@@ -325,12 +325,15 @@ class _AdminBooksPageState extends State<AdminBooksPage> {
                       value: selectedAuthorId,
                       decoration: const InputDecoration(labelText: "Yazar"),
                       items: authors
-                          .map(
-                            (a) => DropdownMenuItem(
-                              value: a["id"] as int,
-                              child: Text(a["name"]),
-                            ),
-                          )
+                          .map((a) {
+                            final authorId = _asInt(a["id"]);
+                            if (authorId == null) return null;
+                            return DropdownMenuItem<int>(
+                              value: authorId,
+                              child: Text(a["name"]?.toString() ?? ""),
+                            );
+                          })
+                          .whereType<DropdownMenuItem<int>>()
                           .toList(),
                       onChanged: (v) => selectedAuthorId = v,
                     ),
@@ -338,12 +341,15 @@ class _AdminBooksPageState extends State<AdminBooksPage> {
                       value: selectedCategoryId,
                       decoration: const InputDecoration(labelText: "Kategori"),
                       items: categories
-                          .map(
-                            (c) => DropdownMenuItem(
-                              value: c["id"] as int,
-                              child: Text(c["name"]),
-                            ),
-                          )
+                          .map((c) {
+                            final categoryId = _asInt(c["id"]);
+                            if (categoryId == null) return null;
+                            return DropdownMenuItem<int>(
+                              value: categoryId,
+                              child: Text(c["name"]?.toString() ?? ""),
+                            );
+                          })
+                          .whereType<DropdownMenuItem<int>>()
                           .toList(),
                       onChanged: (v) => selectedCategoryId = v,
                     ),
@@ -554,8 +560,8 @@ class _AdminBooksPageState extends State<AdminBooksPage> {
                         coverUrl: coverUrl,
                         bookUrl: bookUrl,
                         discountPrice: discount,
-                        categoryId: payload["category_id"] as int?,
-                        authorId: payload["author_id"] as int?,
+                        categoryId: _asInt(payload["category_id"]),
+                        authorId: _asInt(payload["author_id"]),
                         description: (payload["description"] as String).isEmpty
                             ? null
                             : payload["description"] as String,
@@ -618,8 +624,8 @@ class _AdminBooksPageState extends State<AdminBooksPage> {
     // Fetch authors and categories
     final authors = await AdminAuthorService().getAllAuthors();
     final categories = await AdminCategoryService().getAllCategories();
-    int? selectedAuthorId = book["author_id"];
-    int? selectedCategoryId = book["category_id"];
+    int? selectedAuthorId = _asInt(book["author_id"]);
+    int? selectedCategoryId = _asInt(book["category_id"]);
 
     Uint8List? pickedCoverBytes;
     String? pickedCoverName;
@@ -656,11 +662,16 @@ class _AdminBooksPageState extends State<AdminBooksPage> {
                       decoration: const InputDecoration(labelText: "Yazar"),
                       items: authors
                           .map(
-                            (a) => DropdownMenuItem(
-                              value: a["id"] as int,
-                              child: Text(a["name"]),
-                            ),
+                            (a) {
+                              final authorId = _asInt(a["id"]);
+                              if (authorId == null) return null;
+                              return DropdownMenuItem<int>(
+                                value: authorId,
+                                child: Text(a["name"]),
+                              );
+                            },
                           )
+                          .whereType<DropdownMenuItem<int>>()
                           .toList(),
                       onChanged: (v) => selectedAuthorId = v,
                     ),
@@ -669,11 +680,16 @@ class _AdminBooksPageState extends State<AdminBooksPage> {
                       decoration: const InputDecoration(labelText: "Kategori"),
                       items: categories
                           .map(
-                            (c) => DropdownMenuItem(
-                              value: c["id"] as int,
-                              child: Text(c["name"]),
-                            ),
+                            (c) {
+                              final categoryId = _asInt(c["id"]);
+                              if (categoryId == null) return null;
+                              return DropdownMenuItem<int>(
+                                value: categoryId,
+                                child: Text(c["name"]),
+                              );
+                            },
                           )
+                          .whereType<DropdownMenuItem<int>>()
                           .toList(),
                       onChanged: (v) => selectedCategoryId = v,
                     ),
@@ -858,16 +874,20 @@ class _AdminBooksPageState extends State<AdminBooksPage> {
                         message: "Kitap kaydı güncelleniyor...",
                         detail: payload["title"] as String,
                       );
+                      final bookId = _asInt(payload["id"]);
+                      if (bookId == null) {
+                        throw Exception("Geçersiz kitap id'si");
+                      }
                       await _bookService.updateBook(
-                        id: payload["id"] as int,
+                        id: bookId,
                         title: payload["title"] as String,
                         isbn: payload["isbn"] as String,
                         price: price,
                         coverUrl: coverUrl,
                         bookUrl: bookUrl,
                         discountPrice: discount,
-                        categoryId: payload["category_id"] as int?,
-                        authorId: payload["author_id"] as int?,
+                        categoryId: _asInt(payload["category_id"]),
+                        authorId: _asInt(payload["author_id"]),
                         description: (payload["description"] as String).isEmpty
                             ? null
                             : payload["description"] as String,
@@ -966,11 +986,19 @@ class _AdminBooksPageState extends State<AdminBooksPage> {
   String _formatPrice(dynamic value) {
     if (value == null) return "-";
     try {
-      final d = double.parse(value.toString());
+      final d = double.tryParse(value.toString());
+      if (d == null) return value.toString();
       return "₺${d.toStringAsFixed(2)}";
     } catch (_) {
       return value.toString();
     }
+  }
+
+  int? _asInt(dynamic value) {
+    if (value == null) return null;
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value.toString());
   }
 
   @override
@@ -1058,7 +1086,7 @@ class _AdminBooksPageState extends State<AdminBooksPage> {
                               DataColumn(label: Text("İşlem")),
                             ],
                             rows: filteredBooks.map((b) {
-                              final id = b["id"] as int?;
+                              final id = _asInt(b["id"]);
                               final isPublished = _bookIsPublished(b);
                               final busy =
                                   id != null &&

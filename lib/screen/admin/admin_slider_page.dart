@@ -63,6 +63,13 @@ class _AdminSliderPageState extends State<AdminSliderPage> {
     });
   }
 
+  int? _asInt(dynamic value) {
+    if (value == null) return null;
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value.toString());
+  }
+
   Future<void> _showError(String rawError) {
     final parsed = ErrorManager.parseGraphQLError(
       rawError.replaceFirst("Exception:", "").trim(),
@@ -215,8 +222,12 @@ class _AdminSliderPageState extends State<AdminSliderPage> {
                   final linkUrl = linkCtrl.text.trim();
 
                   if (isEdit) {
+                    final sliderId = _asInt(slider["id"]);
+                    if (sliderId == null) {
+                      throw Exception("Geçersiz slider id'si");
+                    }
                     await _service.update(
-                      id: slider["id"] as int,
+                      id: sliderId,
                       title: title,
                       subtitle: subtitle.isEmpty ? null : subtitle,
                       description: description.isEmpty ? null : description,
@@ -302,8 +313,13 @@ class _AdminSliderPageState extends State<AdminSliderPage> {
 
   Future<void> _toggleActive(Map<String, dynamic> slider, bool value) async {
     try {
+      final sliderId = _asInt(slider["id"]);
+      if (sliderId == null) {
+        await _showError("Geçersiz slider id'si");
+        return;
+      }
       await _service.update(
-        id: slider["id"] as int,
+        id: sliderId,
         title: (slider["title"] ?? "").toString(),
         subtitle: (slider["subtitle"] ?? "").toString().isEmpty
             ? null
@@ -495,8 +511,11 @@ class _AdminSliderPageState extends State<AdminSliderPage> {
                                             Icons.delete,
                                             color: Colors.red,
                                           ),
-                                          onPressed: () =>
-                                              _deleteItem(s["id"] as int),
+                                          onPressed: () {
+                                            final sliderId = _asInt(s["id"]);
+                                            if (sliderId == null) return;
+                                            _deleteItem(sliderId);
+                                          },
                                         ),
                                       ],
                                     ),

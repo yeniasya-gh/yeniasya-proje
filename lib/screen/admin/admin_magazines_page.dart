@@ -46,6 +46,13 @@ class _AdminMagazinesPageState extends State<AdminMagazinesPage> {
     return double.tryParse(value.replaceAll(",", "."));
   }
 
+  int? _asInt(dynamic value) {
+    if (value == null) return null;
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value.toString());
+  }
+
   String _formatDateTime(dynamic raw) {
     if (raw == null) return "-";
     DateTime? dt;
@@ -139,7 +146,7 @@ class _AdminMagazinesPageState extends State<AdminMagazinesPage> {
   Future<void> _showAddOrEditDialog({Map<String, dynamic>? magazine}) async {
     final isEdit = (magazine?["id"]) != null;
     final formKey = GlobalKey<FormState>();
-    final magazineId = magazine?["id"] as int?;
+    final magazineId = _asInt(magazine?["id"]);
     List<Map<String, dynamic>> types = [];
     Map<int, String> priceByType = {};
 
@@ -154,7 +161,7 @@ class _AdminMagazinesPageState extends State<AdminMagazinesPage> {
       if (isEdit && magazineId != null) {
         final prices = await _priceService.getByMagazine(magazineId);
         for (final p in prices) {
-          final typeId = p["magazine_type_id"] as int?;
+          final typeId = _asInt(p["magazine_type_id"]);
           if (typeId == null) continue;
           priceByType[typeId] = (p["price"] ?? "").toString();
         }
@@ -176,7 +183,7 @@ class _AdminMagazinesPageState extends State<AdminMagazinesPage> {
     );
     final priceControllers = <int, TextEditingController>{};
     for (final type in types) {
-      final typeId = type["id"] as int?;
+      final typeId = _asInt(type["id"]);
       if (typeId == null) continue;
       priceControllers[typeId] = TextEditingController(
         text: priceByType[typeId] ?? "",
@@ -262,7 +269,7 @@ class _AdminMagazinesPageState extends State<AdminMagazinesPage> {
                 ),
                 const SizedBox(height: 6),
                 ...types.map((type) {
-                  final typeId = type["id"] as int?;
+                  final typeId = _asInt(type["id"]);
                   if (typeId == null || !priceControllers.containsKey(typeId)) {
                     return const SizedBox.shrink();
                   }
@@ -314,7 +321,7 @@ class _AdminMagazinesPageState extends State<AdminMagazinesPage> {
 
               final typePrices = <Map<String, dynamic>>[];
               for (final type in types) {
-                final typeId = type["id"] as int?;
+                final typeId = _asInt(type["id"]);
                 if (typeId == null || !priceControllers.containsKey(typeId))
                   continue;
                 final rawPrice = priceControllers[typeId]!.text.trim();
@@ -363,11 +370,14 @@ class _AdminMagazinesPageState extends State<AdminMagazinesPage> {
                   );
                 }
 
-                int savedId;
+                int? savedId;
                 if (isEdit) {
-                  savedId = payload["id"] as int;
+                  final savedMagazineId = _asInt(payload["id"]);
+                  if (savedMagazineId == null) {
+                    throw Exception("Geçersiz dergi id'si");
+                  }
                   await _service.updateMagazine(
-                    id: savedId,
+                    id: savedMagazineId,
                     name: payload["name"] as String,
                     category: payload["category"] as String,
                     period: payload["period"] as String,
@@ -390,6 +400,10 @@ class _AdminMagazinesPageState extends State<AdminMagazinesPage> {
                         ? null
                         : payload["description"] as String,
                   );
+                }
+
+                if (savedId == null) {
+                  throw Exception("Dergi kaydı oluşturulamadı");
                 }
 
                 final items = typePrices
@@ -570,8 +584,11 @@ class _AdminMagazinesPageState extends State<AdminMagazinesPage> {
                                       Icons.delete,
                                       color: Colors.red,
                                     ),
-                                    onPressed: () =>
-                                        _deleteMagazine(m["id"] as int),
+                                    onPressed: () {
+                                      final magazineId = _asInt(m["id"]);
+                                      if (magazineId == null) return;
+                                      _deleteMagazine(magazineId);
+                                    },
                                   ),
                                 ],
                               ),

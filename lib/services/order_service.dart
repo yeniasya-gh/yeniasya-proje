@@ -174,7 +174,7 @@ class OrderService {
     return _filterPendingOrders(
       orders.map((o) {
         final normalized = _normalizeOrderRow(o);
-        final orderId = normalized["id"] as int?;
+        final orderId = _toInt(normalized["id"]);
         return {
           ...normalized,
           "order_items": orderId == null

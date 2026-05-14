@@ -22,7 +22,7 @@ class PromoCode {
   factory PromoCode.fromMap(Map<String, dynamic> json) {
     return PromoCode(
       id: json["id"] is int
-          ? json["id"] as int
+          ? (json["id"] as num).toInt()
           : int.tryParse(json["id"]?.toString() ?? "") ?? 0,
       code: json["code"]?.toString() ?? "",
       discountPercent: (json["discount_percent"] is num)

@@ -957,9 +957,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       setState(() {
         _reviews = List<Map<String, dynamic>>.from(data["reviews"] ?? []);
         _avgRating = (data["average"] as double?) ?? 0;
-        _reviewCount = data["count"] is int
-            ? data["count"] as int
-            : int.tryParse(data["count"]?.toString() ?? "0") ?? 0;
+        _reviewCount = int.tryParse(data["count"]?.toString() ?? "") ?? 0;
       });
     } catch (_) {
       // Sessiz geç

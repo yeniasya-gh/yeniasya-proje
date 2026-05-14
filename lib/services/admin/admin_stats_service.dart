@@ -17,7 +17,8 @@ class AdminStatsService {
     ''';
 
     final data = await _hasura.graphQLRequest(query: query);
-    int _count(String key) => (data[key]?["aggregate"]?["count"] ?? 0) as int;
+    int _count(String key) =>
+        int.tryParse(data[key]?["aggregate"]?["count"]?.toString() ?? "") ?? 0;
 
     return {
       "books": _count("books_aggregate"),

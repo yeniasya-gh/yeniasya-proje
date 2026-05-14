@@ -73,6 +73,13 @@ class _AdminEklerPageState extends State<AdminEklerPage> {
     });
   }
 
+  int? _asInt(dynamic value) {
+    if (value == null) return null;
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value.toString());
+  }
+
   Future<void> _showAddDialog() async {
     final formKey = GlobalKey<FormState>();
     final adCtrl = TextEditingController();
@@ -507,7 +514,7 @@ class _AdminEklerPageState extends State<AdminEklerPage> {
             detail: ad,
           );
           await _service.update(
-            id: int.tryParse(result["id"].toString()) ?? 0,
+                          id: int.tryParse(result["id"].toString()) ?? 0,
             ad: ad,
             aciklama: aciklama.isEmpty ? null : aciklama,
             fiyat: fiyat,
@@ -707,12 +714,10 @@ class _AdminEklerPageState extends State<AdminEklerPage> {
                           color: Colors.red,
                         ),
                         tooltip: "Sil",
-                        onPressed: _saving
+                            onPressed: _saving
                             ? null
                             : () {
-                                final id = ek["id"] is int
-                                    ? ek["id"] as int
-                                    : int.tryParse(ek["id"]?.toString() ?? "");
+                                final id = _asInt(ek["id"]);
                                 if (id == null) {
                                   _showSnack("Geçersiz ek ID");
                                   return;

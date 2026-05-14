@@ -50,7 +50,7 @@ class AdminReportsService {
 
     final data = await _hasura.graphQLRequest(query: query, variables: variables);
     final agg = data['agg']?['aggregate'] ?? {};
-    final count = (agg['count'] ?? 0) as int;
+    final count = int.tryParse(agg['count']?.toString() ?? "") ?? 0;
     final revenue = double.tryParse((agg['sum']?['line_total']).toString()) ?? 0;
     final avgPrice = double.tryParse((agg['avg']?['unit_price']).toString()) ?? 0;
 

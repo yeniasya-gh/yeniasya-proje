@@ -103,9 +103,7 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
       final users = List<Map<String, dynamic>>.from(
         result["users"] ?? const [],
       );
-      final totalCount = result["totalCount"] is int
-          ? result["totalCount"] as int
-          : int.tryParse(result["totalCount"]?.toString() ?? "") ?? 0;
+      final totalCount = _asInt(result["totalCount"]) ?? 0;
       final totalPages = totalCount <= 0
           ? 1
           : ((totalCount + _pageSize - 1) ~/ _pageSize);
@@ -611,7 +609,7 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
     final nameCtrl = TextEditingController(text: user["name"]);
     final emailCtrl = TextEditingController(text: user["email"]);
     final phoneCtrl = TextEditingController(text: user["phone"] ?? "");
-    int roleId = user["role_id"] ?? 1;
+    int roleId = _asInt(user["role_id"]) ?? 1;
 
     showDialog(
       context: context,
@@ -642,7 +640,7 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
                     items: allRoles
                         .map(
                           (r) => DropdownMenuItem<int>(
-                            value: r["id"],
+                            value: _asInt(r["id"]),
                             child: Text(r["name"]),
                           ),
                         )
@@ -668,6 +666,12 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
                   style: TextStyle(color: Colors.white),
                 ),
                 onPressed: () async {
+                  final userId = _asInt(user["id"]);
+                  final roleIdValue = _asInt(roleId);
+                  if (userId == null || roleIdValue == null) {
+                    await _showError("Geçersiz kullanıcı bilgisi.");
+                    return;
+                  }
                   final payload = {
                     "id": user["id"],
                     "name": nameCtrl.text,
@@ -680,11 +684,11 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
 
                   try {
                     await _adminService.updateUser(
-                      id: payload["id"] as int,
+                      id: userId,
                       name: payload["name"] as String,
                       email: payload["email"] as String,
                       phone: payload["phone"] as String?,
-                      roleId: payload["role_id"] as int,
+                      roleId: roleIdValue,
                     );
                     await _loadUsers(
                       page: _currentPage,

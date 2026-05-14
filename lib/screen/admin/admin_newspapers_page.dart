@@ -54,6 +54,13 @@ class _AdminNewspapersPageState extends State<AdminNewspapersPage> {
     });
   }
 
+  int? _asInt(dynamic value) {
+    if (value == null) return null;
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value.toString());
+  }
+
   Future<void> _showError(String rawError) {
     final parsed = ErrorManager.parseGraphQLError(
       rawError.replaceFirst("Exception:", "").trim(),
@@ -254,8 +261,12 @@ class _AdminNewspapersPageState extends State<AdminNewspapersPage> {
                               detail: payload["publish_date"] as String,
                             );
                             if (isEdit) {
+                              final newspaperId = _asInt(payload["id"]);
+                              if (newspaperId == null) {
+                                throw Exception("Geçersiz gazete id'si");
+                              }
                               await _service.update(
-                                id: payload["id"] as int,
+                                id: newspaperId,
                                 imageUrl: imageUrl,
                                 fileUrl: fileUrl,
                                 publishDate: payload["publish_date"] as String,
@@ -533,8 +544,11 @@ class _AdminNewspapersPageState extends State<AdminNewspapersPage> {
                                       Icons.delete,
                                       color: Colors.red,
                                     ),
-                                    onPressed: () =>
-                                        _deleteItem(n["id"] as int),
+                                    onPressed: () {
+                                      final newspaperId = _asInt(n["id"]);
+                                      if (newspaperId == null) return;
+                                      _deleteItem(newspaperId);
+                                    },
                                   ),
                                 ],
                               ),

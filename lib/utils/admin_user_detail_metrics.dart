@@ -1,4 +1,9 @@
 class AdminUserDetailMetrics {
+  static int _intValue(dynamic value) {
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? "") ?? 0;
+  }
+
   static String accessTypeLabel(String type) {
     switch (type) {
       case "book":
@@ -38,7 +43,7 @@ class AdminUserDetailMetrics {
         key,
         () => {"title": title, "names": <String>[], "count": 0},
       );
-      group["count"] = (group["count"] as int) + 1;
+      group["count"] = _intValue(group["count"]) + 1;
       (group["names"] as List<String>).add(name);
     }
 
@@ -87,15 +92,15 @@ class AdminUserDetailMetrics {
     for (final order in orders) {
       final status = (order["status"] ?? "paid").toString().toLowerCase();
       if (isCompletedOrderStatus(status)) {
-        stats["completed"] = (stats["completed"] as int) + 1;
+        stats["completed"] = _intValue(stats["completed"]) + 1;
       } else if (status == "pending") {
-        stats["pending"] = (stats["pending"] as int) + 1;
+        stats["pending"] = _intValue(stats["pending"]) + 1;
       } else {
-        stats["failed"] = (stats["failed"] as int) + 1;
+        stats["failed"] = _intValue(stats["failed"]) + 1;
       }
 
       final total = double.tryParse(order["total_paid"]?.toString() ?? "") ?? 0;
-      stats["totalPaid"] = (stats["totalPaid"] as double) + total;
+      stats["totalPaid"] = (stats["totalPaid"] as num).toDouble() + total;
     }
 
     return stats;

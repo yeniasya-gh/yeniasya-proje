@@ -19,6 +19,13 @@ class _AdminMagazineTypesPageState extends State<AdminMagazineTypesPage> {
   bool _saving = false;
   List<Map<String, dynamic>> _types = [];
 
+  int? _asInt(dynamic value) {
+    if (value == null) return null;
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value.toString());
+  }
+
   @override
   void initState() {
     super.initState();
@@ -121,8 +128,12 @@ class _AdminMagazineTypesPageState extends State<AdminMagazineTypesPage> {
             sortOrder: sortOrder,
           );
         } else {
+          final typeId = _asInt(initial["id"]);
+          if (typeId == null) {
+            throw Exception("Geçersiz kayıt id'si");
+          }
           await _service.update(
-            id: initial["id"] as int,
+            id: typeId,
             title: title,
             durationMonths: duration,
             isActive: isActive,
@@ -287,7 +298,11 @@ class _AdminMagazineTypesPageState extends State<AdminMagazineTypesPage> {
                                 icon: const Icon(Icons.edit),
                               ),
                               IconButton(
-                                onPressed: () => _delete(item["id"] as int),
+                                onPressed: () {
+                                  final typeId = _asInt(item["id"]);
+                                  if (typeId == null) return;
+                                  _delete(typeId);
+                                },
                                 icon: const Icon(Icons.delete_outline, color: Colors.red),
                               ),
                             ],
