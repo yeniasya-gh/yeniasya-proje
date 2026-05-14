@@ -33,9 +33,11 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
   late final AdminUserAccessAuditService _auditService;
   late final AdminUsersExcelExportService _excelExportService;
   Timer? _searchDebounce;
+  Timer? _exportJobPollTimer;
 
   List<Map<String, dynamic>> _users = [];
   List<Map<String, dynamic>> allRoles = [];
+  AdminUsersExportJob? _exportJob;
 
   bool isLoading = true;
   bool isExporting = false;
@@ -59,6 +61,7 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
   @override
   void dispose() {
     _searchDebounce?.cancel();
+    _exportJobPollTimer?.cancel();
     searchCtrl.dispose();
     super.dispose();
   }
@@ -231,30 +234,234 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
 
   Future<void> _exportUsersToExcel() async {
     if (isLoading || isExporting) return;
+    final activeJob = _exportJob;
+    if (activeJob != null && !activeJob.isCompleted && !activeJob.isFailed) {
+      await _showError(
+        "Devam eden bir Excel export işi var. Hazır olduğunda aşağıdaki karttan indirebilirsiniz.",
+      );
+      return;
+    }
 
-    setState(() => isExporting = true);
     final messenger = ScaffoldMessenger.of(context);
-
+    setState(() => isExporting = true);
     try {
-      final export = await _excelExportService.exportUsersWorkbook();
-      await exportExcelBytes(export.bytes, export.fileName);
-
+      final job = await _excelExportService.createUsersExportJob();
       if (!mounted) return;
+      setState(() {
+        _exportJob = job;
+      });
+      _startExportJobPolling();
       messenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            "${export.userCount} kullanıcı, ${export.accessCount} abonelik satırı ve ${export.orderCount} sipariş Excel'e aktarıldı.",
-          ),
+        const SnackBar(
+          content: Text("Excel export işi kuyruğa alındı. Hazır olunca indirme açılacak."),
         ),
       );
     } catch (e) {
       if (!mounted) return;
-      await _showError("Excel export sırasında hata oluştu:\n$e");
+      await _showError("Excel export kuyruğa alınamadı:\n$e");
     } finally {
       if (mounted) {
         setState(() => isExporting = false);
       }
     }
+  }
+
+  void _startExportJobPolling() {
+    _exportJobPollTimer?.cancel();
+    _exportJobPollTimer = Timer.periodic(const Duration(seconds: 4), (_) {
+      unawaited(_refreshExportJob());
+    });
+    unawaited(_refreshExportJob());
+  }
+
+  Future<void> _refreshExportJob() async {
+    final job = _exportJob;
+    if (job == null) {
+      _exportJobPollTimer?.cancel();
+      _exportJobPollTimer = null;
+      return;
+    }
+    if (job.isCompleted || job.isFailed) {
+      _exportJobPollTimer?.cancel();
+      _exportJobPollTimer = null;
+      return;
+    }
+
+    try {
+      final updated = await _excelExportService.getUsersExportJob(job.id);
+      if (!mounted) return;
+      setState(() {
+        _exportJob = updated;
+      });
+      if (updated.isCompleted || updated.isFailed) {
+        _exportJobPollTimer?.cancel();
+        _exportJobPollTimer = null;
+        if (updated.isFailed) {
+          await _showError(
+            updated.errorMessage?.isNotEmpty == true
+                ? "Excel export işi başarısız oldu:\n${updated.errorMessage}"
+                : "Excel export işi başarısız oldu.",
+          );
+        }
+      }
+    } catch (_) {
+      // Polling sırasında geçici ağ hatalarını sessizce atlıyoruz.
+    }
+  }
+
+  Future<void> _downloadExportJob(AdminUsersExportJob job) async {
+    if (_exportJob == null || _exportJob!.id != job.id) return;
+    if (!job.isCompleted) return;
+
+    setState(() => isExporting = true);
+    try {
+      final bytes = await _excelExportService.downloadUsersExportJobBytes(job.id);
+      await exportExcelBytes(
+        bytes,
+        job.fileName ?? "kullanicilar_export.xlsx",
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            "${job.totalCount} kullanıcı, ${job.accessCount} abonelik satırı ve ${job.orderCount} sipariş indirildi.",
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      await _showError("Excel dosyası indirilemedi:\n$e");
+    } finally {
+      if (mounted) {
+        setState(() => isExporting = false);
+      }
+    }
+  }
+
+  Widget _buildExportJobCard(AdminUsersExportJob job) {
+    final isPending = job.isQueued || job.isRunning;
+    final isFailed = job.isFailed;
+    final isReady = job.isCompleted;
+    final statusColor = isFailed
+        ? Colors.red
+        : isReady
+        ? Colors.green
+        : Colors.orange;
+    final statusText = isFailed
+        ? "Başarısız"
+        : isReady
+        ? "Hazır"
+        : isPending
+        ? "Kuyrukta / İşleniyor"
+        : job.status;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.blue.shade100),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.description_outlined, color: Colors.blue.shade700),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  "Excel export işi",
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                ),
+              ),
+              Text(
+                statusText,
+                style: TextStyle(
+                  color: statusColor,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(width: 8),
+              IconButton(
+                tooltip: "Kapat",
+                onPressed: () {
+                  _exportJobPollTimer?.cancel();
+                  _exportJobPollTimer = null;
+                  setState(() => _exportJob = null);
+                },
+                icon: const Icon(Icons.close),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (job.errorMessage?.isNotEmpty == true)
+            Text(
+              job.errorMessage!,
+              style: TextStyle(color: Colors.red.shade700),
+            )
+          else
+            Text(
+              isReady
+                  ? "Dosya hazır. İndir butonundan alabilirsiniz."
+                  : "Excel dosyası sunucuda hazırlanıyor. İş tamamlanınca indirme açılacak.",
+            ),
+          const SizedBox(height: 8),
+          if (isPending)
+            const LinearProgressIndicator(minHeight: 4)
+          else if (isReady)
+            Row(
+              children: [
+                ElevatedButton.icon(
+                  onPressed: isExporting ? null : () => _downloadExportJob(job),
+                  icon: isExporting
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.download),
+                  label: Text(isExporting ? "İndiriliyor..." : "İndir"),
+                ),
+                const SizedBox(width: 12),
+                OutlinedButton.icon(
+                  onPressed: _exportJobPollTimer == null
+                      ? _startExportJobPolling
+                      : null,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text("Durumu Yenile"),
+                ),
+              ],
+            )
+          else
+            Row(
+              children: [
+                OutlinedButton.icon(
+                  onPressed: _exportUsersToExcel,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text("Tekrar Dene"),
+                ),
+              ],
+            ),
+          const SizedBox(height: 8),
+          Text(
+            "Job: ${job.id}${job.fileName != null ? " • ${job.fileName}" : ""}",
+            style: TextStyle(
+              color: Colors.grey.shade700,
+              fontSize: 12,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   // ➕ Kullanıcı ekleme popup
@@ -1006,20 +1213,31 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
 
   @override
   Widget build(BuildContext context) {
+    final activeExportJob = _exportJob;
+    final hasPendingExportJob =
+        activeExportJob != null &&
+        !activeExportJob.isCompleted &&
+        !activeExportJob.isFailed;
+    final exportButtonLabel = isExporting
+        ? "Hazırlanıyor..."
+        : hasPendingExportJob
+        ? "Kuyrukta"
+        : "Excel'e Aktar";
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // ÜST BAR
-        Wrap(
-          alignment: WrapAlignment.spaceBetween,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          spacing: 16,
-          runSpacing: 12,
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            const Text(
-              "Kullanıcı Yönetimi",
-              style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
+            const Expanded(
+              child: Text(
+                "Kullanıcı Yönetimi",
+                style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
+            const SizedBox(width: 16),
             Wrap(
               spacing: 12,
               runSpacing: 8,
@@ -1042,14 +1260,15 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : const Icon(Icons.download),
-                  label: Text(
-                    isExporting ? "Hazırlanıyor..." : "Excel'e Aktar",
-                  ),
+                  label: Text(exportButtonLabel),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: Colors.blue,
                     side: const BorderSide(color: Colors.blue),
                   ),
-                  onPressed: isExporting ? null : _exportUsersToExcel,
+                  onPressed:
+                      (isExporting || hasPendingExportJob)
+                          ? null
+                          : _exportUsersToExcel,
                 ),
                 ElevatedButton.icon(
                   icon: const Icon(Icons.add, color: Colors.white),
@@ -1064,6 +1283,11 @@ class _AdminUsersPageState extends State<AdminUsersPage> {
             ),
           ],
         ),
+
+        if (activeExportJob != null) ...[
+          const SizedBox(height: 16),
+          _buildExportJobCard(activeExportJob),
+        ],
 
         const SizedBox(height: 20),
 

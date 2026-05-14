@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import '../cdn_authenticated_client.dart';
 import '../hasura_manager.dart';
 import '../../utils/hash_helper.dart';
@@ -392,6 +394,25 @@ class AdminUserService {
       body: body,
     );
     return response;
+  }
+
+  Future<Map<String, dynamic>> createUsersExportJob({
+    Map<String, dynamic> filters = const {},
+  }) async {
+    return _cdn.postJson(
+      "/admin/users/export-jobs",
+      body: {
+        if (filters.isNotEmpty) "filters": filters,
+      },
+    );
+  }
+
+  Future<Map<String, dynamic>> getUsersExportJob(String jobId) async {
+    return _cdn.getJson("/admin/users/export-jobs/$jobId");
+  }
+
+  Future<Uint8List> downloadUsersExportJobBytes(String jobId) async {
+    return _cdn.downloadBytes("/admin/users/export-jobs/$jobId/download");
   }
 
   bool _isDuplicateConstraintError(Object error) {

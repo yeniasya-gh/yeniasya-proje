@@ -32,6 +32,26 @@ class AdminUsersExcelExportService {
   final AdminUserService _userService;
   final AdminOrderService _orderService;
 
+  Future<AdminUsersExportJob> createUsersExportJob({
+    Map<String, dynamic> filters = const {},
+  }) async {
+    final data = await _userService.createUsersExportJob(filters: filters);
+    return AdminUsersExportJob.fromJson(
+      Map<String, dynamic>.from(data["job"] ?? const {}),
+    );
+  }
+
+  Future<AdminUsersExportJob> getUsersExportJob(String jobId) async {
+    final data = await _userService.getUsersExportJob(jobId);
+    return AdminUsersExportJob.fromJson(
+      Map<String, dynamic>.from(data["job"] ?? const {}),
+    );
+  }
+
+  Future<Uint8List> downloadUsersExportJobBytes(String jobId) async {
+    return _userService.downloadUsersExportJobBytes(jobId);
+  }
+
   Future<AdminUsersExcelExportResult> exportUsersWorkbook() async {
     final users = await _userService.getAllUsers();
     final userIds = users
@@ -430,5 +450,66 @@ class AdminUsersExcelExportService {
     final now = DateTime.now();
     String two(int value) => value.toString().padLeft(2, '0');
     return '${now.year}${two(now.month)}${two(now.day)}_${two(now.hour)}${two(now.minute)}${two(now.second)}';
+  }
+}
+
+class AdminUsersExportJob {
+  final String id;
+  final String status;
+  final String? fileName;
+  final String? errorMessage;
+  final int totalCount;
+  final int accessCount;
+  final int orderCount;
+  final String? downloadUrl;
+  final DateTime? createdAt;
+  final DateTime? startedAt;
+  final DateTime? completedAt;
+
+  const AdminUsersExportJob({
+    required this.id,
+    required this.status,
+    required this.fileName,
+    required this.errorMessage,
+    required this.totalCount,
+    required this.accessCount,
+    required this.orderCount,
+    required this.downloadUrl,
+    required this.createdAt,
+    required this.startedAt,
+    required this.completedAt,
+  });
+
+  bool get isCompleted => status == "completed";
+  bool get isFailed => status == "failed";
+  bool get isQueued => status == "queued";
+  bool get isRunning => status == "running";
+
+  factory AdminUsersExportJob.fromJson(Map<String, dynamic> json) {
+    DateTime? parseDate(dynamic value) {
+      final raw = value?.toString().trim();
+      if (raw == null || raw.isEmpty) return null;
+      return DateTime.tryParse(raw);
+    }
+
+    int toInt(dynamic value) {
+      if (value is int) return value;
+      if (value is num) return value.toInt();
+      return int.tryParse(value?.toString() ?? "") ?? 0;
+    }
+
+    return AdminUsersExportJob(
+      id: json["id"]?.toString() ?? "",
+      status: json["status"]?.toString() ?? "queued",
+      fileName: json["file_name"]?.toString(),
+      errorMessage: json["error_message"]?.toString(),
+      totalCount: toInt(json["total_count"]),
+      accessCount: toInt(json["access_count"]),
+      orderCount: toInt(json["order_count"]),
+      downloadUrl: json["download_url"]?.toString(),
+      createdAt: parseDate(json["created_at"]),
+      startedAt: parseDate(json["started_at"]),
+      completedAt: parseDate(json["completed_at"]),
+    );
   }
 }

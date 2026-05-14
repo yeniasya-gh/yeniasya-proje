@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
@@ -77,6 +78,53 @@ class CdnAuthenticatedClient {
     Map<String, dynamic> body = const {},
   }) async {
     return _sendJsonRequest("POST", path, body: body);
+  }
+
+  Future<Uint8List> downloadBytes(
+    String path, {
+    Map<String, String?> queryParameters = const {},
+  }) async {
+    final token = AuthTokenStore.token?.trim();
+    if (token == null || token.isEmpty) {
+      throw CdnRequestException(
+        "Yetkilendirme bulunamadı. Lütfen tekrar giriş yapın.",
+        statusCode: 401,
+      );
+    }
+
+    final uri = Uri.parse("$_baseUrl$path").replace(
+      queryParameters: {
+        for (final entry in queryParameters.entries)
+          if (entry.value != null && entry.value!.trim().isNotEmpty)
+            entry.key: entry.value!.trim(),
+      },
+    );
+
+    late final http.Response response;
+    try {
+      response = await _client.get(
+        uri,
+        headers: {
+          "Authorization": "Bearer $token",
+        },
+      ).timeout(timeout);
+    } catch (error) {
+      throw CdnRequestException(error.toString());
+    }
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      final bodyJson = _decodeBody(response.body);
+      throw CdnRequestException(
+        _responseMessage(bodyJson).isNotEmpty
+            ? _responseMessage(bodyJson)
+            : "CDN request failed (${response.statusCode})",
+        statusCode: response.statusCode,
+      );
+    }
+
+    return response.bodyBytes.isNotEmpty
+        ? Uint8List.fromList(response.bodyBytes)
+        : Uint8List(0);
   }
 
   Future<Map<String, dynamic>> _sendJsonRequest(
