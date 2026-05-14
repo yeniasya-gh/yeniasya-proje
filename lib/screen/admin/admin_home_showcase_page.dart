@@ -163,8 +163,9 @@ class _AdminHomeShowcasePageState extends State<AdminHomeShowcasePage> {
 
   Future<void> _removeEntry({
     required String type,
-    required int entryId,
+    required int? entryId,
   }) async {
+    if (entryId == null) return;
     try {
       await _showcaseService.delete(entryId);
       await _reloadEntries(type);
@@ -187,9 +188,9 @@ class _AdminHomeShowcasePageState extends State<AdminHomeShowcasePage> {
   ) async {
     try {
       for (var i = 0; i < entries.length; i++) {
-        final id = entries[i]["id"];
+        final id = _asInt(entries[i]["id"]);
         if (id == null) continue;
-        await _showcaseService.updateSortOrder(id: id as int, sortOrder: i + 1);
+        await _showcaseService.updateSortOrder(id: id, sortOrder: i + 1);
       }
       _showSnack("Sıralama güncellendi.");
     } catch (e) {
@@ -299,8 +300,8 @@ class _AdminHomeShowcasePageState extends State<AdminHomeShowcasePage> {
                   },
                   itemBuilder: (_, index) {
                     final entry = entries[index];
-                    final itemId = entry["product_id"];
-                    final title = _titleFor(type, itemId as int?);
+                    final itemId = _asInt(entry["product_id"]);
+                    final title = _titleFor(type, itemId);
                     return ListTile(
                       key: ValueKey("entry-${entry["id"]}"),
                       title: Text(title),
@@ -312,7 +313,7 @@ class _AdminHomeShowcasePageState extends State<AdminHomeShowcasePage> {
                         icon: const Icon(Icons.close, color: Colors.red),
                         onPressed: () => _removeEntry(
                           type: type,
-                          entryId: entry["id"] as int,
+                          entryId: _asInt(entry["id"]),
                         ),
                       ),
                     );
@@ -334,10 +335,12 @@ class _AdminHomeShowcasePageState extends State<AdminHomeShowcasePage> {
             separatorBuilder: (_, __) => const Divider(height: 1),
             itemBuilder: (_, index) {
               final item = items[index];
-              final itemId = item["id"] as int?;
+              final itemId = _asInt(item["id"]);
               final title = _itemTitle(type, item);
               final subtitle = _itemSubtitle(type, item);
-              final selected = entries.any((e) => e["product_id"] == itemId);
+              final selected =
+                  itemId != null &&
+                  entries.any((e) => _asInt(e["product_id"]) == itemId);
               return ListTile(
                 title: Text(title),
                 subtitle: subtitle == null ? null : Text(subtitle),
@@ -360,16 +363,16 @@ class _AdminHomeShowcasePageState extends State<AdminHomeShowcasePage> {
   String _titleFor(String type, int? itemId) {
     if (itemId == null) return "Ürün";
     if (type == "book") {
-      final match = _books.where((b) => b["id"] == itemId).toList();
+      final match = _books.where((b) => _asInt(b["id"]) == itemId).toList();
       return match.isNotEmpty
           ? _itemTitle(type, match.first)
           : "Kitap #$itemId";
     }
     if (type == "ek") {
-      final match = _ekler.where((e) => e["id"] == itemId).toList();
+      final match = _ekler.where((e) => _asInt(e["id"]) == itemId).toList();
       return match.isNotEmpty ? _itemTitle(type, match.first) : "Ek #$itemId";
     }
-    final match = _magazines.where((m) => m["id"] == itemId).toList();
+    final match = _magazines.where((m) => _asInt(m["id"]) == itemId).toList();
     return match.isNotEmpty ? _itemTitle(type, match.first) : "Dergi #$itemId";
   }
 
@@ -427,5 +430,12 @@ class _AdminHomeShowcasePageState extends State<AdminHomeShowcasePage> {
       default:
         return "Dergi";
     }
+  }
+
+  int? _asInt(dynamic value) {
+    if (value == null) return null;
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value.toString());
   }
 }
