@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../services/admin/admin_manual_newspaper_user_service.dart';
@@ -16,9 +18,18 @@ class AdminManualNewspaperUsersPage extends StatefulWidget {
 class _AdminManualNewspaperUsersPageState
     extends State<AdminManualNewspaperUsersPage> {
   final _service = AdminManualNewspaperUserService();
+  final TextEditingController _searchCtrl = TextEditingController();
+  Timer? _searchDebounce;
   bool _loading = true;
   bool _saving = false;
   List<Map<String, dynamic>> _items = [];
+  int _totalCount = 0;
+  int _currentPage = 1;
+  int _pageSize = 20;
+  String _currentSearch = "";
+  String _statusFilter = "all";
+  String _activeFilter = "all";
+  int _requestSeq = 0;
 
   @override
   void initState() {
@@ -26,11 +37,69 @@ class _AdminManualNewspaperUsersPageState
     _load();
   }
 
+  @override
+  void dispose() {
+    _searchDebounce?.cancel();
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
   Future<void> _load() async {
-    setState(() => _loading = true);
+    await _loadPage(
+      page: _currentPage,
+      search: _searchCtrl.text,
+      status: _statusFilter,
+      activeState: _activeFilter,
+      pageSize: _pageSize,
+    );
+  }
+
+  Future<void> _loadPage({
+    required int page,
+    required String search,
+    required String status,
+    required String activeState,
+    required int pageSize,
+  }) async {
+    final requestSeq = ++_requestSeq;
+    final safePage = page < 1 ? 1 : page;
+    final safePageSize = pageSize < 1 ? 20 : pageSize;
+
+    if (mounted) {
+      setState(() => _loading = true);
+    }
+
     try {
-      final list = await _service.listManualUsers();
-      setState(() => _items = list);
+      final result = await _service.listManualUsersPage(
+        keyword: search,
+        status: status,
+        activeState: activeState,
+        page: safePage,
+        pageSize: safePageSize,
+      );
+      final totalPages = result.totalCount <= 0
+          ? 1
+          : ((result.totalCount + safePageSize - 1) ~/ safePageSize);
+      if (safePage > totalPages && result.totalCount > 0) {
+        await _loadPage(
+          page: totalPages,
+          search: search,
+          status: status,
+          activeState: activeState,
+          pageSize: safePageSize,
+        );
+        return;
+      }
+      if (!mounted || requestSeq != _requestSeq) return;
+      setState(() {
+        _items = result.items;
+        _totalCount = result.totalCount;
+        _currentPage = safePage > totalPages ? totalPages : safePage;
+        _currentSearch = search.trim();
+        _statusFilter = status;
+        _activeFilter = activeState;
+        _pageSize = safePageSize;
+      });
     } catch (e) {
       final parsed = ErrorManager.parseGraphQLError(e.toString());
       if (mounted) {
@@ -39,8 +108,24 @@ class _AdminManualNewspaperUsersPageState
         ).showSnackBar(SnackBar(content: Text(parsed)));
       }
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && requestSeq == _requestSeq) {
+        setState(() => _loading = false);
+      }
     }
+  }
+
+  void _scheduleSearch(String value) {
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 350), () {
+      if (!mounted) return;
+      _loadPage(
+        page: 1,
+        search: value,
+        status: _statusFilter,
+        activeState: _activeFilter,
+        pageSize: _pageSize,
+      );
+    });
   }
 
   Future<void> _openEditor({Map<String, dynamic>? initial}) async {
@@ -454,6 +539,122 @@ class _AdminManualNewspaperUsersPageState
               ],
             ),
             const SizedBox(height: 16),
+            TextField(
+              controller: _searchCtrl,
+              onChanged: _scheduleSearch,
+              decoration: InputDecoration(
+                hintText: "İsim, e-posta, not veya kullanıcı id ara...",
+                prefixIcon: const Icon(Icons.search),
+                filled: true,
+                fillColor: Colors.white,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                SizedBox(
+                  width: 220,
+                  child: DropdownButtonFormField<String>(
+                    value: _activeFilter,
+                    decoration: InputDecoration(
+                      labelText: "Erişim Durumu",
+                      filled: true,
+                      fillColor: Colors.white,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    items: const [
+                      DropdownMenuItem(value: "all", child: Text("Tümü")),
+                      DropdownMenuItem(value: "active", child: Text("Aktif")),
+                      DropdownMenuItem(value: "inactive", child: Text("Pasif")),
+                      DropdownMenuItem(
+                        value: "expired",
+                        child: Text("Süresi Doldu"),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      if (value == null) return;
+                      setState(() => _activeFilter = value);
+                      _loadPage(
+                        page: 1,
+                        search: _searchCtrl.text,
+                        status: _statusFilter,
+                        activeState: value,
+                        pageSize: _pageSize,
+                      );
+                    },
+                  ),
+                ),
+                SizedBox(
+                  width: 220,
+                  child: DropdownButtonFormField<String>(
+                    value: _statusFilter,
+                    decoration: InputDecoration(
+                      labelText: "Kayıt Tipi",
+                      filled: true,
+                      fillColor: Colors.white,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    items: const [
+                      DropdownMenuItem(value: "all", child: Text("Tümü")),
+                      DropdownMenuItem(value: "new", child: Text("Yeni")),
+                      DropdownMenuItem(value: "old", child: Text("Eski")),
+                    ],
+                    onChanged: (value) {
+                      if (value == null) return;
+                      setState(() => _statusFilter = value);
+                      _loadPage(
+                        page: 1,
+                        search: _searchCtrl.text,
+                        status: value,
+                        activeState: _activeFilter,
+                        pageSize: _pageSize,
+                      );
+                    },
+                  ),
+                ),
+                SizedBox(
+                  width: 160,
+                  child: DropdownButtonFormField<int>(
+                    value: _pageSize,
+                    decoration: InputDecoration(
+                      labelText: "Sayfa Boyutu",
+                      filled: true,
+                      fillColor: Colors.white,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    items: const [
+                      DropdownMenuItem(value: 10, child: Text("10")),
+                      DropdownMenuItem(value: 20, child: Text("20")),
+                      DropdownMenuItem(value: 50, child: Text("50")),
+                    ],
+                    onChanged: (value) {
+                      if (value == null) return;
+                      setState(() => _pageSize = value);
+                      _loadPage(
+                        page: 1,
+                        search: _searchCtrl.text,
+                        status: _statusFilter,
+                        activeState: _activeFilter,
+                        pageSize: value,
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
             Expanded(
               child: _loading
                   ? const AdminLoadingIndicator()
@@ -609,6 +810,51 @@ class _AdminManualNewspaperUsersPageState
                       },
                     ),
             ),
+            const SizedBox(height: 12),
+            Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              runSpacing: 8,
+              spacing: 12,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                Text(
+                  "Toplam $_totalCount kayıt${_currentSearch.isNotEmpty ? " • Arama: $_currentSearch" : ""} • Durum: ${_filterLabel(_activeFilter)} • Tip: ${_statusLabel(_statusFilter)} • Sayfa $_currentPage / ${_totalPages()}",
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed: (_currentPage <= 1 || _loading)
+                          ? null
+                          : () => _loadPage(
+                                page: _currentPage - 1,
+                                search: _searchCtrl.text,
+                                status: _statusFilter,
+                                activeState: _activeFilter,
+                                pageSize: _pageSize,
+                              ),
+                      icon: const Icon(Icons.chevron_left),
+                      label: const Text("Önceki"),
+                    ),
+                    const SizedBox(width: 8),
+                    OutlinedButton.icon(
+                      onPressed: (_currentPage >= _totalPages() || _loading)
+                          ? null
+                          : () => _loadPage(
+                                page: _currentPage + 1,
+                                search: _searchCtrl.text,
+                                status: _statusFilter,
+                                activeState: _activeFilter,
+                                pageSize: _pageSize,
+                              ),
+                      icon: const Icon(Icons.chevron_right),
+                      label: const Text("Sonraki"),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ],
         ),
         AnimatedBuilder(
@@ -644,6 +890,24 @@ class _AdminManualNewspaperUsersPageState
     final normalized = value.trim().toLowerCase();
     if (normalized == "old" || normalized == "eski") return "Eski";
     return "Yeni";
+  }
+
+  String _filterLabel(String value) {
+    switch (value.trim().toLowerCase()) {
+      case "active":
+        return "Aktif";
+      case "inactive":
+        return "Pasif";
+      case "expired":
+        return "Süresi Doldu";
+      default:
+        return "Tümü";
+    }
+  }
+
+  int _totalPages() {
+    if (_totalCount <= 0) return 1;
+    return ((_totalCount + _pageSize - 1) ~/ _pageSize);
   }
 
   Widget _statusChip(String label) {

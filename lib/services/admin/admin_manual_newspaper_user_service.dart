@@ -1,5 +1,15 @@
 import '../hasura_manager.dart';
 
+class AdminManualNewspaperUsersPageResult {
+  final List<Map<String, dynamic>> items;
+  final int totalCount;
+
+  const AdminManualNewspaperUsersPageResult({
+    required this.items,
+    required this.totalCount,
+  });
+}
+
 class AdminManualNewspaperUserService {
   final _hasura = HasuraManager.instance;
 
@@ -68,6 +78,69 @@ class AdminManualNewspaperUserService {
           },
         )
         .toList();
+  }
+
+  Future<AdminManualNewspaperUsersPageResult> listManualUsersPage({
+    String keyword = "",
+    String status = "all",
+    String activeState = "all",
+    int page = 1,
+    int pageSize = 20,
+  }) async {
+    const query = r'''
+      query ListManualNewspaperUsersPage(
+        $keyword: String,
+        $status: String,
+        $active_state: String,
+        $limit: Int!,
+        $offset: Int!
+      ) {
+        manual_newspaper_users {
+          id
+          user_id
+          starts_at
+          ends_at
+          is_active
+          status
+          note
+          created_at
+          updated_at
+          user
+        }
+        manual_newspaper_users_aggregate {
+          aggregate {
+            count
+          }
+        }
+      }
+    ''';
+
+    final safePage = page < 1 ? 1 : page;
+    final safePageSize = pageSize < 1 ? 20 : pageSize;
+    final offset = (safePage - 1) * safePageSize;
+
+    final data = await _hasura.graphQLRequest(
+      query: query,
+      variables: {
+        "keyword": keyword.trim().isEmpty ? null : keyword.trim(),
+        "status": status.trim().isEmpty ? "all" : status.trim(),
+        "active_state": activeState.trim().isEmpty ? "all" : activeState.trim(),
+        "limit": safePageSize,
+        "offset": offset,
+      },
+    );
+
+    final items = List<Map<String, dynamic>>.from(
+      data["manual_newspaper_users"] ?? const [],
+    );
+    final totalCount = _toInt(
+          data["manual_newspaper_users_aggregate"]?["aggregate"]?["count"],
+        ) ??
+        items.length;
+    return AdminManualNewspaperUsersPageResult(
+      items: items,
+      totalCount: totalCount,
+    );
   }
 
   Future<List<Map<String, dynamic>>> searchUsers({
@@ -203,6 +276,12 @@ class AdminManualNewspaperUserService {
     final normalized = status.trim().toLowerCase();
     if (normalized == "old" || normalized == "eski") return "old";
     return "new";
+  }
+
+  int? _toInt(dynamic value) {
+    if (value is int) return value;
+    if (value == null) return null;
+    return int.tryParse(value.toString());
   }
 
   Future<void> deleteById(int id) async {
