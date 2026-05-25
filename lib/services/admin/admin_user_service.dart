@@ -471,6 +471,17 @@ class AdminUserService {
     return true;
   }
 
+  Future<bool> updateUserPassword({
+    required int id,
+    required String password,
+  }) async {
+    final response = await _cdn.postJson(
+      "/admin/users/password",
+      body: {"userId": id, "password": password},
+    );
+    return response["ok"] == true;
+  }
+
   /// Kullanıcı sil
   Future<bool> deleteUser(int id) async {
     const softDeleteMutationWithDeactivatedAt = r'''

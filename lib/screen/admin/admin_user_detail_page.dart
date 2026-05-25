@@ -42,6 +42,7 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
   bool _revenueCatReconcileLoading = false;
   String? _revenueCatReconcileMessage;
   bool? _revenueCatReconcileSuccess;
+  bool _passwordUpdateLoading = false;
 
   @override
   void initState() {
@@ -245,6 +246,183 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
     }
   }
 
+  Future<void> _showPasswordUpdateDialog() async {
+    final userId = _asInt(widget.user["id"]);
+    if (userId == null || _passwordUpdateLoading) return;
+
+    final passwordCtrl = TextEditingController();
+    final confirmCtrl = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+    final messenger = ScaffoldMessenger.of(context);
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        var obscurePassword = true;
+        var obscureConfirm = true;
+
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            Future<void> savePassword() async {
+              if (!formKey.currentState!.validate()) return;
+
+              setDialogState(() => _passwordUpdateLoading = true);
+              try {
+                final ok = await _adminService.updateUserPassword(
+                  id: userId,
+                  password: passwordCtrl.text,
+                );
+                if (!ok) {
+                  throw Exception("Kullanıcı bulunamadı veya güncellenemedi.");
+                }
+                if (dialogContext.mounted) {
+                  Navigator.of(dialogContext).pop();
+                }
+                if (!mounted) return;
+                messenger.showSnackBar(
+                  const SnackBar(
+                    content: Text("Kullanıcı şifresi güncellendi."),
+                  ),
+                );
+              } catch (error) {
+                if (!mounted) return;
+                messenger.showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      "Şifre güncellenemedi: "
+                      "${ErrorManager.parseGraphQLError(error.toString())}",
+                    ),
+                  ),
+                );
+              } finally {
+                if (dialogContext.mounted) {
+                  setDialogState(() => _passwordUpdateLoading = false);
+                }
+                if (mounted) {
+                  setState(() {});
+                }
+              }
+            }
+
+            return AlertDialog(
+              title: const Text("Kullanıcı Şifresini Değiştir"),
+              content: SizedBox(
+                width: 420,
+                child: Form(
+                  key: formKey,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          _displayValue(_resolvedUser["email"]),
+                          style: TextStyle(color: Colors.grey.shade700),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: passwordCtrl,
+                        obscureText: obscurePassword,
+                        decoration: InputDecoration(
+                          labelText: "Yeni şifre",
+                          prefixIcon: const Icon(Icons.lock_reset),
+                          suffixIcon: IconButton(
+                            tooltip: obscurePassword ? "Göster" : "Gizle",
+                            onPressed: _passwordUpdateLoading
+                                ? null
+                                : () => setDialogState(
+                                    () => obscurePassword = !obscurePassword,
+                                  ),
+                            icon: Icon(
+                              obscurePassword
+                                  ? Icons.visibility
+                                  : Icons.visibility_off,
+                            ),
+                          ),
+                        ),
+                        validator: _validateNewPassword,
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: confirmCtrl,
+                        obscureText: obscureConfirm,
+                        decoration: InputDecoration(
+                          labelText: "Yeni şifre tekrar",
+                          prefixIcon: const Icon(Icons.lock_outline),
+                          suffixIcon: IconButton(
+                            tooltip: obscureConfirm ? "Göster" : "Gizle",
+                            onPressed: _passwordUpdateLoading
+                                ? null
+                                : () => setDialogState(
+                                    () => obscureConfirm = !obscureConfirm,
+                                  ),
+                            icon: Icon(
+                              obscureConfirm
+                                  ? Icons.visibility
+                                  : Icons.visibility_off,
+                            ),
+                          ),
+                        ),
+                        validator: (value) {
+                          final confirm = value?.trim() ?? "";
+                          if (confirm != passwordCtrl.text.trim()) {
+                            return "Şifreler aynı olmalı.";
+                          }
+                          return null;
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: _passwordUpdateLoading
+                      ? null
+                      : () => Navigator.pop(dialogContext),
+                  child: const Text("Vazgeç"),
+                ),
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                  onPressed: _passwordUpdateLoading ? null : savePassword,
+                  icon: _passwordUpdateLoading
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.save),
+                  label: Text(
+                    _passwordUpdateLoading ? "Kaydediliyor..." : "Kaydet",
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  String? _validateNewPassword(String? value) {
+    final password = value?.trim() ?? "";
+    if (password.isEmpty) return "Yeni şifre zorunlu.";
+    if (password.length < 8) return "En az 8 karakter olmalı.";
+    if (!RegExp(r"[A-Z]").hasMatch(password)) {
+      return "En az 1 büyük harf içermeli.";
+    }
+    if (!RegExp(r"[a-z]").hasMatch(password)) {
+      return "En az 1 küçük harf içermeli.";
+    }
+    if (!RegExp(r"[0-9]").hasMatch(password)) {
+      return "En az 1 rakam içermeli.";
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = _resolvedUser;
@@ -307,6 +485,17 @@ class _AdminUserDetailPageState extends State<AdminUserDetailPage> {
                   _infoRow("E-posta Onayı", _emailVerificationLabel(user)),
                   _infoRow("Pay ID", _displayValue(user["payUniqe"])),
                   _infoRow("Avatar", _displayValue(user["avatar_url"])),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: _passwordUpdateLoading
+                          ? null
+                          : _showPasswordUpdateDialog,
+                      icon: const Icon(Icons.lock_reset),
+                      label: const Text("Şifre Değiştir"),
+                    ),
+                  ),
                 ]),
                 const SizedBox(height: 18),
                 _sectionTitle("Abonelikler"),
