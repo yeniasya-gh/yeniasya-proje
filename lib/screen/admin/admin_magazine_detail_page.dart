@@ -175,9 +175,25 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
   }
 
   int _issueYear(Map<String, dynamic> issue) {
-    final raw = issue["added_at"]?.toString();
-    final dt = raw == null || raw.isEmpty ? null : DateTime.tryParse(raw);
+    final dt = _parseDateOnlyValue(issue["added_at"]);
     return dt?.year ?? DateTime.now().year;
+  }
+
+  DateTime? _parseDateOnlyValue(dynamic raw) {
+    if (raw == null) return null;
+    final value = raw.toString().trim();
+    if (value.isEmpty) return null;
+    final dateOnlyMatch = RegExp(r'^(\d{4})-(\d{2})-(\d{2})').firstMatch(value);
+    if (dateOnlyMatch != null && !value.contains('T')) {
+      final year = int.tryParse(dateOnlyMatch.group(1)!);
+      final month = int.tryParse(dateOnlyMatch.group(2)!);
+      final day = int.tryParse(dateOnlyMatch.group(3)!);
+      if (year != null && month != null && day != null) {
+        return DateTime(year, month, day);
+      }
+    }
+    final parsed = DateTime.tryParse(value);
+    return parsed?.toLocal();
   }
 
   String _yearToAddedAt(int year) {
@@ -613,14 +629,12 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
                       if (!formKey.currentState!.validate()) return;
                       setStateDialog(() => submitting = true);
 
-                            final issueNumber = int.tryParse(
-                              issueCtrl.text.trim(),
-                            );
-                            if (issueNumber == null) {
-                              throw Exception("Geçerli bir sayı girin");
-                            }
-                            final price = _parsePrice(priceCtrl.text.trim());
-                            if (price == null || price < 0) return;
+                      final issueNumber = int.tryParse(issueCtrl.text.trim());
+                      if (issueNumber == null) {
+                        throw Exception("Geçerli bir sayı girin");
+                      }
+                      final price = _parsePrice(priceCtrl.text.trim());
+                      if (price == null || price < 0) return;
                       try {
                         await runAdminUploadTask(
                           context,
@@ -721,10 +735,7 @@ class _AdminMagazineDetailPageState extends State<AdminMagazineDetailPage> {
 
   String _formatDate(dynamic raw) {
     if (raw == null) return "-";
-    DateTime? dt;
-    try {
-      dt = DateTime.tryParse(raw.toString());
-    } catch (_) {}
+    final dt = _parseDateOnlyValue(raw);
     if (dt == null) return raw.toString();
     final two = (int v) => v.toString().padLeft(2, '0');
     return "${two(dt.day)}.${two(dt.month)}.${dt.year}";
