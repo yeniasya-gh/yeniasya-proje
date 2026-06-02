@@ -79,7 +79,7 @@ class UploadService {
   };
 
   static const int maxUploadBytes = 50 * 1024 * 1024; // 50MB
-  static const Duration _uploadTimeout = Duration(minutes: 3);
+  static const Duration _uploadTimeout = Duration(minutes: 10);
   static const _managedPublicTypes = {
     "kitap",
     "gazete",
