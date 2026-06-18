@@ -13,6 +13,8 @@ import '../../services/error/error_manager.dart';
 import '../../services/logging_service.dart';
 import '../../services/secure_file_service.dart';
 import '../../services/upload_service.dart';
+import '../../widgets/pdf_web_frame_stub.dart'
+    if (dart.library.html) '../../widgets/pdf_web_frame_web.dart';
 
 class PdfViewerScreen extends StatefulWidget {
   final String url;
@@ -40,6 +42,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   static const double _maxZoomLevel = 5.0;
 
   Uint8List? _bytes;
+  String? _webViewerUrl;
   bool _loading = true;
   String? _error;
   double _zoom = _defaultZoomLevel;
@@ -113,9 +116,16 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     setState(() {
       _loading = true;
       _error = null;
+      _webViewerUrl = null;
     });
     try {
       await _loadPersistedState();
+      if (kIsWeb && widget.isPrivate) {
+        _webViewerUrl = await SecureFileService.instance.getWebViewSecureUrl(
+          url: widget.url,
+        );
+        return;
+      }
       final seededBytes = widget.initialBytes;
       if (!_consumedInitialBytes &&
           seededBytes != null &&
@@ -270,6 +280,10 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   }
 
   Widget _buildWebLayout(BuildContext context) {
+    if (_webViewerUrl != null) {
+      return buildPdfWebFrame(_webViewerUrl!);
+    }
+
     final inlineSidebar = _hasInlineSidebar;
     return Row(
       children: [
