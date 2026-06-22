@@ -42,7 +42,12 @@ class SecureFileService {
     final filename = "${_safeFileName(cacheKey)}.enc";
 
     if (kIsWeb) {
-      // Web için disk cache yerine direkt network'ten al.
+      if (isPrivate) {
+        throw UnsupportedError(
+          "Web private PDF bytes are disabled; use getWebViewSecureUrl instead.",
+        );
+      }
+      // Web için public dosyalarda disk cache yerine direkt network'ten al.
       return _downloadRaw(
         normalized,
         isPrivate: isPrivate,

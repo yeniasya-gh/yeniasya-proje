@@ -153,7 +153,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     } finally {
       if (mounted) {
         setState(() => _loading = false);
-        if (_bytes == null && _error == null) {
+        if (_bytes == null && _webViewerUrl == null && _error == null) {
           _error = "PDF yüklenemedi, lütfen tekrar deneyin.";
         }
       }
