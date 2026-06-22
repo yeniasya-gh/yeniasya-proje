@@ -419,10 +419,10 @@ class SecureFileService {
     try {
       final data = jsonDecode(resp.body);
       final rawUrl =
-          data["url"] ??
-          data["directUrl"] ??
           data["viewerUrl"] ??
-          data["viewUrl"];
+          data["viewUrl"] ??
+          data["url"] ??
+          data["directUrl"];
       if (rawUrl == null || rawUrl.toString().isEmpty) {
         throw Exception("PDF erişim URL'i boş döndü");
       }
