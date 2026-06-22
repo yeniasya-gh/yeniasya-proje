@@ -206,49 +206,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
               ? null
               : TextStyle(fontSize: widget.titleFontSize),
         ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            tooltip: "Yenile",
-            onPressed: _loading ? null : _load,
-          ),
-          IconButton(
-            icon: Icon(
-              _bookmarks.contains(_currentPage)
-                  ? Icons.bookmark
-                  : Icons.bookmark_add_outlined,
-            ),
-            tooltip: _bookmarks.contains(_currentPage)
-                ? "Ayraçtan çıkar"
-                : "Bu sayfayı ayraçla",
-            onPressed: _loading ? null : _toggleCurrentBookmark,
-          ),
-          IconButton(
-            icon: Icon(
-              _pendingNoteDraft == null
-                  ? Icons.sticky_note_2_outlined
-                  : Icons.close,
-            ),
-            tooltip: _pendingNoteDraft == null
-                ? "Sayfaya not bırak"
-                : "Not yerleştirmeyi iptal et",
-            onPressed: _loading
-                ? null
-                : () {
-                    if (_pendingNoteDraft != null) {
-                      _cancelPendingNotePlacement();
-                    } else {
-                      _startNotePlacement();
-                    }
-                  },
-          ),
-          if (isWeb)
-            IconButton(
-              icon: const Icon(Icons.toc),
-              tooltip: "Araçlar",
-              onPressed: _loading ? null : () => _openToolsPanel(context),
-            ),
-        ],
+        actions: isWeb ? _webAppBarActions() : _readerAppBarActions(),
       ),
       body: SafeArea(
         top: false,
@@ -262,6 +220,56 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
             : _buildMobileLayout(),
       ),
     );
+  }
+
+  List<Widget> _webAppBarActions() {
+    return [
+      IconButton(
+        icon: const Icon(Icons.refresh),
+        tooltip: "Yenile",
+        onPressed: _loading ? null : _load,
+      ),
+    ];
+  }
+
+  List<Widget> _readerAppBarActions() {
+    return [
+      IconButton(
+        icon: const Icon(Icons.refresh),
+        tooltip: "Yenile",
+        onPressed: _loading ? null : _load,
+      ),
+      IconButton(
+        icon: Icon(
+          _bookmarks.contains(_currentPage)
+              ? Icons.bookmark
+              : Icons.bookmark_add_outlined,
+        ),
+        tooltip: _bookmarks.contains(_currentPage)
+            ? "Ayraçtan çıkar"
+            : "Bu sayfayı ayraçla",
+        onPressed: _loading ? null : _toggleCurrentBookmark,
+      ),
+      IconButton(
+        icon: Icon(
+          _pendingNoteDraft == null
+              ? Icons.sticky_note_2_outlined
+              : Icons.close,
+        ),
+        tooltip: _pendingNoteDraft == null
+            ? "Sayfaya not bırak"
+            : "Not yerleştirmeyi iptal et",
+        onPressed: _loading
+            ? null
+            : () {
+                if (_pendingNoteDraft != null) {
+                  _cancelPendingNotePlacement();
+                } else {
+                  _startNotePlacement();
+                }
+              },
+      ),
+    ];
   }
 
   Widget _errorView() {
