@@ -1456,8 +1456,93 @@ class _MobilePdfWebViewer extends StatefulWidget {
 class _MobilePdfWebViewerState extends State<_MobilePdfWebViewer> {
   static final Set<Factory<OneSequenceGestureRecognizer>>
   _webViewGestureRecognizers = {
-    Factory<OneSequenceGestureRecognizer>(() => EagerGestureRecognizer()),
+    Factory<OneSequenceGestureRecognizer>(() => ScaleGestureRecognizer()),
+    Factory<OneSequenceGestureRecognizer>(
+      () => VerticalDragGestureRecognizer(),
+    ),
+    Factory<OneSequenceGestureRecognizer>(
+      () => HorizontalDragGestureRecognizer(),
+    ),
+    Factory<OneSequenceGestureRecognizer>(() => TapGestureRecognizer()),
+    Factory<OneSequenceGestureRecognizer>(() => LongPressGestureRecognizer()),
   };
+
+  static const String _pdfJsPinchZoomBridge = '''
+(() => {
+  if (window.__yeniasyaPdfPinchZoomInstalled) return;
+  window.__yeniasyaPdfPinchZoomInstalled = true;
+
+  const minScale = 0.35;
+  const maxScale = 5;
+  let startDistance = 0;
+  let startScale = 1;
+  let lastScale = 1;
+
+  const clamp = (value) => Math.max(minScale, Math.min(maxScale, value));
+  const distance = (touches) => {
+    const dx = touches[0].clientX - touches[1].clientX;
+    const dy = touches[0].clientY - touches[1].clientY;
+    return Math.sqrt((dx * dx) + (dy * dy));
+  };
+  const getPdfViewer = () => window.PDFViewerApplication?.pdfViewer;
+  const getCurrentScale = (viewer) => {
+    const parsed = Number(viewer.currentScaleValue);
+    return viewer.currentScale || (Number.isFinite(parsed) ? parsed : 1);
+  };
+  const setViewerScale = (viewer, scale) => {
+    const nextScale = clamp(scale);
+    viewer.currentScaleValue = String(nextScale);
+    viewer.currentScale = nextScale;
+    return nextScale;
+  };
+  const setTouchPolicy = () => {
+    let viewport = document.querySelector('meta[name="viewport"]');
+    if (!viewport) {
+      viewport = document.createElement('meta');
+      viewport.name = 'viewport';
+      document.head.appendChild(viewport);
+    }
+    viewport.setAttribute(
+      'content',
+      'width=device-width, initial-scale=1, minimum-scale=0.35, maximum-scale=5, user-scalable=yes'
+    );
+    document.documentElement.style.touchAction = 'pan-x pan-y pinch-zoom';
+    document.body.style.touchAction = 'pan-x pan-y pinch-zoom';
+    const viewerContainer = document.getElementById('viewerContainer');
+    if (viewerContainer) {
+      viewerContainer.style.touchAction = 'pan-x pan-y pinch-zoom';
+    }
+  };
+
+  setTouchPolicy();
+  setTimeout(setTouchPolicy, 500);
+  setTimeout(setTouchPolicy, 1500);
+
+  document.addEventListener('touchstart', (event) => {
+    if (event.touches.length !== 2) return;
+    const viewer = getPdfViewer();
+    if (!viewer) return;
+    startDistance = distance(event.touches);
+    startScale = getCurrentScale(viewer);
+    lastScale = startScale;
+  }, { capture: true, passive: false });
+
+  document.addEventListener('touchmove', (event) => {
+    if (event.touches.length !== 2 || startDistance <= 0) return;
+    const viewer = getPdfViewer();
+    if (!viewer) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const nextScale = startScale * (distance(event.touches) / startDistance);
+    if (Math.abs(nextScale - lastScale) < 0.015) return;
+    lastScale = setViewerScale(viewer, nextScale);
+  }, { capture: true, passive: false });
+
+  document.addEventListener('touchend', (event) => {
+    if (event.touches.length < 2) startDistance = 0;
+  }, { capture: true, passive: false });
+})();
+''';
 
   late final WebViewController _controller;
   bool _loading = true;
@@ -1481,6 +1566,13 @@ class _MobilePdfWebViewerState extends State<_MobilePdfWebViewer> {
           onPageFinished: (_) {
             if (!mounted) return;
             setState(() => _loading = false);
+            unawaited(_installPdfJsPinchZoomBridge());
+            unawaited(
+              Future<void>.delayed(
+                const Duration(milliseconds: 750),
+                _installPdfJsPinchZoomBridge,
+              ),
+            );
           },
           onWebResourceError: (error) {
             if (!mounted || error.isForMainFrame == false) return;
@@ -1492,6 +1584,14 @@ class _MobilePdfWebViewerState extends State<_MobilePdfWebViewer> {
         ),
       )
       ..loadRequest(Uri.parse(widget.url));
+  }
+
+  Future<void> _installPdfJsPinchZoomBridge() async {
+    try {
+      await _controller.runJavaScript(_pdfJsPinchZoomBridge);
+    } catch (_) {
+      // The viewer can navigate during reload; the next page finish retries setup.
+    }
   }
 
   @override
