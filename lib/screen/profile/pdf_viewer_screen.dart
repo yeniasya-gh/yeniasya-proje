@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 
 import '../../services/auth/auth_token_store.dart';
 import '../../services/error/error_manager.dart';
@@ -120,9 +121,10 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     });
     try {
       await _loadPersistedState();
-      if (kIsWeb && widget.isPrivate) {
-        _webViewerUrl = await SecureFileService.instance.getWebViewSecureUrl(
+      if (!kIsWeb || widget.isPrivate) {
+        _webViewerUrl = await SecureFileService.instance.getPdfViewerUrl(
           url: widget.url,
+          isPrivate: widget.isPrivate,
         );
         return;
       }
@@ -206,7 +208,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
               ? null
               : TextStyle(fontSize: widget.titleFontSize),
         ),
-        actions: isWeb ? _webAppBarActions() : _readerAppBarActions(),
+        actions: _webAppBarActions(),
       ),
       body: SafeArea(
         top: false,
@@ -228,46 +230,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
         icon: const Icon(Icons.refresh),
         tooltip: "Yenile",
         onPressed: _loading ? null : _load,
-      ),
-    ];
-  }
-
-  List<Widget> _readerAppBarActions() {
-    return [
-      IconButton(
-        icon: const Icon(Icons.refresh),
-        tooltip: "Yenile",
-        onPressed: _loading ? null : _load,
-      ),
-      IconButton(
-        icon: Icon(
-          _bookmarks.contains(_currentPage)
-              ? Icons.bookmark
-              : Icons.bookmark_add_outlined,
-        ),
-        tooltip: _bookmarks.contains(_currentPage)
-            ? "Ayraçtan çıkar"
-            : "Bu sayfayı ayraçla",
-        onPressed: _loading ? null : _toggleCurrentBookmark,
-      ),
-      IconButton(
-        icon: Icon(
-          _pendingNoteDraft == null
-              ? Icons.sticky_note_2_outlined
-              : Icons.close,
-        ),
-        tooltip: _pendingNoteDraft == null
-            ? "Sayfaya not bırak"
-            : "Not yerleştirmeyi iptal et",
-        onPressed: _loading
-            ? null
-            : () {
-                if (_pendingNoteDraft != null) {
-                  _cancelPendingNotePlacement();
-                } else {
-                  _startNotePlacement();
-                }
-              },
       ),
     ];
   }
@@ -315,6 +277,10 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   }
 
   Widget _buildMobileLayout() {
+    if (_webViewerUrl != null) {
+      return _MobilePdfWebViewer(url: _webViewerUrl!, title: widget.title);
+    }
+
     return Column(
       children: [
         _buildControlBar(isWeb: false),
@@ -1473,6 +1439,123 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       case PdfStickyNoteIcon.insert:
         return Icons.add_box_outlined;
     }
+  }
+}
+
+class _MobilePdfWebViewer extends StatefulWidget {
+  const _MobilePdfWebViewer({required this.url, required this.title});
+
+  final String url;
+  final String title;
+
+  @override
+  State<_MobilePdfWebViewer> createState() => _MobilePdfWebViewerState();
+}
+
+class _MobilePdfWebViewerState extends State<_MobilePdfWebViewer> {
+  late final WebViewController _controller;
+  bool _loading = true;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setNavigationDelegate(
+        NavigationDelegate(
+          onPageStarted: (_) {
+            if (!mounted) return;
+            setState(() {
+              _loading = true;
+              _error = null;
+            });
+          },
+          onPageFinished: (_) {
+            if (!mounted) return;
+            setState(() => _loading = false);
+          },
+          onWebResourceError: (error) {
+            if (!mounted || error.isForMainFrame == false) return;
+            setState(() {
+              _loading = false;
+              _error = error.description;
+            });
+          },
+        ),
+      )
+      ..loadRequest(Uri.parse(widget.url));
+  }
+
+  @override
+  void didUpdateWidget(covariant _MobilePdfWebViewer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.url != widget.url) {
+      _controller.loadRequest(Uri.parse(widget.url));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        Positioned.fill(child: WebViewWidget(controller: _controller)),
+        if (_error != null)
+          Positioned.fill(
+            child: ColoredBox(
+              color: Theme.of(context).scaffoldBackgroundColor,
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(
+                        Icons.error_outline,
+                        color: Colors.red,
+                        size: 40,
+                      ),
+                      const SizedBox(height: 12),
+                      const Text(
+                        "PDF görüntüleyici açılmadı",
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _error!,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: Colors.black54),
+                      ),
+                      const SizedBox(height: 16),
+                      ElevatedButton.icon(
+                        onPressed: () {
+                          setState(() {
+                            _loading = true;
+                            _error = null;
+                          });
+                          _controller.loadRequest(Uri.parse(widget.url));
+                        },
+                        icon: const Icon(Icons.refresh),
+                        label: const Text("Tekrar dene"),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        if (_loading)
+          const Positioned.fill(
+            child: ColoredBox(
+              color: Color(0x22000000),
+              child: Center(child: CircularProgressIndicator()),
+            ),
+          ),
+      ],
+    );
   }
 }
 

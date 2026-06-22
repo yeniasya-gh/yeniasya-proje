@@ -665,6 +665,39 @@ class SecureFileService {
     return _buildSecureUrl(token);
   }
 
+  Future<String> getPdfViewerUrl({
+    required String url,
+    required bool isPrivate,
+  }) async {
+    if (isPrivate) {
+      return getWebViewSecureUrl(url: url);
+    }
+    return _buildPublicPdfViewerUrl(UploadService.normalizeUrl(url));
+  }
+
+  String _buildPublicPdfViewerUrl(String normalizedUrl) {
+    final viewer = Uri.parse(
+      UploadService.normalizeUrl("/pdfjs-legacy/web/viewer.html"),
+    );
+    return viewer
+        .replace(
+          queryParameters: {
+            "file": normalizedUrl,
+            "doc": _viewerDocumentKey(normalizedUrl),
+          },
+        )
+        .toString();
+  }
+
+  String _viewerDocumentKey(String normalizedUrl) {
+    final parsed = Uri.tryParse(normalizedUrl);
+    final path = parsed?.path;
+    if (path != null && path.isNotEmpty) {
+      return path.replaceFirst(RegExp(r"^/"), "");
+    }
+    return normalizedUrl;
+  }
+
   String _buildSecureUrl(_ViewTokenData tokenData, {bool renderRaw = false}) {
     Uri withRender(Uri uri) {
       if (!renderRaw) return uri;
