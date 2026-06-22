@@ -396,6 +396,42 @@ class SecureFileService {
     }
   }
 
+  Future<String> _requestPdfAccessUrl(String path) async {
+    final uri = Uri.parse(UploadService.normalizeUrl("/private/pdf-access"));
+    final resp = await http
+        .post(
+          uri,
+          headers: {
+            "content-type": "application/json",
+            "accept": "application/json",
+            if (AuthTokenStore.token != null &&
+                AuthTokenStore.token!.isNotEmpty)
+              "Authorization": "Bearer ${AuthTokenStore.token}",
+          },
+          body: jsonEncode({"path": path}),
+        )
+        .timeout(const Duration(seconds: 10));
+
+    if (resp.statusCode != 200 || resp.body.isEmpty) {
+      throw Exception("PDF erişim servisi yanıt vermedi (${resp.statusCode})");
+    }
+
+    try {
+      final data = jsonDecode(resp.body);
+      final rawUrl =
+          data["url"] ??
+          data["directUrl"] ??
+          data["viewerUrl"] ??
+          data["viewUrl"];
+      if (rawUrl == null || rawUrl.toString().isEmpty) {
+        throw Exception("PDF erişim URL'i boş döndü");
+      }
+      return UploadService.normalizeUrl(rawUrl.toString());
+    } catch (e) {
+      throw Exception("PDF erişim yanıtı çözülemedi: $e");
+    }
+  }
+
   Future<Uint8List?> _downloadPrivateDirect(
     String url,
     ValueChanged<double>? onProgress,
@@ -614,6 +650,17 @@ class SecureFileService {
   Future<String> getWebViewSecureUrl({required String url}) async {
     final normalized = UploadService.normalizeUrl(url);
     final path = _extractPath(normalized);
+    try {
+      return await _requestPdfAccessUrl(path);
+    } catch (e, s) {
+      await _logger.logError(
+        service: "SecureFileService",
+        operation: "pdfAccessFallback",
+        message: e.toString(),
+        stackTrace: s.toString(),
+        payload: {"path": path, "platform": defaultTargetPlatform.toString()},
+      );
+    }
     final token = await _requestViewToken(path);
     return _buildSecureUrl(token);
   }
