@@ -19,7 +19,6 @@ import '../../services/auth/auth_provider.dart';
 import '../../services/error/error_manager.dart';
 import '../../services/revenuecat_service.dart';
 import '../../utils/cart_feedback.dart';
-import 'package:flutter/foundation.dart';
 import '../../utils/pdf_open_helper.dart';
 import '../../services/secure_file_service.dart';
 import '../../services/admin/admin_book_service.dart';
@@ -97,9 +96,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   double _avgRating = 0;
   int _reviewCount = 0;
   bool _hasLocalCopy = false;
-  bool _downloadBusy = false;
   bool _openingBook = false;
-  double? _downloadProgress;
   String? _resolvedFileUrl;
   String? _resolvedBookDescription;
 
@@ -774,28 +771,15 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   }
 
   Future<void> _openPdf(BuildContext context, String fileUrl) async {
-    setState(() => _downloadBusy = true);
     try {
-      final showPercent =
-          !kIsWeb && !(await SecureFileService.instance.hasCached(fileUrl));
-      if (showPercent && mounted) setState(() => _downloadProgress = 0);
       await PdfOpenHelper.downloadAndOpen(
         context,
         url: fileUrl,
         title: widget.detail.title,
         isPrivate: true,
-        onProgress: showPercent
-            ? (p) {
-                if (!mounted) return;
-                setState(() => _downloadProgress = p);
-              }
-            : null,
       );
-      if (!kIsWeb && mounted) {
-        setState(() => _hasLocalCopy = true);
-      }
     } catch (e) {
-      if (!mounted) return;
+      if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -803,13 +787,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           ),
         ),
       );
-    } finally {
-      if (mounted) {
-        setState(() {
-          _downloadBusy = false;
-          _downloadProgress = null;
-        });
-      }
     }
   }
 
@@ -1786,13 +1763,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                     color: Colors.white,
                   ),
                 ),
-                if (_downloadProgress != null) ...[
-                  const SizedBox(width: 8),
-                  Text(
-                    "${(_downloadProgress! * 100).round()}%",
-                    style: const TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                ],
               ],
             ],
           );

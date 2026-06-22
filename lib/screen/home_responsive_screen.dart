@@ -1387,7 +1387,6 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
           url: url,
           title: title,
           isPrivate: true,
-          showDialogProgress: true,
         );
       } catch (e) {
         if (!mounted) return;
@@ -1648,7 +1647,6 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
                       url: url,
                       title: title,
                       isPrivate: true,
-                      showDialogProgress: true,
                     );
                   } catch (e) {
                     if (!context.mounted) return;
@@ -1677,7 +1675,6 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
                       url: url,
                       title: "$magName - $issueNumber",
                       isPrivate: true,
-                      showDialogProgress: true,
                     );
                   } catch (e) {
                     if (!context.mounted) return;

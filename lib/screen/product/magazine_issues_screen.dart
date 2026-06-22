@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import '../../services/admin/admin_magazine_service.dart';
 import '../../services/access_provider.dart';
 import '../../services/error/error_manager.dart';
-import '../../services/secure_file_service.dart';
 import '../../services/upload_service.dart';
 import '../../utils/safe_image.dart';
 import '../../models/cart_item.dart';
@@ -84,12 +82,6 @@ class _MagazineIssuesScreenState extends State<MagazineIssuesScreen> {
     if (_busy) return;
     setState(() => _openingIssueKey = issueKey);
     try {
-      if (!kIsWeb) {
-        await SecureFileService.instance.getPdfBytes(
-          url: fileUrl,
-          isPrivate: true,
-        );
-      }
       if (!mounted) return;
       Navigator.push(
         context,
