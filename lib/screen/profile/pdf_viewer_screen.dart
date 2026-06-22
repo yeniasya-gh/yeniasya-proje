@@ -1511,11 +1511,11 @@ class _MobilePdfWebViewerState extends State<_MobilePdfWebViewer> {
       'content',
       'width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no'
     );
-    document.documentElement.style.touchAction = 'none';
-    document.body.style.touchAction = 'none';
+    document.documentElement.style.touchAction = 'pan-x pan-y';
+    document.body.style.touchAction = 'pan-x pan-y';
     ['viewerContainer', 'viewer', 'outerContainer'].forEach((id) => {
       const element = document.getElementById(id);
-      if (element) element.style.touchAction = 'none';
+      if (element) element.style.touchAction = 'pan-x pan-y';
     });
   };
   const cancelPdfNativePinch = (event) => {
@@ -1534,7 +1534,7 @@ class _MobilePdfWebViewerState extends State<_MobilePdfWebViewer> {
     const viewer = getPdfViewer();
     if (!viewer) return;
     event.preventDefault();
-    event.stopImmediatePropagation();
+    event.stopPropagation();
     startDistance = distance(event.touches);
     startScale = getCurrentScale(viewer);
     lastScale = startScale;
@@ -1545,7 +1545,7 @@ class _MobilePdfWebViewerState extends State<_MobilePdfWebViewer> {
     const viewer = getPdfViewer();
     if (!viewer) return;
     event.preventDefault();
-    event.stopImmediatePropagation();
+    event.stopPropagation();
     const nextScale = startScale * (distance(event.touches) / startDistance);
     if (Math.abs(nextScale - lastScale) < 0.015) return;
     lastScale = setViewerScale(viewer, nextScale);
