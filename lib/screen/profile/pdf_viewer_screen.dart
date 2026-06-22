@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
@@ -1453,6 +1454,11 @@ class _MobilePdfWebViewer extends StatefulWidget {
 }
 
 class _MobilePdfWebViewerState extends State<_MobilePdfWebViewer> {
+  static final Set<Factory<OneSequenceGestureRecognizer>>
+  _webViewGestureRecognizers = {
+    Factory<OneSequenceGestureRecognizer>(() => EagerGestureRecognizer()),
+  };
+
   late final WebViewController _controller;
   bool _loading = true;
   String? _error;
@@ -1462,6 +1468,7 @@ class _MobilePdfWebViewerState extends State<_MobilePdfWebViewer> {
     super.initState();
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..enableZoom(true)
       ..setNavigationDelegate(
         NavigationDelegate(
           onPageStarted: (_) {
@@ -1499,7 +1506,12 @@ class _MobilePdfWebViewerState extends State<_MobilePdfWebViewer> {
   Widget build(BuildContext context) {
     return Stack(
       children: [
-        Positioned.fill(child: WebViewWidget(controller: _controller)),
+        Positioned.fill(
+          child: WebViewWidget(
+            controller: _controller,
+            gestureRecognizers: _webViewGestureRecognizers,
+          ),
+        ),
         if (_error != null)
           Positioned.fill(
             child: ColoredBox(
