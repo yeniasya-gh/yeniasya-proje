@@ -43,6 +43,13 @@ class _OrderListScreenState extends State<OrderListScreen> {
     setState(() => _loading = false);
   }
 
+  int? _asInt(dynamic value) {
+    if (value == null) return null;
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value.toString());
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -85,16 +92,19 @@ class _OrderListScreenState extends State<OrderListScreen> {
       order["order_items"] ?? const [],
     );
     final firstItem = orderItems.isNotEmpty ? orderItems.first : null;
+    final orderId = _asInt(order["id"]);
 
     return InkWell(
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => OrderDetailScreen(orderId: order["id"] as int),
-          ),
-        );
-      },
+      onTap: orderId == null
+          ? null
+          : () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => OrderDetailScreen(orderId: orderId),
+                ),
+              );
+            },
       child: Container(
         margin: const EdgeInsets.only(bottom: 12),
         padding: const EdgeInsets.all(16),

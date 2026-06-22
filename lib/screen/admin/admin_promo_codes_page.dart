@@ -32,6 +32,13 @@ class _AdminPromoCodesPageState extends State<AdminPromoCodesPage> {
   bool _saving = false;
   List<Map<String, dynamic>> _promoCodes = [];
 
+  int? _asInt(dynamic value) {
+    if (value == null) return null;
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value.toString());
+  }
+
   @override
   void initState() {
     super.initState();
@@ -78,14 +85,22 @@ class _AdminPromoCodesPageState extends State<AdminPromoCodesPage> {
     }
     setState(() => _saving = true);
     try {
+      final discountPercent = double.tryParse(_percentCtrl.text.trim());
+      if (discountPercent == null) {
+        throw Exception("Geçerli oran girin");
+      }
+      final usageLimit = _usageLimitCtrl.text.trim().isEmpty
+          ? null
+          : int.tryParse(_usageLimitCtrl.text.trim());
+      if (_usageLimitCtrl.text.trim().isNotEmpty && usageLimit == null) {
+        throw Exception("Geçerli kullanım limiti girin");
+      }
       await _service.createPromoCode(
         code: _codeCtrl.text.trim(),
-        discountPercent: double.parse(_percentCtrl.text.trim()),
+        discountPercent: discountPercent,
         startsAt: _startAt!,
         endsAt: _endAt!,
-        usageLimit: _usageLimitCtrl.text.trim().isEmpty
-            ? null
-            : int.parse(_usageLimitCtrl.text.trim()),
+        usageLimit: usageLimit,
         applicableCategories: List<String>.from(_selectedScopes),
       );
       _codeCtrl.clear();
@@ -375,7 +390,7 @@ class _AdminPromoCodesPageState extends State<AdminPromoCodesPage> {
                   DataColumn(label: Text("Sil")),
                 ],
                 rows: _promoCodes.map((p) {
-                  final id = p["id"];
+                  final id = _asInt(p["id"]);
                   final limit = p["usage_limit"];
                   final count = p["usage_count"] ?? 0;
                   final usageText = (limit == null || limit == 0)
@@ -395,7 +410,7 @@ class _AdminPromoCodesPageState extends State<AdminPromoCodesPage> {
                           value: p["is_active"] == true,
                           onChanged: (v) {
                             if (id == null) return;
-                            _toggle(id as int, v);
+                            _toggle(id, v);
                           },
                         ),
                       ),
@@ -421,7 +436,7 @@ class _AdminPromoCodesPageState extends State<AdminPromoCodesPage> {
                                         TextButton(
                                           onPressed: () {
                                             Navigator.pop(context);
-                                            _delete(id as int);
+                                            _delete(id);
                                           },
                                           child: const Text("Sil"),
                                         ),

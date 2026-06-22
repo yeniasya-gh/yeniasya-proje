@@ -604,6 +604,11 @@ class RevenueCatService with ChangeNotifier {
     return token != null && token.trim().isNotEmpty;
   }
 
+  bool _hasBackendSyncContext({int? userId}) {
+    if (userId != null) return true;
+    return _currentDbUserId != null;
+  }
+
   bool _isRevenueCatOwnershipConflict(Object error) {
     final message = error.toString().toLowerCase();
     return message.contains("revenuecat_entitlement_locked") ||
@@ -620,6 +625,9 @@ class RevenueCatService with ChangeNotifier {
     required String source,
     int? userId,
   }) async {
+    if (!_hasBackendSyncContext(userId: userId)) {
+      return true;
+    }
     final entitlement = _customerInfo
         ?.entitlements
         .all[RevenueCatConfig.entitlementYeniasyaPro];
@@ -678,6 +686,9 @@ class RevenueCatService with ChangeNotifier {
     required AppUser user,
     required String source,
   }) async {
+    if (!_hasBackendSyncContext(userId: user.id)) {
+      return;
+    }
     if (!_hasBackendAuthToken()) {
       if (kDebugMode) {
         debugPrint(
@@ -726,7 +737,9 @@ class RevenueCatService with ChangeNotifier {
       final shouldSurfaceWarning = entitlement?.isActive == true;
       if (!shouldSurfaceWarning) {
         if (kDebugMode) {
-          debugPrint("RevenueCat backend refresh ignored (no active entitlement): $e");
+          debugPrint(
+            "RevenueCat backend refresh ignored (no active entitlement): $e",
+          );
         }
         _lastBackendSyncAt = DateTime.now();
         _lastBackendSyncSource = source;
@@ -750,6 +763,14 @@ class RevenueCatService with ChangeNotifier {
     int? userId,
   }) async {
     try {
+      if (!_hasBackendSyncContext(userId: userId)) {
+        if (kDebugMode) {
+          debugPrint(
+            "RevenueCat backend sync skipped: missing logged-in user context (source=$source)",
+          );
+        }
+        return;
+      }
       final entitlement =
           info.entitlements.all[RevenueCatConfig.entitlementYeniasyaPro];
       final purchasePlatform = _purchasePlatformFromStore(entitlement?.store);
@@ -824,7 +845,9 @@ class RevenueCatService with ChangeNotifier {
       final shouldSurfaceWarning = entitlement?.isActive == true;
       if (!shouldSurfaceWarning) {
         if (kDebugMode) {
-          debugPrint("RevenueCat backend sync ignored (no active entitlement): $e");
+          debugPrint(
+            "RevenueCat backend sync ignored (no active entitlement): $e",
+          );
         }
         _lastBackendSyncAt = DateTime.now();
         _lastBackendSyncSource = source;
@@ -851,6 +874,14 @@ class RevenueCatService with ChangeNotifier {
     String? message,
   }) async {
     try {
+      if (!_hasBackendSyncContext(userId: userId)) {
+        if (kDebugMode) {
+          debugPrint(
+            "RevenueCat backend event skipped: missing logged-in user context (source=$source result=$result)",
+          );
+        }
+        return;
+      }
       final identityMatched = isIdentityMatched;
       final resolvedUserId = _resolvedBackendUserId(userId);
       if (!_hasBackendAuthToken()) {

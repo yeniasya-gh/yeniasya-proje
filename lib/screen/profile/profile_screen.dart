@@ -46,6 +46,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  int? _asInt(dynamic value) {
+    if (value == null) return null;
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value.toString());
+  }
+
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
@@ -505,12 +512,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _showInfo("İşlem iptal edildi.");
       return;
     }
-    _showInfo(
-      _revenueCatMessage(
-            rc,
-          ) ??
-          "Abonelik işlemi tamamlanamadı.",
-    );
+    _showInfo(_revenueCatMessage(rc) ?? "Abonelik işlemi tamamlanamadı.");
   }
 
   Future<void> _onRestorePressed({
@@ -525,9 +527,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     await rc.syncWithAuthUser(user);
     await rc.restorePurchases(userId: user.id);
     if (!mounted) return;
-    final conflictMessage = _revenueCatMessage(
-      rc,
-    );
+    final conflictMessage = _revenueCatMessage(rc);
     if (conflictMessage != null && conflictMessage.isNotEmpty) {
       _showInfo(conflictMessage);
       return;
@@ -537,10 +537,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       unawaited(context.read<AccessProvider>().load(user.id, force: true));
     } else {
       _showInfo(
-        _revenueCatMessage(
-              rc,
-            ) ??
-            "Geri yüklenecek aktif abonelik bulunamadı.",
+        _revenueCatMessage(rc) ?? "Geri yüklenecek aktif abonelik bulunamadı.",
       );
     }
   }
@@ -557,9 +554,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     await rc.syncWithAuthUser(user);
     await rc.presentCustomerCenter(userId: user.id);
     if (!mounted) return;
-    final message = _revenueCatMessage(
-      rc,
-    );
+    final message = _revenueCatMessage(rc);
     if (message != null && message.isNotEmpty) {
       _showInfo(message);
     }
@@ -935,11 +930,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     String type,
     Map<String, dynamic> entry,
   ) async {
-    final itemId = entry["item_id"];
+    final itemId = _asInt(entry["item_id"]);
     switch (type) {
       case "book":
         if (itemId == null) return _AccessItem(title: "Bilinmeyen kitap");
-        final book = await _bookService.getBookById(itemId as int);
+        final book = await _bookService.getBookById(itemId);
         final title = book?["title"]?.toString() ?? "Kitap #$itemId";
         final url = book?["book_url"]?.toString();
         final subtitle = _accessSubtitle(entry, fallback: "Kitap");
@@ -963,7 +958,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         );
       case "magazine_issue":
         if (itemId == null) return _AccessItem(title: "Bilinmeyen sayı");
-        final issue = await _magService.getIssueById(itemId as int);
+        final issue = await _magService.getIssueById(itemId);
         final magName = issue?["magazine"]?["name"]?.toString() ?? "Dergi";
         final issueNumber = issue?["issue_number"]?.toString() ?? "#$itemId";
         final url = issue?["file_url"]?.toString();
@@ -988,7 +983,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         );
       case "magazine":
         if (itemId == null) return _AccessItem(title: "Dergi aboneliği");
-        final mag = await _magService.getMagazineById(itemId as int);
+        final mag = await _magService.getMagazineById(itemId);
         final name = mag?["name"]?.toString() ?? "Dergi #$itemId";
         return _AccessItem(
           title: name,

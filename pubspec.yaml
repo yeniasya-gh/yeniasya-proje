@@ -2,7 +2,7 @@ name: YeniAsya
 description: "Yeni Asya Mobil Uygulaması"
 publish_to: 'none'
 
-version: 2.9.0+20
+version: 2.9.1+21
 
 environment:
   sdk: ^3.9.2

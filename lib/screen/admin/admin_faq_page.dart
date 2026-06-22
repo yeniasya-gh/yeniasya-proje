@@ -18,11 +18,11 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
   List<Map<String, dynamic>> _filtered = [];
   bool _loading = true;
 
-  int _itemId(Map<String, dynamic> item) {
+  int? _itemId(Map<String, dynamic> item) {
     final raw = item["id"];
     if (raw is int) return raw;
     if (raw is num) return raw.toInt();
-    return int.parse(raw.toString());
+    return int.tryParse(raw.toString());
   }
 
   @override
@@ -185,12 +185,21 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
               style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
               onPressed: () async {
                 if (!formKey.currentState!.validate()) return;
-                Navigator.pop(context);
                 try {
-                  final sortOrder = int.parse(sortOrderCtrl.text.trim());
+                  final sortOrder = int.tryParse(sortOrderCtrl.text.trim());
+                  if (sortOrder == null) {
+                    await _showError("Geçerli bir sayı girin");
+                    return;
+                  }
+                  Navigator.pop(context);
                   if (isEdit) {
+                    final itemId = _itemId(item);
+                    if (itemId == null) {
+                      await _showError("Geçersiz kayıt id'si");
+                      return;
+                    }
                     await _service.update(
-                      id: _itemId(item),
+                      id: itemId,
                       title: titleCtrl.text.trim(),
                       description: descriptionCtrl.text.trim(),
                       sortOrder: sortOrder,
@@ -412,8 +421,11 @@ class _AdminFaqPageState extends State<AdminFaqPage> {
                                             Icons.delete,
                                             color: Colors.red,
                                           ),
-                                          onPressed: () =>
-                                              _delete(_itemId(item)),
+                                          onPressed: () {
+                                            final itemId = _itemId(item);
+                                            if (itemId == null) return;
+                                            _delete(itemId);
+                                          },
                                         ),
                                       ],
                                     ),

@@ -58,7 +58,11 @@
 			</array>
 		</dict>
 	</array>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Profil fotoğrafınızı seçebilmeniz ve uygulama içindeki görselleri paylaşabilmeniz için fotoğraf arşivinize erişim gerekir.</string>
-</dict>
+		<key>NSPhotoLibraryUsageDescription</key>
+		<string>Profil fotoğrafınızı seçebilmeniz ve uygulama içindeki görselleri paylaşabilmeniz için fotoğraf arşivinize erişim gerekir.</string>
+		<key>UIBackgroundModes</key>
+		<array>
+			<string>remote-notification</string>
+		</array>
+	</dict>
 </plist>

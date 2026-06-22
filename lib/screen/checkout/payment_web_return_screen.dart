@@ -137,10 +137,22 @@ class _PaymentWebReturnScreenState extends State<PaymentWebReturnScreen> {
         .toList();
 
     if (directAccessItems.isNotEmpty) {
-      await _accessService.grantAccess(
-        userId: pending.userId,
-        items: directAccessItems,
-      );
+      try {
+        await _accessService.grantAccess(
+          userId: pending.userId,
+          items: directAccessItems,
+        );
+      } catch (e, st) {
+        unawaited(
+          AppErrorReporter.instance.reportException(
+            service: "PaymentWebReturnScreen",
+            operation: "grantDirectAccess",
+            error: e,
+            stackTrace: st,
+            payload: {"orderId": pending.orderId, "userId": pending.userId},
+          ),
+        );
+      }
     }
 
     if (newspaperAccessItems.isNotEmpty) {
@@ -149,15 +161,39 @@ class _PaymentWebReturnScreenState extends State<PaymentWebReturnScreen> {
         newspaperAccessItems: newspaperAccessItems,
       );
       if (!synced) {
-        await _accessService.grantAccess(
-          userId: pending.userId,
-          items: newspaperAccessItems,
-        );
+        try {
+          await _accessService.grantAccess(
+            userId: pending.userId,
+            items: newspaperAccessItems,
+          );
+        } catch (e, st) {
+          unawaited(
+            AppErrorReporter.instance.reportException(
+              service: "PaymentWebReturnScreen",
+              operation: "grantNewspaperAccessFallback",
+              error: e,
+              stackTrace: st,
+              payload: {"orderId": pending.orderId, "userId": pending.userId},
+            ),
+          );
+        }
       }
     }
 
     if (pending.promoId != null) {
-      await _promoService.markUsed(pending.promoId!);
+      try {
+        await _promoService.markUsed(pending.promoId!);
+      } catch (e, st) {
+        unawaited(
+          AppErrorReporter.instance.reportException(
+            service: "PaymentWebReturnScreen",
+            operation: "markPromoUsed",
+            error: e,
+            stackTrace: st,
+            payload: {"orderId": pending.orderId, "promoId": pending.promoId},
+          ),
+        );
+      }
     }
 
     try {
@@ -180,7 +216,19 @@ class _PaymentWebReturnScreenState extends State<PaymentWebReturnScreen> {
 
     final uid = int.tryParse(pending.userId);
     if (uid != null) {
-      await access.load(uid, force: true);
+      try {
+        await access.load(uid, force: true);
+      } catch (e, st) {
+        unawaited(
+          AppErrorReporter.instance.reportException(
+            service: "PaymentWebReturnScreen",
+            operation: "refreshAccessAfterPayment",
+            error: e,
+            stackTrace: st,
+            payload: {"orderId": pending.orderId, "userId": pending.userId},
+          ),
+        );
+      }
     }
 
     cart.clear();

@@ -47,6 +47,17 @@ class UserContentAccessService {
 
     final insertItems = <Map<String, dynamic>>[];
     for (final item in normalizedItems) {
+      final itemType = (item["item_type"] ?? "").toString();
+      if (!_isExtendableSubscription(itemType)) {
+        final itemId = _asInt(item["item_id"]);
+        if (await _hasExistingActiveAccess(
+          userId: parsedUserId,
+          itemType: itemType,
+          itemId: itemId,
+        )) {
+          continue;
+        }
+      }
       final handled = await _handleSubscriptionGrant(
         userId: parsedUserId,
         item: item,
@@ -82,6 +93,23 @@ class UserContentAccessService {
     ''';
 
     await _hasura.graphQLRequest(query: mutation, variables: {"items": items});
+  }
+
+  Future<bool> _hasExistingActiveAccess({
+    required int userId,
+    required String itemType,
+    int? itemId,
+  }) async {
+    final entries = await getAccess(userId: userId, itemType: itemType);
+    if (entries.isEmpty) return false;
+    if (itemId == null) return true;
+    for (final entry in entries) {
+      final existingId = _asInt(entry["item_id"]);
+      if (existingId != null && existingId == itemId) {
+        return true;
+      }
+    }
+    return false;
   }
 
   Future<List<Map<String, dynamic>>> getAccess({
@@ -348,6 +376,13 @@ class UserContentAccessService {
 
     final existingExpiry = _parseDateTime(existing["expires_at"]);
     if (existingExpiry == null) {
+      return true;
+    }
+
+    // Duplicated finalize calls can arrive a few seconds apart after the same
+    // payment. Treat very close expiries as already handled.
+    if (requestedExpiresAt.difference(existingExpiry).inMilliseconds.abs() <=
+        const Duration(minutes: 5).inMilliseconds) {
       return true;
     }
 
