@@ -1477,6 +1477,10 @@ class _MobilePdfWebViewerState extends State<_MobilePdfWebViewer> {
   let startDistance = 0;
   let startVisualScale = 1;
   let lastVisualScale = 1;
+  let anchorContentX = 0;
+  let anchorContentY = 0;
+  let anchorLocalX = 0;
+  let anchorLocalY = 0;
 
   const clamp = (value) => Math.max(minScale, Math.min(maxScale, value));
   const distance = (touches) => {
@@ -1484,6 +1488,10 @@ class _MobilePdfWebViewerState extends State<_MobilePdfWebViewer> {
     const dy = touches[0].clientY - touches[1].clientY;
     return Math.sqrt((dx * dx) + (dy * dy));
   };
+  const midpoint = (touches) => ({
+    x: (touches[0].clientX + touches[1].clientX) / 2,
+    y: (touches[0].clientY + touches[1].clientY) / 2,
+  });
   const getViewerElement = () => document.getElementById('viewer');
   const getViewerContainer = () => document.getElementById('viewerContainer');
   const getVisualScale = () => window.__yeniasyaPdfVisualScale || 1;
@@ -1496,6 +1504,22 @@ class _MobilePdfWebViewerState extends State<_MobilePdfWebViewer> {
     viewer.style.zoom = String(nextScale);
     viewer.style.willChange = 'contents';
     return nextScale;
+  };
+  const captureZoomAnchor = (touches) => {
+    const container = getViewerContainer();
+    if (!container) return;
+    const point = midpoint(touches);
+    const rect = container.getBoundingClientRect();
+    anchorLocalX = point.x - rect.left;
+    anchorLocalY = point.y - rect.top;
+    anchorContentX = (container.scrollLeft + anchorLocalX) / startVisualScale;
+    anchorContentY = (container.scrollTop + anchorLocalY) / startVisualScale;
+  };
+  const restoreZoomAnchor = (scale) => {
+    const container = getViewerContainer();
+    if (!container) return;
+    container.scrollLeft = (anchorContentX * scale) - anchorLocalX;
+    container.scrollTop = (anchorContentY * scale) - anchorLocalY;
   };
   const setTouchPolicy = () => {
     let viewport = document.querySelector('meta[name="viewport"]');
@@ -1537,6 +1561,7 @@ class _MobilePdfWebViewerState extends State<_MobilePdfWebViewer> {
     lastVisualScale = startVisualScale;
     const container = getViewerContainer();
     if (container) container.style.overflow = 'auto';
+    captureZoomAnchor(event.touches);
   }, { capture: true, passive: false });
 
   document.addEventListener('touchmove', (event) => {
@@ -1549,6 +1574,7 @@ class _MobilePdfWebViewerState extends State<_MobilePdfWebViewer> {
       startVisualScale * (distance(event.touches) / startDistance);
     if (Math.abs(nextScale - lastVisualScale) < 0.015) return;
     lastVisualScale = setVisualScale(nextScale);
+    restoreZoomAnchor(lastVisualScale);
   }, { capture: true, passive: false });
 
   document.addEventListener('touchend', (event) => {
