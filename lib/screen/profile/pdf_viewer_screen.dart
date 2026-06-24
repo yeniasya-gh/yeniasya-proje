@@ -1472,8 +1472,6 @@ class _MobilePdfWebViewerState extends State<_MobilePdfWebViewer> {
   if (window.__yeniasyaPdfPinchZoomInstalled) return;
   window.__yeniasyaPdfPinchZoomInstalled = true;
 
-  const minScale = 0.05;
-  const maxScale = 20;
   let startDistance = 0;
   let startVisualScale = 1;
   let lastVisualScale = 1;
@@ -1482,7 +1480,6 @@ class _MobilePdfWebViewerState extends State<_MobilePdfWebViewer> {
   let anchorLocalX = 0;
   let anchorLocalY = 0;
 
-  const clamp = (value) => Math.max(minScale, Math.min(maxScale, value));
   const distance = (touches) => {
     const dx = touches[0].clientX - touches[1].clientX;
     const dy = touches[0].clientY - touches[1].clientY;
@@ -1498,7 +1495,8 @@ class _MobilePdfWebViewerState extends State<_MobilePdfWebViewer> {
   const setVisualScale = (scale) => {
     const viewer = getViewerElement();
     if (!viewer) return getVisualScale();
-    const nextScale = clamp(scale);
+    if (!Number.isFinite(scale) || scale <= 0) return getVisualScale();
+    const nextScale = scale;
     window.__yeniasyaPdfVisualScale = nextScale;
     viewer.style.transformOrigin = '0 0';
     viewer.style.zoom = String(nextScale);
@@ -1530,7 +1528,7 @@ class _MobilePdfWebViewerState extends State<_MobilePdfWebViewer> {
     }
     viewport.setAttribute(
       'content',
-      'width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no'
+      'width=device-width, initial-scale=1, user-scalable=yes'
     );
     document.documentElement.style.touchAction = 'pan-x pan-y';
     document.body.style.touchAction = 'pan-x pan-y';
@@ -1572,7 +1570,6 @@ class _MobilePdfWebViewerState extends State<_MobilePdfWebViewer> {
     event.stopPropagation();
     const nextScale =
       startVisualScale * (distance(event.touches) / startDistance);
-    if (Math.abs(nextScale - lastVisualScale) < 0.003) return;
     lastVisualScale = setVisualScale(nextScale);
     restoreZoomAnchor(lastVisualScale);
   }, { capture: true, passive: false });
@@ -1603,7 +1600,7 @@ class _MobilePdfWebViewerState extends State<_MobilePdfWebViewer> {
     super.initState();
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..enableZoom(false)
+      ..enableZoom(true)
       ..setNavigationDelegate(
         NavigationDelegate(
           onPageStarted: (_) {
