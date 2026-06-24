@@ -142,7 +142,12 @@ class _AppBootstrapState extends State<AppBootstrap>
       setState(() => _status = "Sürüm kontrol ediliyor");
     }
 
-    final forceUpdateGate = await _appVersionService.getGateForCurrentApp();
+    final forceUpdateGate = kIsWeb
+        ? const AppVersionGate.none(
+            currentVersion: "web",
+            currentBuildNumber: "",
+          )
+        : await _appVersionService.getGateForCurrentApp();
     if (!mounted) return;
     if (forceUpdateGate.forceUpdateRequired) {
       setState(() {
@@ -157,7 +162,11 @@ class _AppBootstrapState extends State<AppBootstrap>
       setState(() => _status = "Oturum hazırlanıyor");
     }
 
-    await _initializeFirebaseSafely();
+    if (kIsWeb) {
+      unawaited(_initializeFirebaseSafely());
+    } else {
+      await _initializeFirebaseSafely();
+    }
     await authProvider.loadSession();
     unawaited(AppErrorReporter.instance.flushPending());
 
@@ -167,11 +176,23 @@ class _AppBootstrapState extends State<AppBootstrap>
         : "guest";
 
     if (user != null) {
-      await revenueCatService.syncWithAuthUser(user);
+      final revenueCatSync = revenueCatService.syncWithAuthUser(user);
+      if (kIsWeb) {
+        unawaited(revenueCatSync);
+      } else {
+        await revenueCatSync;
+      }
       if (!kIsWeb) {
         await accessProvider.load(user.id, force: true);
       }
-      await NotificationService().registerDeviceToken(userId: user.id);
+      final deviceTokenRegistration = NotificationService().registerDeviceToken(
+        userId: user.id,
+      );
+      if (kIsWeb) {
+        unawaited(deviceTokenRegistration);
+      } else {
+        await deviceTokenRegistration;
+      }
     } else {
       unawaited(revenueCatService.syncWithAuthUser(user));
     }

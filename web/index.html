@@ -93,13 +93,7 @@
         to { transform: rotate(360deg); }
       }
     </style>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.14.305/pdf.min.js"></script>
     <script>
-      if (window.pdfjsLib) {
-        window.pdfjsLib.GlobalWorkerOptions.workerSrc =
-          "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.14.305/pdf.worker.min.js";
-      }
-
       (function () {
         var migrationKey = "ya-web-cache-migration-20260316-1";
         var bootstrapSrc = "flutter_bootstrap.js?v=20260316-1";
@@ -111,9 +105,21 @@
           document.body.appendChild(script);
         }
 
-        async function prepareFlutterBootstrap() {
-          var shouldReload = false;
+        async function refreshFlutterServiceWorker() {
+          if (!("serviceWorker" in navigator)) return;
+          try {
+            var registration = await navigator.serviceWorker.getRegistration();
+            if (!registration) return;
+            await registration.update();
+            if (registration.waiting) {
+              registration.waiting.postMessage("skipWaiting");
+            }
+          } catch (error) {
+            console.warn("Flutter service worker update skipped:", error);
+          }
+        }
 
+        async function prepareFlutterBootstrap() {
           if ("serviceWorker" in navigator) {
             var refreshing = false;
             navigator.serviceWorker.addEventListener("controllerchange", function () {
@@ -143,30 +149,19 @@
                         })
                     );
                   }
-                  shouldReload = true;
+                  window.localStorage.setItem(migrationKey, "done");
+                  window.location.reload();
+                  return;
                 }
                 window.localStorage.setItem(migrationKey, "done");
-              } else {
-                var registration = await navigator.serviceWorker.getRegistration();
-                if (registration) {
-                  await registration.update();
-                  if (registration.waiting) {
-                    registration.waiting.postMessage("skipWaiting");
-                    shouldReload = true;
-                  }
-                }
               }
             } catch (error) {
               console.warn("Flutter cache migration skipped:", error);
             }
           }
 
-          if (shouldReload) {
-            window.location.reload();
-            return;
-          }
-
           injectBootstrapScript();
+          window.setTimeout(refreshFlutterServiceWorker, 2500);
         }
 
         window.__prepareFlutterBootstrap = prepareFlutterBootstrap;
