@@ -1456,15 +1456,15 @@ class _MobilePdfWebViewer extends StatefulWidget {
 class _MobilePdfWebViewerState extends State<_MobilePdfWebViewer> {
   static final Set<Factory<OneSequenceGestureRecognizer>>
   _webViewGestureRecognizers = {
-    Factory<OneSequenceGestureRecognizer>(() => ScaleGestureRecognizer()),
-    Factory<OneSequenceGestureRecognizer>(
+    Factory<ScaleGestureRecognizer>(() => ScaleGestureRecognizer()),
+    Factory<VerticalDragGestureRecognizer>(
       () => VerticalDragGestureRecognizer(),
     ),
-    Factory<OneSequenceGestureRecognizer>(
+    Factory<HorizontalDragGestureRecognizer>(
       () => HorizontalDragGestureRecognizer(),
     ),
-    Factory<OneSequenceGestureRecognizer>(() => TapGestureRecognizer()),
-    Factory<OneSequenceGestureRecognizer>(() => LongPressGestureRecognizer()),
+    Factory<TapGestureRecognizer>(() => TapGestureRecognizer()),
+    Factory<LongPressGestureRecognizer>(() => LongPressGestureRecognizer()),
   };
 
   static const String _pdfJsPinchZoomBridge = '''
@@ -1472,8 +1472,8 @@ class _MobilePdfWebViewerState extends State<_MobilePdfWebViewer> {
   if (window.__yeniasyaPdfPinchZoomInstalled) return;
   window.__yeniasyaPdfPinchZoomInstalled = true;
 
-  const minScale = 0.35;
-  const maxScale = 5;
+  const minScale = 0.05;
+  const maxScale = 20;
   let startDistance = 0;
   let startVisualScale = 1;
   let lastVisualScale = 1;
@@ -1572,7 +1572,7 @@ class _MobilePdfWebViewerState extends State<_MobilePdfWebViewer> {
     event.stopPropagation();
     const nextScale =
       startVisualScale * (distance(event.touches) / startDistance);
-    if (Math.abs(nextScale - lastVisualScale) < 0.015) return;
+    if (Math.abs(nextScale - lastVisualScale) < 0.003) return;
     lastVisualScale = setVisualScale(nextScale);
     restoreZoomAnchor(lastVisualScale);
   }, { capture: true, passive: false });
