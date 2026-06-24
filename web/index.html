@@ -111,9 +111,6 @@
             var registration = await navigator.serviceWorker.getRegistration();
             if (!registration) return;
             await registration.update();
-            if (registration.waiting) {
-              registration.waiting.postMessage("skipWaiting");
-            }
           } catch (error) {
             console.warn("Flutter service worker update skipped:", error);
           }
@@ -121,13 +118,6 @@
 
         async function prepareFlutterBootstrap() {
           if ("serviceWorker" in navigator) {
-            var refreshing = false;
-            navigator.serviceWorker.addEventListener("controllerchange", function () {
-              if (refreshing) return;
-              refreshing = true;
-              window.location.reload();
-            });
-
             try {
               if (!window.localStorage.getItem(migrationKey)) {
                 var registrations = await navigator.serviceWorker.getRegistrations();
