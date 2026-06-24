@@ -1475,8 +1475,8 @@ class _MobilePdfWebViewerState extends State<_MobilePdfWebViewer> {
   const minScale = 0.35;
   const maxScale = 5;
   let startDistance = 0;
-  let startScale = 1;
-  let lastScale = 1;
+  let startVisualScale = 1;
+  let lastVisualScale = 1;
 
   const clamp = (value) => Math.max(minScale, Math.min(maxScale, value));
   const distance = (touches) => {
@@ -1484,20 +1484,17 @@ class _MobilePdfWebViewerState extends State<_MobilePdfWebViewer> {
     const dy = touches[0].clientY - touches[1].clientY;
     return Math.sqrt((dx * dx) + (dy * dy));
   };
-  const getPdfViewer = () => window.PDFViewerApplication?.pdfViewer;
-  const getCurrentScale = (viewer) => {
-    const parsed = Number(viewer.currentScaleValue);
-    return viewer.currentScale || (Number.isFinite(parsed) ? parsed : 1);
-  };
-  const setViewerScale = (viewer, scale) => {
+  const getViewerElement = () => document.getElementById('viewer');
+  const getViewerContainer = () => document.getElementById('viewerContainer');
+  const getVisualScale = () => window.__yeniasyaPdfVisualScale || 1;
+  const setVisualScale = (scale) => {
+    const viewer = getViewerElement();
+    if (!viewer) return getVisualScale();
     const nextScale = clamp(scale);
-    viewer.currentScale = nextScale;
-    viewer.currentScaleValue = String(nextScale);
-    window.PDFViewerApplication?.eventBus?.dispatch?.('scalechanging', {
-      source: viewer,
-      scale: nextScale,
-      presetValue: undefined,
-    });
+    window.__yeniasyaPdfVisualScale = nextScale;
+    viewer.style.transformOrigin = '0 0';
+    viewer.style.zoom = String(nextScale);
+    viewer.style.willChange = 'contents';
     return nextScale;
   };
   const setTouchPolicy = () => {
@@ -1531,24 +1528,27 @@ class _MobilePdfWebViewerState extends State<_MobilePdfWebViewer> {
 
   document.addEventListener('touchstart', (event) => {
     if (event.touches.length !== 2) return;
-    const viewer = getPdfViewer();
+    const viewer = getViewerElement();
     if (!viewer) return;
     event.preventDefault();
     event.stopPropagation();
     startDistance = distance(event.touches);
-    startScale = getCurrentScale(viewer);
-    lastScale = startScale;
+    startVisualScale = getVisualScale();
+    lastVisualScale = startVisualScale;
+    const container = getViewerContainer();
+    if (container) container.style.overflow = 'auto';
   }, { capture: true, passive: false });
 
   document.addEventListener('touchmove', (event) => {
     if (event.touches.length !== 2 || startDistance <= 0) return;
-    const viewer = getPdfViewer();
+    const viewer = getViewerElement();
     if (!viewer) return;
     event.preventDefault();
     event.stopPropagation();
-    const nextScale = startScale * (distance(event.touches) / startDistance);
-    if (Math.abs(nextScale - lastScale) < 0.015) return;
-    lastScale = setViewerScale(viewer, nextScale);
+    const nextScale =
+      startVisualScale * (distance(event.touches) / startDistance);
+    if (Math.abs(nextScale - lastVisualScale) < 0.015) return;
+    lastVisualScale = setVisualScale(nextScale);
   }, { capture: true, passive: false });
 
   document.addEventListener('touchend', (event) => {
