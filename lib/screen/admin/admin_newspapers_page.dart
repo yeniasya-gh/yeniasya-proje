@@ -92,6 +92,9 @@ class _AdminNewspapersPageState extends State<AdminNewspapersPage> {
       text: newspaper?["publish_date"] ?? "",
     );
     final fileCtrl = TextEditingController(text: newspaper?["file_url"] ?? "");
+    final imageCtrl = TextEditingController(
+      text: newspaper?["image_url"] ?? "",
+    );
 
     Uint8List? pickedImageBytes;
     String? pickedImageName;
@@ -149,8 +152,11 @@ class _AdminNewspapersPageState extends State<AdminNewspapersPage> {
                             pdfBytes: bytes,
                             pdfName: name,
                             onPicked: (imageBytes, imageName) {
-                              pickedImageBytes = imageBytes;
-                              pickedImageName = imageName;
+                              setSt(() {
+                                pickedImageBytes = imageBytes;
+                                pickedImageName = imageName;
+                                imageCtrl.text = imageName;
+                              });
                             },
                           );
                         },
@@ -174,8 +180,11 @@ class _AdminNewspapersPageState extends State<AdminNewspapersPage> {
                                       pdfBytes: bytes,
                                       pdfName: name,
                                       onPicked: (imageBytes, imageName) {
-                                        pickedImageBytes = imageBytes;
-                                        pickedImageName = imageName;
+                                        setSt(() {
+                                          pickedImageBytes = imageBytes;
+                                          pickedImageName = imageName;
+                                          imageCtrl.text = imageName;
+                                        });
                                       },
                                     );
                                   },
@@ -186,6 +195,47 @@ class _AdminNewspapersPageState extends State<AdminNewspapersPage> {
                       ),
                     ),
                     validator: (v) => v == null || v.isEmpty ? "Zorunlu" : null,
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: imageCtrl,
+                    readOnly: true,
+                    onTap: isProcessing
+                        ? null
+                        : () async {
+                            await _pickCoverImage(
+                              imageCtrl,
+                              onPicked: (bytes, name) {
+                                setSt(() {
+                                  pickedImageBytes = bytes;
+                                  pickedImageName = name;
+                                  imageCtrl.text = name;
+                                });
+                              },
+                            );
+                          },
+                    decoration: InputDecoration(
+                      labelText: "Kapak görseli",
+                      helperText:
+                          "PDF kapağı otomatik oluşmazsa manuel görsel seçin.",
+                      suffixIcon: IconButton(
+                        icon: const Icon(Icons.image),
+                        onPressed: isProcessing
+                            ? null
+                            : () async {
+                                await _pickCoverImage(
+                                  imageCtrl,
+                                  onPicked: (bytes, name) {
+                                    setSt(() {
+                                      pickedImageBytes = bytes;
+                                      pickedImageName = name;
+                                      imageCtrl.text = name;
+                                    });
+                                  },
+                                );
+                              },
+                      ),
+                    ),
                   ),
                   if (isProcessing) ...[
                     const SizedBox(height: 12),
@@ -211,6 +261,7 @@ class _AdminNewspapersPageState extends State<AdminNewspapersPage> {
                         "id": newspaper?["id"],
                         "publish_date": dateCtrl.text.trim(),
                         "file_url": fileCtrl.text.trim(),
+                        "image_url": imageCtrl.text.trim(),
                       };
 
                       Navigator.pop(context);
@@ -222,7 +273,7 @@ class _AdminNewspapersPageState extends State<AdminNewspapersPage> {
                               ? "E-gazete güncelleniyor"
                               : "E-gazete yükleniyor",
                           task: (progress) async {
-                            String imageUrl = (newspaper?["image_url"] ?? "")
+                            String imageUrl = (payload["image_url"] ?? "")
                                 .toString()
                                 .trim();
                             if (pickedImageBytes != null &&
@@ -239,7 +290,7 @@ class _AdminNewspapersPageState extends State<AdminNewspapersPage> {
                             }
                             if (imageUrl.isEmpty) {
                               throw Exception(
-                                "Kapak görseli oluşturulamadı. Lütfen PDF'i yeniden seçin.",
+                                "Kapak görseli oluşturulamadı. Lütfen PDF'i yeniden seçin veya kapak görselini manuel seçin.",
                               );
                             }
 
@@ -374,6 +425,38 @@ class _AdminNewspapersPageState extends State<AdminNewspapersPage> {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text("Seçildi: ${picked.name}")));
+      }
+    } catch (e) {
+      await showDialog(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text("İşlem başarısız"),
+          content: Text(e.toString()),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Tamam"),
+            ),
+          ],
+        ),
+      );
+    }
+  }
+
+  Future<void> _pickCoverImage(
+    TextEditingController controller, {
+    required void Function(Uint8List bytes, String name) onPicked,
+  }) async {
+    try {
+      final picked = await AssetImagePicker.pickImageFile();
+      if (picked == null) return;
+      controller.text = picked.name;
+      onPicked(picked.bytes, picked.name);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Kapak seçildi: ${picked.name}")),
+        );
       }
     } catch (e) {
       await showDialog(
@@ -587,6 +670,3 @@ class _AdminNewspapersPageState extends State<AdminNewspapersPage> {
     return "${two(dt.hour)}:${two(dt.minute)} ${two(dt.day)}.${two(dt.month)}.${dt.year}";
   }
 }
-
-Uint8List? pickedImageBytes;
-String? pickedImageName;
