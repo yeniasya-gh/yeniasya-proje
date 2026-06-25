@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:pdfx/pdfx.dart';
 import 'package:path/path.dart' as p;
@@ -8,6 +9,8 @@ import '../../services/admin/admin_newspaper_service.dart';
 import '../../services/error/error_manager.dart';
 import '../../services/upload_service.dart';
 import '../../utils/asset_image_picker.dart';
+import '../../utils/pdf_cover_renderer_stub.dart'
+    if (dart.library.html) '../../utils/pdf_cover_renderer_web.dart';
 import '../../utils/safe_image.dart';
 import 'admin_upload_progress_dialog.dart';
 
@@ -425,7 +428,8 @@ class _AdminNewspapersPageState extends State<AdminNewspapersPage> {
           const SnackBar(content: Text("PDF kapağı otomatik oluşturuldu.")),
         );
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      debugPrint('PDF cover generation failed: $e\n$stackTrace');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("PDF kapağı oluşturulamadı.")),
@@ -438,6 +442,11 @@ class _AdminNewspapersPageState extends State<AdminNewspapersPage> {
     PdfDocument? doc;
     PdfPage? page;
     try {
+      final webCoverBytes = await renderPdfCoverWithPdfJs(pdfBytes);
+      if (webCoverBytes != null && webCoverBytes.isNotEmpty) {
+        return webCoverBytes;
+      }
+
       doc = await PdfDocument.openData(pdfBytes);
       if (doc.pagesCount < 1) return null;
       page = await doc.getPage(1);
