@@ -1464,34 +1464,6 @@ class _MobilePdfWebViewerState extends State<_MobilePdfWebViewer> {
   if (window.__yeniasyaPdfMobileViewportInstalled) return;
   window.__yeniasyaPdfMobileViewportInstalled = true;
 
-  const MIN_VISUAL_SCALE = 0.05;
-  const MAX_VISUAL_SCALE = 20;
-  const loosenPdfJsScaleLimits = () => {
-    const app = window.PDFViewerApplication;
-    const options = window.PDFViewerApplicationOptions;
-    try {
-      if (options?.set) {
-        options.set('minScale', MIN_VISUAL_SCALE);
-        options.set('maxScale', MAX_VISUAL_SCALE);
-      }
-    } catch (_) {}
-    try {
-      if (app?.pdfViewer) {
-        app.pdfViewer.minScale = MIN_VISUAL_SCALE;
-        app.pdfViewer.maxScale = MAX_VISUAL_SCALE;
-      }
-      if (app?.pdfViewer?._uiUtils) {
-        app.pdfViewer._uiUtils.MIN_SCALE = MIN_VISUAL_SCALE;
-        app.pdfViewer._uiUtils.MAX_SCALE = MAX_VISUAL_SCALE;
-      }
-    } catch (_) {}
-    try {
-      window.PDFViewerApplicationConstants =
-        window.PDFViewerApplicationConstants || {};
-      window.PDFViewerApplicationConstants.MIN_SCALE = MIN_VISUAL_SCALE;
-      window.PDFViewerApplicationConstants.MAX_SCALE = MAX_VISUAL_SCALE;
-    } catch (_) {}
-  };
   const setTouchPolicy = () => {
     let viewport = document.querySelector('meta[name="viewport"]');
     if (!viewport) {
@@ -1501,7 +1473,7 @@ class _MobilePdfWebViewerState extends State<_MobilePdfWebViewer> {
     }
     viewport.setAttribute(
       'content',
-      'width=device-width, initial-scale=1, minimum-scale=0.05, maximum-scale=20, user-scalable=yes, viewport-fit=cover'
+      'width=device-width, initial-scale=1, user-scalable=yes, viewport-fit=cover'
     );
     document.documentElement.style.webkitTextSizeAdjust = '100%';
     document.documentElement.style.touchAction = 'auto';
@@ -1510,7 +1482,6 @@ class _MobilePdfWebViewerState extends State<_MobilePdfWebViewer> {
       const element = document.getElementById(id);
       if (element) element.style.touchAction = 'auto';
     });
-    loosenPdfJsScaleLimits();
   };
 
   setTouchPolicy();
@@ -1521,9 +1492,6 @@ class _MobilePdfWebViewerState extends State<_MobilePdfWebViewer> {
     capture: true,
   });
   document.addEventListener('pagesinit', setTouchPolicy, {
-    capture: true,
-  });
-  document.addEventListener('scalechanging', loosenPdfJsScaleLimits, {
     capture: true,
   });
 })();
@@ -1588,8 +1556,6 @@ class _MobilePdfWebViewerState extends State<_MobilePdfWebViewer> {
               loadWithOverviewMode: false,
               enableViewportScale: true,
               ignoresViewportScaleLimits: true,
-              minimumZoomScale: 0.05,
-              maximumZoomScale: 20,
               disallowOverScroll: false,
               disableHorizontalScroll: false,
               disableVerticalScroll: false,
