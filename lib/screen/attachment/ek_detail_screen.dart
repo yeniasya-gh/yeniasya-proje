@@ -9,7 +9,7 @@ import '../../services/upload_service.dart';
 import '../../utils/safe_image.dart';
 import '../../utils/cart_feedback.dart';
 import '../../utils/ek_normalizer.dart';
-import '../profile/pdf_viewer_screen.dart';
+import '../../utils/pdf_open_helper.dart';
 import '../../services/auth/auth_provider.dart';
 
 class EkDetailScreen extends StatelessWidget {
@@ -158,7 +158,11 @@ class EkDetailScreen extends StatelessWidget {
     );
   }
 
-  void _openPdf(BuildContext context, String url, {required bool isFree}) {
+  Future<void> _openPdf(
+    BuildContext context,
+    String url, {
+    required bool isFree,
+  }) async {
     if (url.isEmpty) {
       ScaffoldMessenger.of(
         context,
@@ -174,17 +178,19 @@ class EkDetailScreen extends StatelessWidget {
       );
       return;
     }
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => PdfViewerScreen(
-          url: UploadService.normalizeUrl(url),
-          title: normalizeEk(ek)["ad"]?.toString() ?? "Ek",
-          // Ücretsiz de olsa private izleme
-          isPrivate: true,
-        ),
-      ),
-    );
+    try {
+      await PdfOpenHelper.downloadAndOpen(
+        context,
+        url: UploadService.normalizeUrl(url),
+        title: normalizeEk(ek)["ad"]?.toString() ?? "Ek",
+        isPrivate: true,
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Dosya açılamadı: $e")));
+    }
   }
 
   void _addToCart(BuildContext context, Map<String, dynamic> ek, double price) {

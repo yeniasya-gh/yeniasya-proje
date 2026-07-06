@@ -26,7 +26,6 @@ import '../services/upload_service.dart';
 import '../services/home_bootstrap_service.dart';
 import '../services/newspaper_subscription_type_service.dart';
 import '../services/logging_service.dart';
-import '../screen/profile/pdf_viewer_screen.dart';
 import '../utils/cart_feedback.dart';
 import '../utils/price_utils.dart';
 import '../utils/pdf_open_helper.dart';
@@ -1013,28 +1012,30 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
     );
   }
 
-  void _openPdfDirect(
+  Future<void> _openPdfDirect(
     String url, {
     required String title,
     required bool isPublic,
-  }) {
+  }) async {
     if (url.isEmpty) {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text("PDF bulunamadı")));
       return;
     }
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => PdfViewerScreen(
-          url: UploadService.normalizeUrl(url),
-          title: title,
-          // Ücretsiz ekler de private modda açılacak
-          isPrivate: true,
-        ),
-      ),
-    );
+    try {
+      await PdfOpenHelper.downloadAndOpen(
+        context,
+        url: UploadService.normalizeUrl(url),
+        title: title,
+        isPrivate: true,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("PDF açılamadı: $e")));
+    }
   }
 
   Uri? _parseSliderUri(String link) {
@@ -1931,19 +1932,14 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
                           itemBuilder: (_, i) {
                             final entry = entries[i];
                             return FutureBuilder<_AccessItem>(
-                              future: _resolveAccessItemCached(
-                                itemType,
-                                entry,
-                              ),
+                              future: _resolveAccessItemCached(itemType, entry),
                               builder: (_, snap) {
                                 if (snap.hasError) {
                                   return ListTile(
                                     leading: CircleAvatar(
                                       backgroundColor: Colors.red.shade100,
                                       foregroundColor: Colors.red,
-                                      child: Icon(
-                                        _iconForType(itemType),
-                                      ),
+                                      child: Icon(_iconForType(itemType)),
                                     ),
                                     title: const Text("Yükleme hatası"),
                                     subtitle: Text(
@@ -2067,14 +2063,12 @@ class _HomeResponsiveScreenState extends State<HomeResponsiveScreen> {
                 Navigator.pop(context);
                 final url = issue["file_url"]?.toString();
                 if (url != null && url.isNotEmpty) {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => PdfViewerScreen(
-                        url: url,
-                        title: "Dergi Sayısı $num",
-                        isPrivate: true,
-                      ),
+                  unawaited(
+                    PdfOpenHelper.downloadAndOpen(
+                      context,
+                      url: url,
+                      title: "Dergi Sayısı $num",
+                      isPrivate: true,
                     ),
                   );
                 }

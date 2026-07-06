@@ -855,28 +855,20 @@ class SecureFileService {
   Future<Uint8List> _encrypt(Uint8List data) async {
     final key = await _getOrCreateKey();
     final iv = _randomBytes(16);
-    final encrypter = enc.Encrypter(
-      enc.AES(enc.Key(Uint8List.fromList(key)), mode: enc.AESMode.cbc),
-    );
-    final encrypted = encrypter
-        .encryptBytes(data, iv: enc.IV(Uint8List.fromList(iv)))
-        .bytes;
-    return Uint8List.fromList(iv + encrypted); // IV + data
+    return compute(_encryptPdfCacheBytes, {
+      "key": Uint8List.fromList(key),
+      "iv": Uint8List.fromList(iv),
+      "data": data,
+    });
   }
 
   Future<Uint8List> _decrypt(Uint8List data) async {
     if (data.length < 16) return Uint8List(0);
     final key = await _getOrCreateKey();
-    final iv = data.sublist(0, 16);
-    final cipher = data.sublist(16);
-    final encrypter = enc.Encrypter(
-      enc.AES(enc.Key(Uint8List.fromList(key)), mode: enc.AESMode.cbc),
-    );
-    final decrypted = encrypter.decryptBytes(
-      enc.Encrypted(cipher),
-      iv: enc.IV(Uint8List.fromList(iv)),
-    );
-    return Uint8List.fromList(decrypted);
+    return compute(_decryptPdfCacheBytes, {
+      "key": Uint8List.fromList(key),
+      "data": data,
+    });
   }
 
   Future<List<int>> _getOrCreateKey() async {
@@ -1042,4 +1034,27 @@ class _ViewTokenData {
   final String? url;
 
   _ViewTokenData({this.token, this.url});
+}
+
+Uint8List _encryptPdfCacheBytes(Map<String, Uint8List> payload) {
+  final key = payload["key"]!;
+  final iv = payload["iv"]!;
+  final data = payload["data"]!;
+  final encrypter = enc.Encrypter(enc.AES(enc.Key(key), mode: enc.AESMode.cbc));
+  final encrypted = encrypter.encryptBytes(data, iv: enc.IV(iv)).bytes;
+  return Uint8List.fromList([...iv, ...encrypted]);
+}
+
+Uint8List _decryptPdfCacheBytes(Map<String, Uint8List> payload) {
+  final key = payload["key"]!;
+  final data = payload["data"]!;
+  if (data.length < 16) return Uint8List(0);
+  final iv = data.sublist(0, 16);
+  final cipher = data.sublist(16);
+  final encrypter = enc.Encrypter(enc.AES(enc.Key(key), mode: enc.AESMode.cbc));
+  final decrypted = encrypter.decryptBytes(
+    enc.Encrypted(cipher),
+    iv: enc.IV(iv),
+  );
+  return Uint8List.fromList(decrypted);
 }

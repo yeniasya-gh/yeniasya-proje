@@ -11,6 +11,7 @@ import '../../services/auth/auth_provider.dart';
 import '../../services/revenuecat_service.dart';
 import '../../services/user_content_access_service.dart';
 import '../../utils/app_user_avatar.dart';
+import '../../utils/pdf_open_helper.dart';
 import '../../utils/route_guard.dart';
 import '../../utils/purchase_channel_labels.dart';
 import '../address/address_list_screen.dart';
@@ -19,7 +20,6 @@ import '../order/order_list_screen.dart';
 import '../contact/contact_form.dart';
 import '../footer/faq_page.dart';
 import '../notification/notification_list_screen.dart';
-import 'pdf_viewer_screen.dart';
 import 'personal_info_screen.dart';
 import 'saved_cards_screen.dart';
 
@@ -944,14 +944,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
           onTap: (url == null || url.isEmpty)
               ? null
               : () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => PdfViewerScreen(
-                        url: url,
-                        title: title,
-                        isPrivate: true,
-                      ),
+                  unawaited(
+                    PdfOpenHelper.downloadAndOpen(
+                      context,
+                      url: url,
+                      title: title,
+                      isPrivate: true,
                     ),
                   );
                 },
@@ -969,14 +967,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
           onTap: (url == null || url.isEmpty)
               ? null
               : () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => PdfViewerScreen(
-                        url: url,
-                        title: "$magName - $issueNumber",
-                        isPrivate: true,
-                      ),
+                  unawaited(
+                    PdfOpenHelper.downloadAndOpen(
+                      context,
+                      url: url,
+                      title: "$magName - $issueNumber",
+                      isPrivate: true,
                     ),
                   );
                 },
@@ -1091,14 +1087,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             onTap: () {
                               final url = issue["file_url"]?.toString();
                               if (url == null || url.isEmpty) return;
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => PdfViewerScreen(
-                                    url: url,
-                                    title: "$name - $title",
-                                    isPrivate: true,
-                                  ),
+                              unawaited(
+                                PdfOpenHelper.downloadAndOpen(
+                                  context,
+                                  url: url,
+                                  title: "$name - $title",
+                                  isPrivate: true,
                                 ),
                               );
                             },

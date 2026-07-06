@@ -4,9 +4,9 @@ import '../../services/admin/admin_magazine_service.dart';
 import '../../services/access_provider.dart';
 import '../../services/error/error_manager.dart';
 import '../../services/upload_service.dart';
+import '../../utils/pdf_open_helper.dart';
 import '../../utils/safe_image.dart';
 import '../../models/cart_item.dart';
-import '../profile/pdf_viewer_screen.dart';
 import 'product_detail_screen.dart';
 
 class MagazineIssuesScreen extends StatefulWidget {
@@ -83,15 +83,14 @@ class _MagazineIssuesScreenState extends State<MagazineIssuesScreen> {
     setState(() => _openingIssueKey = issueKey);
     try {
       if (!mounted) return;
-      Navigator.push(
+      await PdfOpenHelper.downloadAndOpen(
         context,
-        MaterialPageRoute(
-          builder: (_) =>
-              PdfViewerScreen(url: fileUrl, title: title, isPrivate: true),
-        ),
+        url: fileUrl,
+        title: title,
+        isPrivate: true,
       );
     } catch (e) {
-      if (!mounted) return;
+      if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -263,9 +262,8 @@ class _MagazineIssuesScreenState extends State<MagazineIssuesScreen> {
                       : ListView.separated(
                           padding: const EdgeInsets.all(16),
                           itemCount: filteredIssues.length,
-                          separatorBuilder: (_, __) => const SizedBox(
-                            height: 12,
-                          ),
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(height: 12),
                           itemBuilder: (_, i) {
                             final issue = filteredIssues[i];
                             final issueYear = _issueYear(issue);
@@ -340,7 +338,9 @@ class _MagazineIssuesScreenState extends State<MagazineIssuesScreen> {
                                             ),
                                           if (canView)
                                             const Padding(
-                                              padding: EdgeInsets.only(top: 6.0),
+                                              padding: EdgeInsets.only(
+                                                top: 6.0,
+                                              ),
                                               child: Text(
                                                 "Sahip",
                                                 style: TextStyle(
@@ -370,8 +370,7 @@ class _MagazineIssuesScreenState extends State<MagazineIssuesScreen> {
                                           padding: EdgeInsets.zero,
                                           visualDensity: VisualDensity.compact,
                                           tapTargetSize:
-                                              MaterialTapTargetSize
-                                                  .shrinkWrap,
+                                              MaterialTapTargetSize.shrinkWrap,
                                           alignment: Alignment.center,
                                         ),
                                         child: const Center(
