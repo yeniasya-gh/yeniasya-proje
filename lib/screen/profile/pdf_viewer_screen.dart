@@ -430,32 +430,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     final totalPages = _totalPages;
     final noteCount = _noteEntries.length;
     final progress = totalPages > 0 ? ((page / totalPages) * 100).round() : 0;
-    final summaryWidgets = <Widget>[
-      _infoChip(
-        icon: Icons.auto_stories_rounded,
-        label: "Sayfa $page / ${totalPages > 0 ? totalPages : "-"}",
-      ),
-      _infoChip(icon: Icons.insights_outlined, label: "%$progress okundu"),
-      _infoChip(
-        icon: Icons.bookmarks_outlined,
-        label: "${_bookmarks.length} ayraç",
-      ),
-      _infoChip(icon: Icons.sticky_note_2_outlined, label: "$noteCount not"),
-      if (_hasSearchResult)
-        _infoChip(
-          icon: Icons.find_in_page_outlined,
-          label:
-              "${_searchResult!.currentInstanceIndex}/${_searchResult!.totalInstanceCount} eşleşme",
-        ),
-      if (_pendingNoteDraft != null)
-        ActionChip(
-          avatar: const Icon(Icons.touch_app_outlined, size: 18),
-          label: const Text(
-            "Notu bırakmak için sayfa üzerinde bir noktaya tıklayın",
-          ),
-          onPressed: _cancelPendingNotePlacement,
-        ),
-    ];
 
     return Material(
       color: Colors.white,
@@ -470,133 +444,181 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
             ),
           ),
         ),
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            children: _withHorizontalSpacing([
-              _toolbarGroup(
-                children: [
-                  _toolbarIconButton(
-                    icon: Icons.first_page,
-                    tooltip: "İlk sayfa",
-                    onPressed: totalPages > 0 ? () => _jumpToPage(1) : null,
-                  ),
-                  _toolbarIconButton(
-                    icon: Icons.chevron_left,
-                    tooltip: "Önceki sayfa",
-                    onPressed: _canGoPrevious
-                        ? () => _controller.previousPage()
-                        : null,
-                  ),
-                  SizedBox(
-                    width: 64,
-                    child: TextField(
-                      controller: _pageJumpController,
-                      textAlign: TextAlign.center,
-                      keyboardType: TextInputType.number,
-                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                      decoration: const InputDecoration(
-                        isDense: true,
-                        contentPadding: EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 10,
-                        ),
-                        border: OutlineInputBorder(),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildToolbarSummaryRow(page, totalPages, noteCount),
+            const SizedBox(height: 8),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: _withHorizontalSpacing([
+                  _toolbarGroup(
+                    children: [
+                      _toolbarIconButton(
+                        icon: Icons.first_page,
+                        tooltip: "İlk sayfa",
+                        onPressed: totalPages > 0 ? () => _jumpToPage(1) : null,
                       ),
-                      onSubmitted: (_) => _jumpToTypedPage(),
+                      _toolbarIconButton(
+                        icon: Icons.chevron_left,
+                        tooltip: "Önceki sayfa",
+                        onPressed: _canGoPrevious
+                            ? () => _controller.previousPage()
+                            : null,
+                      ),
+                      SizedBox(
+                        width: 58,
+                        child: TextField(
+                          controller: _pageJumpController,
+                          textAlign: TextAlign.center,
+                          keyboardType: TextInputType.number,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly,
+                          ],
+                          decoration: const InputDecoration(
+                            isDense: true,
+                            contentPadding: EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 9,
+                            ),
+                            border: OutlineInputBorder(),
+                          ),
+                          onSubmitted: (_) => _jumpToTypedPage(),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        child: Text(
+                          "/ ${totalPages > 0 ? totalPages : "-"}",
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                      _toolbarIconButton(
+                        icon: Icons.chevron_right,
+                        tooltip: "Sonraki sayfa",
+                        onPressed: _canGoNext
+                            ? () => _controller.nextPage()
+                            : null,
+                      ),
+                      _toolbarIconButton(
+                        icon: Icons.last_page,
+                        tooltip: "Son sayfa",
+                        onPressed: totalPages > 0
+                            ? () => _jumpToPage(totalPages)
+                            : null,
+                      ),
+                    ],
+                  ),
+                  _toolbarGroup(
+                    children: [
+                      _toolbarIconButton(
+                        icon: Icons.remove,
+                        tooltip: "Uzaklaştır",
+                        onPressed: () => _setZoom(_zoom - 0.2),
+                      ),
+                      SizedBox(
+                        width: isWeb ? 150 : 112,
+                        child: Slider(
+                          min: _minZoomLevel,
+                          max: _maxZoomLevel,
+                          divisions: 20,
+                          value: _zoom.clamp(_minZoomLevel, _maxZoomLevel),
+                          label: "${(_zoom * 100).round()}%",
+                          onChanged: _setZoom,
+                        ),
+                      ),
+                      _toolbarIconButton(
+                        icon: Icons.add,
+                        tooltip: "Yakınlaştır",
+                        onPressed: () => _setZoom(_zoom + 0.2),
+                      ),
+                      const SizedBox(width: 4),
+                      TextButton(
+                        onPressed: () => _setZoom(_defaultZoomLevel),
+                        child: Text("${(_zoom * 100).round()}%"),
+                      ),
+                    ],
+                  ),
+                  _toolbarGroup(
+                    children: [
+                      _toolbarIconButton(
+                        icon: _bookmarks.contains(page)
+                            ? Icons.bookmark
+                            : Icons.bookmark_add_outlined,
+                        tooltip: _bookmarks.contains(page)
+                            ? "Ayracı kaldır"
+                            : "Ayraç ekle",
+                        onPressed: _toggleCurrentBookmark,
+                      ),
+                      _toolbarIconButton(
+                        icon: _pendingNoteDraft == null
+                            ? Icons.sticky_note_2_outlined
+                            : Icons.close,
+                        tooltip: _pendingNoteDraft == null
+                            ? "Not bırak"
+                            : "Not bırakmayı iptal et",
+                        onPressed: _pendingNoteDraft == null
+                            ? _startNotePlacement
+                            : _cancelPendingNotePlacement,
+                      ),
+                      if (isWeb)
+                        _toolbarIconButton(
+                          icon: Icons.search,
+                          tooltip: "Araçlar",
+                          onPressed: () => _openToolsPanel(context),
+                        ),
+                    ],
+                  ),
+                  _infoChip(
+                    icon: Icons.insights_outlined,
+                    label: "%$progress okundu",
+                  ),
+                  if (_hasSearchResult)
+                    _infoChip(
+                      icon: Icons.find_in_page_outlined,
+                      label:
+                          "${_searchResult!.currentInstanceIndex}/${_searchResult!.totalInstanceCount} eşleşme",
                     ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 10),
-                    child: Text(
-                      "/ ${totalPages > 0 ? totalPages : "-"}",
-                      style: const TextStyle(fontWeight: FontWeight.w600),
+                  if (_pendingNoteDraft != null)
+                    ActionChip(
+                      avatar: const Icon(Icons.touch_app_outlined, size: 18),
+                      label: const Text("Sayfada not konumu seçin"),
+                      onPressed: _cancelPendingNotePlacement,
                     ),
-                  ),
-                  _toolbarIconButton(
-                    icon: Icons.chevron_right,
-                    tooltip: "Sonraki sayfa",
-                    onPressed: _canGoNext ? () => _controller.nextPage() : null,
-                  ),
-                  _toolbarIconButton(
-                    icon: Icons.last_page,
-                    tooltip: "Son sayfa",
-                    onPressed: totalPages > 0
-                        ? () => _jumpToPage(totalPages)
-                        : null,
-                  ),
-                ],
+                ]),
               ),
-              _toolbarGroup(
-                children: [
-                  _toolbarIconButton(
-                    icon: Icons.remove,
-                    tooltip: "Uzaklaştır",
-                    onPressed: () => _setZoom(_zoom - 0.2),
-                  ),
-                  SizedBox(
-                    width: isWeb ? 150 : 120,
-                    child: Slider(
-                      min: _minZoomLevel,
-                      max: _maxZoomLevel,
-                      divisions: 20,
-                      value: _zoom.clamp(_minZoomLevel, _maxZoomLevel),
-                      label: "${(_zoom * 100).round()}%",
-                      onChanged: _setZoom,
-                    ),
-                  ),
-                  _toolbarIconButton(
-                    icon: Icons.add,
-                    tooltip: "Yakınlaştır",
-                    onPressed: () => _setZoom(_zoom + 0.2),
-                  ),
-                  const SizedBox(width: 6),
-                  TextButton(
-                    onPressed: () => _setZoom(_defaultZoomLevel),
-                    child: Text("${(_zoom * 100).round()}%"),
-                  ),
-                ],
-              ),
-              _toolbarGroup(
-                children: [
-                  TextButton.icon(
-                    onPressed: _toggleCurrentBookmark,
-                    icon: Icon(
-                      _bookmarks.contains(page)
-                          ? Icons.bookmark
-                          : Icons.bookmark_add_outlined,
-                    ),
-                    label: const Text("Ayraç"),
-                  ),
-                  const SizedBox(width: 6),
-                  TextButton.icon(
-                    onPressed: _pendingNoteDraft == null
-                        ? _startNotePlacement
-                        : _cancelPendingNotePlacement,
-                    icon: Icon(
-                      _pendingNoteDraft == null
-                          ? Icons.sticky_note_2_outlined
-                          : Icons.close,
-                    ),
-                    label: Text(
-                      _pendingNoteDraft == null ? "Not Bırak" : "İptal",
-                    ),
-                  ),
-                  if (isWeb) ...[
-                    const SizedBox(width: 6),
-                    TextButton.icon(
-                      onPressed: () => _openToolsPanel(context),
-                      icon: const Icon(Icons.search),
-                      label: const Text("Araçlar"),
-                    ),
-                  ],
-                ],
-              ),
-              ...summaryWidgets,
-            ]),
-          ),
+            ),
+          ],
         ),
       ),
+    );
+  }
+
+  Widget _buildToolbarSummaryRow(int page, int totalPages, int noteCount) {
+    return Row(
+      children: [
+        Expanded(
+          child: _summaryChip(
+            icon: Icons.auto_stories_rounded,
+            label: "Sayfa $page/${totalPages > 0 ? totalPages : "-"}",
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _summaryChip(
+            icon: Icons.bookmarks_outlined,
+            label: "${_bookmarks.length} ayraç",
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: _summaryChip(
+            icon: Icons.sticky_note_2_outlined,
+            label: "$noteCount not",
+          ),
+        ),
+      ],
     );
   }
 
@@ -647,6 +669,37 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _summaryChip({required IconData icon, required String label}) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: const Color(0xFFF7F8FA),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE3E8EF)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 16, color: const Color(0xFF526071)),
+              const SizedBox(width: 5),
+              Text(
+                label,
+                maxLines: 1,
+                style: const TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
