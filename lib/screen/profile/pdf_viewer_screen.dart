@@ -5,10 +5,10 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
-import 'package:webview_flutter/webview_flutter.dart';
 
 import '../../services/auth/auth_token_store.dart';
 import '../../services/error/error_manager.dart';
@@ -1625,53 +1625,34 @@ class _MobilePdfWebViewerState extends State<_MobilePdfWebViewer> {
 })();
 ''';
 
-  late final WebViewController _controller;
+  InAppWebViewController? _controller;
   bool _loading = true;
   String? _error;
 
   @override
   void initState() {
     super.initState();
-    _controller = WebViewController()
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..enableZoom(false)
-      ..setNavigationDelegate(
-        NavigationDelegate(
-          onPageStarted: (_) {
-            if (!mounted) return;
-            setState(() {
-              _loading = true;
-              _error = null;
-            });
-          },
-          onPageFinished: (_) {
-            if (!mounted) return;
-            setState(() => _loading = false);
-            unawaited(_installPdfJsPinchZoomBridge());
-            unawaited(
-              Future<void>.delayed(
-                const Duration(milliseconds: 750),
-                _installPdfJsPinchZoomBridge,
-              ),
-            );
-          },
-          onWebResourceError: (error) {
-            if (!mounted || error.isForMainFrame == false) return;
-            setState(() {
-              _loading = false;
-              _error = error.description;
-            });
-          },
-        ),
-      )
-      ..loadRequest(Uri.parse(widget.url));
   }
 
   Future<void> _installPdfJsPinchZoomBridge() async {
+    final controller = _controller;
+    if (controller == null) return;
     try {
-      await _controller.runJavaScript(_pdfJsPinchZoomBridge);
+      await controller.evaluateJavascript(source: _pdfJsPinchZoomBridge);
     } catch (_) {
       // The viewer can navigate during reload; the next page finish retries setup.
+    }
+  }
+
+  void _schedulePdfJsPinchZoomBridgeInstall() {
+    unawaited(_installPdfJsPinchZoomBridge());
+    for (final delay in const [
+      Duration(milliseconds: 250),
+      Duration(milliseconds: 750),
+      Duration(milliseconds: 1500),
+      Duration(milliseconds: 3000),
+    ]) {
+      unawaited(Future<void>.delayed(delay, _installPdfJsPinchZoomBridge));
     }
   }
 
@@ -1679,7 +1660,7 @@ class _MobilePdfWebViewerState extends State<_MobilePdfWebViewer> {
   void didUpdateWidget(covariant _MobilePdfWebViewer oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.url != widget.url) {
-      _controller.loadRequest(Uri.parse(widget.url));
+      _controller?.loadUrl(urlRequest: URLRequest(url: WebUri(widget.url)));
     }
   }
 
@@ -1688,9 +1669,50 @@ class _MobilePdfWebViewerState extends State<_MobilePdfWebViewer> {
     return Stack(
       children: [
         Positioned.fill(
-          child: WebViewWidget(
-            controller: _controller,
+          child: InAppWebView(
+            initialUrlRequest: URLRequest(url: WebUri(widget.url)),
+            initialSettings: InAppWebViewSettings(
+              javaScriptEnabled: true,
+              javaScriptCanOpenWindowsAutomatically: false,
+              domStorageEnabled: true,
+              databaseEnabled: true,
+              cacheEnabled: true,
+              supportZoom: false,
+              builtInZoomControls: false,
+              displayZoomControls: false,
+              useWideViewPort: true,
+              loadWithOverviewMode: false,
+              enableViewportScale: false,
+              disallowOverScroll: false,
+              disableHorizontalScroll: false,
+              disableVerticalScroll: false,
+              transparentBackground: false,
+              allowsInlineMediaPlayback: true,
+              mediaPlaybackRequiresUserGesture: false,
+            ),
             gestureRecognizers: _webViewGestureRecognizers,
+            onWebViewCreated: (controller) {
+              _controller = controller;
+            },
+            onLoadStart: (_, __) {
+              if (!mounted) return;
+              setState(() {
+                _loading = true;
+                _error = null;
+              });
+            },
+            onLoadStop: (_, __) {
+              if (!mounted) return;
+              setState(() => _loading = false);
+              _schedulePdfJsPinchZoomBridgeInstall();
+            },
+            onReceivedError: (_, request, error) {
+              if (!mounted || request.isForMainFrame != true) return;
+              setState(() {
+                _loading = false;
+                _error = error.description;
+              });
+            },
           ),
         ),
         if (_error != null)
@@ -1729,7 +1751,9 @@ class _MobilePdfWebViewerState extends State<_MobilePdfWebViewer> {
                             _loading = true;
                             _error = null;
                           });
-                          _controller.loadRequest(Uri.parse(widget.url));
+                          _controller?.loadUrl(
+                            urlRequest: URLRequest(url: WebUri(widget.url)),
+                          );
                         },
                         icon: const Icon(Icons.refresh),
                         label: const Text("Tekrar dene"),
