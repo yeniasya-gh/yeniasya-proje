@@ -2,10 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
@@ -122,7 +120,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     });
     try {
       await _loadPersistedState();
-      if (!kIsWeb || widget.isPrivate) {
+      if (kIsWeb && widget.isPrivate) {
         _webViewerUrl = await SecureFileService.instance.getPdfViewerUrl(
           url: widget.url,
           isPrivate: widget.isPrivate,
@@ -278,10 +276,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   }
 
   Widget _buildMobileLayout() {
-    if (_webViewerUrl != null) {
-      return _MobilePdfWebViewer(url: _webViewerUrl!, title: widget.title);
-    }
-
     return Column(
       children: [
         _buildControlBar(isWeb: false),
@@ -1440,212 +1434,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       case PdfStickyNoteIcon.insert:
         return Icons.add_box_outlined;
     }
-  }
-}
-
-class _MobilePdfWebViewer extends StatefulWidget {
-  const _MobilePdfWebViewer({required this.url, required this.title});
-
-  final String url;
-  final String title;
-
-  @override
-  State<_MobilePdfWebViewer> createState() => _MobilePdfWebViewerState();
-}
-
-class _MobilePdfWebViewerState extends State<_MobilePdfWebViewer> {
-  static final Set<Factory<OneSequenceGestureRecognizer>>
-  _webViewGestureRecognizers = {
-    Factory<EagerGestureRecognizer>(() => EagerGestureRecognizer()),
-  };
-
-  static const String _pdfJsMobileViewportBridge = '''
-(() => {
-  if (window.__yeniasyaPdfMobileViewportInstalled) return;
-  window.__yeniasyaPdfMobileViewportInstalled = true;
-
-  const setTouchPolicy = () => {
-    let viewport = document.querySelector('meta[name="viewport"]');
-    if (!viewport) {
-      viewport = document.createElement('meta');
-      viewport.name = 'viewport';
-      document.head.appendChild(viewport);
-    }
-    viewport.setAttribute(
-      'content',
-      'width=device-width, initial-scale=1, user-scalable=yes, viewport-fit=cover'
-    );
-    document.documentElement.style.webkitTextSizeAdjust = '100%';
-    document.documentElement.style.touchAction = 'auto';
-    document.body.style.touchAction = 'auto';
-    ['viewerContainer', 'viewer', 'outerContainer'].forEach((id) => {
-      const element = document.getElementById(id);
-      if (element) element.style.touchAction = 'auto';
-    });
-  };
-
-  setTouchPolicy();
-  setTimeout(setTouchPolicy, 500);
-  setTimeout(setTouchPolicy, 1500);
-  setTimeout(setTouchPolicy, 3000);
-  document.addEventListener('webviewerloaded', setTouchPolicy, {
-    capture: true,
-  });
-  document.addEventListener('pagesinit', setTouchPolicy, {
-    capture: true,
-  });
-})();
-''';
-
-  InAppWebViewController? _controller;
-  bool _loading = true;
-  String? _error;
-
-  @override
-  void initState() {
-    super.initState();
-  }
-
-  Future<void> _installPdfJsMobileViewportBridge() async {
-    final controller = _controller;
-    if (controller == null) return;
-    try {
-      await controller.evaluateJavascript(source: _pdfJsMobileViewportBridge);
-    } catch (_) {
-      // The viewer can navigate during reload; the next page finish retries setup.
-    }
-  }
-
-  void _schedulePdfJsMobileViewportBridgeInstall() {
-    unawaited(_installPdfJsMobileViewportBridge());
-    for (final delay in const [
-      Duration(milliseconds: 250),
-      Duration(milliseconds: 750),
-      Duration(milliseconds: 1500),
-      Duration(milliseconds: 3000),
-    ]) {
-      unawaited(Future<void>.delayed(delay, _installPdfJsMobileViewportBridge));
-    }
-  }
-
-  @override
-  void didUpdateWidget(covariant _MobilePdfWebViewer oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.url != widget.url) {
-      _controller?.loadUrl(urlRequest: URLRequest(url: WebUri(widget.url)));
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        Positioned.fill(
-          child: InAppWebView(
-            initialUrlRequest: URLRequest(url: WebUri(widget.url)),
-            initialSettings: InAppWebViewSettings(
-              javaScriptEnabled: true,
-              javaScriptCanOpenWindowsAutomatically: false,
-              domStorageEnabled: true,
-              databaseEnabled: true,
-              cacheEnabled: true,
-              supportZoom: true,
-              builtInZoomControls: false,
-              displayZoomControls: false,
-              useWideViewPort: true,
-              loadWithOverviewMode: false,
-              enableViewportScale: true,
-              ignoresViewportScaleLimits: true,
-              disallowOverScroll: false,
-              disableHorizontalScroll: false,
-              disableVerticalScroll: false,
-              transparentBackground: false,
-              allowsInlineMediaPlayback: true,
-              mediaPlaybackRequiresUserGesture: false,
-            ),
-            gestureRecognizers: _webViewGestureRecognizers,
-            onWebViewCreated: (controller) {
-              _controller = controller;
-            },
-            onLoadStart: (_, __) {
-              if (!mounted) return;
-              setState(() {
-                _loading = true;
-                _error = null;
-              });
-            },
-            onLoadStop: (_, __) {
-              if (!mounted) return;
-              setState(() => _loading = false);
-              _schedulePdfJsMobileViewportBridgeInstall();
-            },
-            onReceivedError: (_, request, error) {
-              if (!mounted || request.isForMainFrame != true) return;
-              setState(() {
-                _loading = false;
-                _error = error.description;
-              });
-            },
-          ),
-        ),
-        if (_error != null)
-          Positioned.fill(
-            child: ColoredBox(
-              color: Theme.of(context).scaffoldBackgroundColor,
-              child: Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(
-                        Icons.error_outline,
-                        color: Colors.red,
-                        size: 40,
-                      ),
-                      const SizedBox(height: 12),
-                      const Text(
-                        "PDF görüntüleyici açılmadı",
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        _error!,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(color: Colors.black54),
-                      ),
-                      const SizedBox(height: 16),
-                      ElevatedButton.icon(
-                        onPressed: () {
-                          setState(() {
-                            _loading = true;
-                            _error = null;
-                          });
-                          _controller?.loadUrl(
-                            urlRequest: URLRequest(url: WebUri(widget.url)),
-                          );
-                        },
-                        icon: const Icon(Icons.refresh),
-                        label: const Text("Tekrar dene"),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        if (_loading)
-          const Positioned.fill(
-            child: ColoredBox(
-              color: Color(0x22000000),
-              child: Center(child: CircularProgressIndicator()),
-            ),
-          ),
-      ],
-    );
   }
 }
 
