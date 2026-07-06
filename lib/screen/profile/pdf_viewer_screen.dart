@@ -429,7 +429,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     final page = _currentPage;
     final totalPages = _totalPages;
     final noteCount = _noteEntries.length;
-    final progress = totalPages > 0 ? ((page / totalPages) * 100).round() : 0;
 
     return Material(
       color: Colors.white,
@@ -540,40 +539,16 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
                       ),
                     ],
                   ),
-                  _toolbarGroup(
-                    children: [
-                      _toolbarIconButton(
-                        icon: _bookmarks.contains(page)
-                            ? Icons.bookmark
-                            : Icons.bookmark_add_outlined,
-                        tooltip: _bookmarks.contains(page)
-                            ? "Ayracı kaldır"
-                            : "Ayraç ekle",
-                        onPressed: _toggleCurrentBookmark,
-                      ),
-                      _toolbarIconButton(
-                        icon: _pendingNoteDraft == null
-                            ? Icons.sticky_note_2_outlined
-                            : Icons.close,
-                        tooltip: _pendingNoteDraft == null
-                            ? "Not bırak"
-                            : "Not bırakmayı iptal et",
-                        onPressed: _pendingNoteDraft == null
-                            ? _startNotePlacement
-                            : _cancelPendingNotePlacement,
-                      ),
-                      if (isWeb)
+                  if (isWeb)
+                    _toolbarGroup(
+                      children: [
                         _toolbarIconButton(
                           icon: Icons.search,
                           tooltip: "Araçlar",
                           onPressed: () => _openToolsPanel(context),
                         ),
-                    ],
-                  ),
-                  _infoChip(
-                    icon: Icons.insights_outlined,
-                    label: "%$progress okundu",
-                  ),
+                      ],
+                    ),
                   if (_hasSearchResult)
                     _infoChip(
                       icon: Icons.find_in_page_outlined,
@@ -599,24 +574,55 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     return Row(
       children: [
         Expanded(
-          child: _summaryChip(
-            icon: Icons.auto_stories_rounded,
-            label: "Sayfa $page/${totalPages > 0 ? totalPages : "-"}",
+          child: Row(
+            children: [
+              Expanded(
+                child: _summaryChip(
+                  icon: Icons.auto_stories_rounded,
+                  label: "Sayfa $page/${totalPages > 0 ? totalPages : "-"}",
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _summaryChip(
+                  icon: Icons.bookmarks_outlined,
+                  label: "${_bookmarks.length} ayraç",
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _summaryChip(
+                  icon: Icons.sticky_note_2_outlined,
+                  label: "$noteCount not",
+                ),
+              ),
+            ],
           ),
         ),
         const SizedBox(width: 8),
-        Expanded(
-          child: _summaryChip(
-            icon: Icons.bookmarks_outlined,
-            label: "${_bookmarks.length} ayraç",
-          ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: _summaryChip(
-            icon: Icons.sticky_note_2_outlined,
-            label: "$noteCount not",
-          ),
+        _toolbarGroup(
+          children: [
+            _toolbarIconButton(
+              icon: _bookmarks.contains(page)
+                  ? Icons.bookmark
+                  : Icons.bookmark_add_outlined,
+              tooltip: _bookmarks.contains(page)
+                  ? "Ayracı kaldır"
+                  : "Ayraç ekle",
+              onPressed: _toggleCurrentBookmark,
+            ),
+            _toolbarIconButton(
+              icon: _pendingNoteDraft == null
+                  ? Icons.sticky_note_2_outlined
+                  : Icons.close,
+              tooltip: _pendingNoteDraft == null
+                  ? "Not bırak"
+                  : "Not bırakmayı iptal et",
+              onPressed: _pendingNoteDraft == null
+                  ? _startNotePlacement
+                  : _cancelPendingNotePlacement,
+            ),
+          ],
         ),
       ],
     );
