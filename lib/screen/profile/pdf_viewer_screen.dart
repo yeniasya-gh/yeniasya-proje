@@ -1456,15 +1456,7 @@ class _MobilePdfWebViewer extends StatefulWidget {
 class _MobilePdfWebViewerState extends State<_MobilePdfWebViewer> {
   static final Set<Factory<OneSequenceGestureRecognizer>>
   _webViewGestureRecognizers = {
-    Factory<ScaleGestureRecognizer>(() => ScaleGestureRecognizer()),
-    Factory<VerticalDragGestureRecognizer>(
-      () => VerticalDragGestureRecognizer(),
-    ),
-    Factory<HorizontalDragGestureRecognizer>(
-      () => HorizontalDragGestureRecognizer(),
-    ),
-    Factory<TapGestureRecognizer>(() => TapGestureRecognizer()),
-    Factory<LongPressGestureRecognizer>(() => LongPressGestureRecognizer()),
+    Factory<EagerGestureRecognizer>(() => EagerGestureRecognizer()),
   };
 
   static const String _pdfJsPinchZoomBridge = '''
@@ -1642,7 +1634,7 @@ class _MobilePdfWebViewerState extends State<_MobilePdfWebViewer> {
     super.initState();
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..enableZoom(true)
+      ..enableZoom(false)
       ..setNavigationDelegate(
         NavigationDelegate(
           onPageStarted: (_) {
