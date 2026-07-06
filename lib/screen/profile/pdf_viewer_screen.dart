@@ -1459,46 +1459,13 @@ class _MobilePdfWebViewerState extends State<_MobilePdfWebViewer> {
     Factory<EagerGestureRecognizer>(() => EagerGestureRecognizer()),
   };
 
-  static const String _pdfJsPinchZoomBridge = '''
+  static const String _pdfJsMobileViewportBridge = '''
 (() => {
-  if (window.__yeniasyaPdfPinchZoomInstalled) return;
-  window.__yeniasyaPdfPinchZoomInstalled = true;
+  if (window.__yeniasyaPdfMobileViewportInstalled) return;
+  window.__yeniasyaPdfMobileViewportInstalled = true;
 
   const MIN_VISUAL_SCALE = 0.05;
   const MAX_VISUAL_SCALE = 20;
-  let startDistance = 0;
-  let startVisualScale = 1;
-  let lastVisualScale = 1;
-  let anchorContentX = 0;
-  let anchorContentY = 0;
-  let anchorLocalX = 0;
-  let anchorLocalY = 0;
-
-  const distance = (touches) => {
-    const dx = touches[0].clientX - touches[1].clientX;
-    const dy = touches[0].clientY - touches[1].clientY;
-    return Math.sqrt((dx * dx) + (dy * dy));
-  };
-  const midpoint = (touches) => ({
-    x: (touches[0].clientX + touches[1].clientX) / 2,
-    y: (touches[0].clientY + touches[1].clientY) / 2,
-  });
-  const getViewerElement = () => document.getElementById('viewer');
-  const getViewerContainer = () => document.getElementById('viewerContainer');
-  const getVisualScale = () => window.__yeniasyaPdfVisualScale || 1;
-  const clampVisualScale = (scale) =>
-    Math.min(MAX_VISUAL_SCALE, Math.max(MIN_VISUAL_SCALE, scale));
-  const setVisualScale = (scale) => {
-    const viewer = getViewerElement();
-    if (!viewer) return getVisualScale();
-    if (!Number.isFinite(scale) || scale <= 0) return getVisualScale();
-    const nextScale = clampVisualScale(scale);
-    window.__yeniasyaPdfVisualScale = nextScale;
-    viewer.style.transformOrigin = '0 0';
-    viewer.style.zoom = String(nextScale);
-    viewer.style.willChange = 'contents';
-    return nextScale;
-  };
   const loosenPdfJsScaleLimits = () => {
     const app = window.PDFViewerApplication;
     const options = window.PDFViewerApplicationOptions;
@@ -1525,22 +1492,6 @@ class _MobilePdfWebViewerState extends State<_MobilePdfWebViewer> {
       window.PDFViewerApplicationConstants.MAX_SCALE = MAX_VISUAL_SCALE;
     } catch (_) {}
   };
-  const captureZoomAnchor = (touches) => {
-    const container = getViewerContainer();
-    if (!container) return;
-    const point = midpoint(touches);
-    const rect = container.getBoundingClientRect();
-    anchorLocalX = point.x - rect.left;
-    anchorLocalY = point.y - rect.top;
-    anchorContentX = (container.scrollLeft + anchorLocalX) / startVisualScale;
-    anchorContentY = (container.scrollTop + anchorLocalY) / startVisualScale;
-  };
-  const restoreZoomAnchor = (scale) => {
-    const container = getViewerContainer();
-    if (!container) return;
-    container.scrollLeft = (anchorContentX * scale) - anchorLocalX;
-    container.scrollTop = (anchorContentY * scale) - anchorLocalY;
-  };
   const setTouchPolicy = () => {
     let viewport = document.querySelector('meta[name="viewport"]');
     if (!viewport) {
@@ -1553,19 +1504,13 @@ class _MobilePdfWebViewerState extends State<_MobilePdfWebViewer> {
       'width=device-width, initial-scale=1, minimum-scale=0.05, maximum-scale=20, user-scalable=yes, viewport-fit=cover'
     );
     document.documentElement.style.webkitTextSizeAdjust = '100%';
-    document.documentElement.style.touchAction = 'pan-x pan-y';
-    document.body.style.touchAction = 'pan-x pan-y';
+    document.documentElement.style.touchAction = 'auto';
+    document.body.style.touchAction = 'auto';
     ['viewerContainer', 'viewer', 'outerContainer'].forEach((id) => {
       const element = document.getElementById(id);
-      if (element) element.style.touchAction = 'pan-x pan-y';
+      if (element) element.style.touchAction = 'auto';
     });
     loosenPdfJsScaleLimits();
-  };
-  const cancelPdfNativePinch = (event) => {
-    if (event.touches?.length === 2) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-    }
   };
 
   setTouchPolicy();
@@ -1581,47 +1526,6 @@ class _MobilePdfWebViewerState extends State<_MobilePdfWebViewer> {
   document.addEventListener('scalechanging', loosenPdfJsScaleLimits, {
     capture: true,
   });
-
-  document.addEventListener('touchstart', (event) => {
-    if (event.touches.length !== 2) return;
-    const viewer = getViewerElement();
-    if (!viewer) return;
-    event.preventDefault();
-    event.stopPropagation();
-    startDistance = distance(event.touches);
-    startVisualScale = clampVisualScale(getVisualScale());
-    lastVisualScale = startVisualScale;
-    const container = getViewerContainer();
-    if (container) container.style.overflow = 'auto';
-    captureZoomAnchor(event.touches);
-  }, { capture: true, passive: false });
-
-  document.addEventListener('touchmove', (event) => {
-    if (event.touches.length !== 2 || startDistance <= 0) return;
-    const viewer = getViewerElement();
-    if (!viewer) return;
-    event.preventDefault();
-    event.stopPropagation();
-    const nextScale =
-      startVisualScale * (distance(event.touches) / startDistance);
-    lastVisualScale = setVisualScale(nextScale);
-    restoreZoomAnchor(lastVisualScale);
-  }, { capture: true, passive: false });
-
-  document.addEventListener('touchend', (event) => {
-    if (event.touches.length < 2) startDistance = 0;
-  }, { capture: true, passive: false });
-  document.addEventListener('touchcancel', () => {
-    startDistance = 0;
-  }, { capture: true, passive: false });
-  document.addEventListener('gesturestart', cancelPdfNativePinch, {
-    capture: true,
-    passive: false,
-  });
-  document.addEventListener('gesturechange', cancelPdfNativePinch, {
-    capture: true,
-    passive: false,
-  });
 })();
 ''';
 
@@ -1634,25 +1538,25 @@ class _MobilePdfWebViewerState extends State<_MobilePdfWebViewer> {
     super.initState();
   }
 
-  Future<void> _installPdfJsPinchZoomBridge() async {
+  Future<void> _installPdfJsMobileViewportBridge() async {
     final controller = _controller;
     if (controller == null) return;
     try {
-      await controller.evaluateJavascript(source: _pdfJsPinchZoomBridge);
+      await controller.evaluateJavascript(source: _pdfJsMobileViewportBridge);
     } catch (_) {
       // The viewer can navigate during reload; the next page finish retries setup.
     }
   }
 
-  void _schedulePdfJsPinchZoomBridgeInstall() {
-    unawaited(_installPdfJsPinchZoomBridge());
+  void _schedulePdfJsMobileViewportBridgeInstall() {
+    unawaited(_installPdfJsMobileViewportBridge());
     for (final delay in const [
       Duration(milliseconds: 250),
       Duration(milliseconds: 750),
       Duration(milliseconds: 1500),
       Duration(milliseconds: 3000),
     ]) {
-      unawaited(Future<void>.delayed(delay, _installPdfJsPinchZoomBridge));
+      unawaited(Future<void>.delayed(delay, _installPdfJsMobileViewportBridge));
     }
   }
 
@@ -1677,12 +1581,12 @@ class _MobilePdfWebViewerState extends State<_MobilePdfWebViewer> {
               domStorageEnabled: true,
               databaseEnabled: true,
               cacheEnabled: true,
-              supportZoom: false,
+              supportZoom: true,
               builtInZoomControls: false,
               displayZoomControls: false,
               useWideViewPort: true,
               loadWithOverviewMode: false,
-              enableViewportScale: false,
+              enableViewportScale: true,
               disallowOverScroll: false,
               disableHorizontalScroll: false,
               disableVerticalScroll: false,
@@ -1704,7 +1608,7 @@ class _MobilePdfWebViewerState extends State<_MobilePdfWebViewer> {
             onLoadStop: (_, __) {
               if (!mounted) return;
               setState(() => _loading = false);
-              _schedulePdfJsPinchZoomBridgeInstall();
+              _schedulePdfJsMobileViewportBridgeInstall();
             },
             onReceivedError: (_, request, error) {
               if (!mounted || request.isForMainFrame != true) return;
