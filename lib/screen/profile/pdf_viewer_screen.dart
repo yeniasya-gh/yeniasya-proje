@@ -1472,6 +1472,8 @@ class _MobilePdfWebViewerState extends State<_MobilePdfWebViewer> {
   if (window.__yeniasyaPdfPinchZoomInstalled) return;
   window.__yeniasyaPdfPinchZoomInstalled = true;
 
+  const MIN_VISUAL_SCALE = 0.05;
+  const MAX_VISUAL_SCALE = 20;
   let startDistance = 0;
   let startVisualScale = 1;
   let lastVisualScale = 1;
@@ -1492,16 +1494,44 @@ class _MobilePdfWebViewerState extends State<_MobilePdfWebViewer> {
   const getViewerElement = () => document.getElementById('viewer');
   const getViewerContainer = () => document.getElementById('viewerContainer');
   const getVisualScale = () => window.__yeniasyaPdfVisualScale || 1;
+  const clampVisualScale = (scale) =>
+    Math.min(MAX_VISUAL_SCALE, Math.max(MIN_VISUAL_SCALE, scale));
   const setVisualScale = (scale) => {
     const viewer = getViewerElement();
     if (!viewer) return getVisualScale();
     if (!Number.isFinite(scale) || scale <= 0) return getVisualScale();
-    const nextScale = scale;
+    const nextScale = clampVisualScale(scale);
     window.__yeniasyaPdfVisualScale = nextScale;
     viewer.style.transformOrigin = '0 0';
     viewer.style.zoom = String(nextScale);
     viewer.style.willChange = 'contents';
     return nextScale;
+  };
+  const loosenPdfJsScaleLimits = () => {
+    const app = window.PDFViewerApplication;
+    const options = window.PDFViewerApplicationOptions;
+    try {
+      if (options?.set) {
+        options.set('minScale', MIN_VISUAL_SCALE);
+        options.set('maxScale', MAX_VISUAL_SCALE);
+      }
+    } catch (_) {}
+    try {
+      if (app?.pdfViewer) {
+        app.pdfViewer.minScale = MIN_VISUAL_SCALE;
+        app.pdfViewer.maxScale = MAX_VISUAL_SCALE;
+      }
+      if (app?.pdfViewer?._uiUtils) {
+        app.pdfViewer._uiUtils.MIN_SCALE = MIN_VISUAL_SCALE;
+        app.pdfViewer._uiUtils.MAX_SCALE = MAX_VISUAL_SCALE;
+      }
+    } catch (_) {}
+    try {
+      window.PDFViewerApplicationConstants =
+        window.PDFViewerApplicationConstants || {};
+      window.PDFViewerApplicationConstants.MIN_SCALE = MIN_VISUAL_SCALE;
+      window.PDFViewerApplicationConstants.MAX_SCALE = MAX_VISUAL_SCALE;
+    } catch (_) {}
   };
   const captureZoomAnchor = (touches) => {
     const container = getViewerContainer();
@@ -1528,14 +1558,16 @@ class _MobilePdfWebViewerState extends State<_MobilePdfWebViewer> {
     }
     viewport.setAttribute(
       'content',
-      'width=device-width, initial-scale=1, user-scalable=yes'
+      'width=device-width, initial-scale=1, minimum-scale=0.05, maximum-scale=20, user-scalable=yes, viewport-fit=cover'
     );
+    document.documentElement.style.webkitTextSizeAdjust = '100%';
     document.documentElement.style.touchAction = 'pan-x pan-y';
     document.body.style.touchAction = 'pan-x pan-y';
     ['viewerContainer', 'viewer', 'outerContainer'].forEach((id) => {
       const element = document.getElementById(id);
       if (element) element.style.touchAction = 'pan-x pan-y';
     });
+    loosenPdfJsScaleLimits();
   };
   const cancelPdfNativePinch = (event) => {
     if (event.touches?.length === 2) {
@@ -1547,6 +1579,16 @@ class _MobilePdfWebViewerState extends State<_MobilePdfWebViewer> {
   setTouchPolicy();
   setTimeout(setTouchPolicy, 500);
   setTimeout(setTouchPolicy, 1500);
+  setTimeout(setTouchPolicy, 3000);
+  document.addEventListener('webviewerloaded', setTouchPolicy, {
+    capture: true,
+  });
+  document.addEventListener('pagesinit', setTouchPolicy, {
+    capture: true,
+  });
+  document.addEventListener('scalechanging', loosenPdfJsScaleLimits, {
+    capture: true,
+  });
 
   document.addEventListener('touchstart', (event) => {
     if (event.touches.length !== 2) return;
@@ -1555,7 +1597,7 @@ class _MobilePdfWebViewerState extends State<_MobilePdfWebViewer> {
     event.preventDefault();
     event.stopPropagation();
     startDistance = distance(event.touches);
-    startVisualScale = getVisualScale();
+    startVisualScale = clampVisualScale(getVisualScale());
     lastVisualScale = startVisualScale;
     const container = getViewerContainer();
     if (container) container.style.overflow = 'auto';
