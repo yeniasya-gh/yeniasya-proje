@@ -28,6 +28,9 @@ class SecureFileService {
   static const Duration _defaultInactivityTimeout = Duration(seconds: 10);
   static const Duration _privateConnectTimeout = Duration(seconds: 15);
   static const Duration _privateInactivityTimeout = Duration(seconds: 20);
+  static const Duration _fastPdfAccessTimeout = Duration(seconds: 3);
+  static const Duration _fastCdnConnectTimeout = Duration(seconds: 5);
+  static const Duration _fastCdnInactivityTimeout = Duration(seconds: 8);
 
   static const _keyStorage = FlutterSecureStorage();
   static const _keyName = "secure_file_aes_key";
@@ -180,6 +183,12 @@ class SecureFileService {
       // Fallback to token flow.
       return _downloadViaViewToken(path, onProgress: onProgress);
     }
+
+    final viaFastAccess = await _downloadViaPdfAccessUrl(
+      path,
+      onProgress: onProgress,
+    );
+    if (viaFastAccess != null) return viaFastAccess;
 
     final uri = Uri.parse(UploadService.normalizeUrl("/private/view"));
     final payload = {"path": path};
@@ -396,7 +405,11 @@ class SecureFileService {
     }
   }
 
-  Future<String> _requestPdfAccessUrl(String path) async {
+  Future<String> _requestPdfAccessUrl(
+    String path, {
+    Duration timeout = const Duration(seconds: 10),
+    bool preferDirectPdf = false,
+  }) async {
     final uri = Uri.parse(UploadService.normalizeUrl("/private/pdf-access"));
     final resp = await http
         .post(
@@ -410,7 +423,7 @@ class SecureFileService {
           },
           body: jsonEncode({"path": path}),
         )
-        .timeout(const Duration(seconds: 10));
+        .timeout(timeout);
 
     if (resp.statusCode != 200 || resp.body.isEmpty) {
       throw Exception("PDF erişim servisi yanıt vermedi (${resp.statusCode})");
@@ -418,18 +431,87 @@ class SecureFileService {
 
     try {
       final data = jsonDecode(resp.body);
-      final rawUrl =
-          data["viewerUrl"] ??
-          data["viewUrl"] ??
-          data["url"] ??
-          data["directUrl"];
+      final rawUrl = preferDirectPdf
+          ? data["directUrl"] ??
+                data["cdnUrl"] ??
+                data["fileUrl"] ??
+                data["downloadUrl"] ??
+                data["url"] ??
+                data["viewUrl"] ??
+                data["viewerUrl"]
+          : data["viewerUrl"] ??
+                data["viewUrl"] ??
+                data["url"] ??
+                data["directUrl"];
       if (rawUrl == null || rawUrl.toString().isEmpty) {
         throw Exception("PDF erişim URL'i boş döndü");
       }
-      return UploadService.normalizeUrl(rawUrl.toString());
+      final normalized = UploadService.normalizeUrl(rawUrl.toString());
+      if (preferDirectPdf) {
+        return _extractPdfUrlFromViewerUrl(normalized) ?? normalized;
+      }
+      return normalized;
     } catch (e) {
       throw Exception("PDF erişim yanıtı çözülemedi: $e");
     }
+  }
+
+  Future<Uint8List?> _downloadViaPdfAccessUrl(
+    String path, {
+    ValueChanged<double>? onProgress,
+  }) async {
+    try {
+      final directUrl = await _requestPdfAccessUrl(
+        path,
+        timeout: _fastPdfAccessTimeout,
+        preferDirectPdf: true,
+      );
+      final req = http.Request("GET", Uri.parse(directUrl))
+        ..headers["accept"] = "application/pdf";
+      final token = AuthTokenStore.token;
+      final host = Uri.tryParse(directUrl)?.host ?? "";
+      if (token != null && token.isNotEmpty && !host.endsWith("b-cdn.net")) {
+        req.headers["Authorization"] = "Bearer $token";
+      }
+      final resp = await _sendAndCollect(
+        req,
+        connectTimeout: _fastCdnConnectTimeout,
+        inactivityTimeout: _fastCdnInactivityTimeout,
+        overallTimeout: const Duration(minutes: 2),
+        maxTimeoutRetries: 0,
+        maxSocketRetries: 1,
+        onProgress: onProgress,
+      );
+      if (resp.statusCode == 200 &&
+          resp.bodyBytes.isNotEmpty &&
+          _looksLikePdf(resp.bodyBytes)) {
+        return resp.bodyBytes;
+      }
+      await _logger.logError(
+        service: "SecureFileService",
+        operation: "pdfAccessDirect",
+        message:
+            "Direct PDF access returned non-PDF or HTTP ${resp.statusCode}",
+        payload: {
+          "path": path,
+          "host": host,
+          "status": resp.statusCode,
+          "contentType": resp.headers["content-type"],
+          "bytes": resp.bodyBytes.length,
+          "head": _previewBytes(resp.bodyBytes),
+          "platform": defaultTargetPlatform.toString(),
+        },
+      );
+    } catch (e, s) {
+      await _logger.logError(
+        service: "SecureFileService",
+        operation: "pdfAccessDirectFallback",
+        message: e.toString(),
+        stackTrace: s.toString(),
+        payload: {"path": path, "platform": defaultTargetPlatform.toString()},
+      );
+    }
+    return null;
   }
 
   Future<Uint8List?> _downloadPrivateDirect(
@@ -718,6 +800,14 @@ class SecureFileService {
     return withRender(
       Uri.parse(base).replace(queryParameters: {"token": token}),
     ).toString();
+  }
+
+  String? _extractPdfUrlFromViewerUrl(String url) {
+    final uri = Uri.tryParse(url);
+    if (uri == null) return null;
+    final file = uri.queryParameters["file"];
+    if (file == null || file.trim().isEmpty) return null;
+    return UploadService.normalizeUrl(file);
   }
 
   String _extractPath(String url) {

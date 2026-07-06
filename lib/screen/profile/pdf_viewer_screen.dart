@@ -45,6 +45,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   String? _webViewerUrl;
   bool _loading = true;
   String? _error;
+  double? _downloadProgress;
   double _zoom = _defaultZoomLevel;
   int? _lastSavedPage;
   bool _sidebarOpen = true;
@@ -117,6 +118,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       _loading = true;
       _error = null;
       _webViewerUrl = null;
+      _downloadProgress = null;
     });
     try {
       await _loadPersistedState();
@@ -153,7 +155,10 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       );
     } finally {
       if (mounted) {
-        setState(() => _loading = false);
+        setState(() {
+          _loading = false;
+          _downloadProgress = null;
+        });
         if (_bytes == null && _webViewerUrl == null && _error == null) {
           _error = "PDF yüklenemedi, lütfen tekrar deneyin.";
         }
@@ -167,6 +172,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       return SecureFileService.instance.getPdfBytes(
         url: normalized,
         isPrivate: widget.isPrivate,
+        onProgress: _handleDownloadProgress,
       );
     }
 
@@ -184,13 +190,21 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       return SecureFileService.instance.getPdfBytes(
         url: normalized,
         isPrivate: widget.isPrivate,
+        onProgress: _handleDownloadProgress,
       );
     }
 
     return SecureFileService.instance.getPdfBytes(
       url: normalized,
       isPrivate: widget.isPrivate,
+      onProgress: _handleDownloadProgress,
     );
+  }
+
+  void _handleDownloadProgress(double progress) {
+    if (!mounted) return;
+    final normalized = progress.clamp(0, 1).toDouble();
+    setState(() => _downloadProgress = normalized);
   }
 
   @override
@@ -213,7 +227,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
         top: false,
         bottom: true,
         child: _loading
-            ? const Center(child: CircularProgressIndicator())
+            ? _loadingView()
             : _error != null
             ? _errorView()
             : isWeb
@@ -231,6 +245,32 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
         onPressed: _loading ? null : _load,
       ),
     ];
+  }
+
+  Widget _loadingView() {
+    final progress = _downloadProgress;
+    final hasProgress = progress != null && progress > 0 && progress < 1;
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: 34,
+            height: 34,
+            child: CircularProgressIndicator(
+              value: hasProgress ? progress : null,
+            ),
+          ),
+          if (hasProgress) ...[
+            const SizedBox(height: 12),
+            Text(
+              "%${(progress * 100).clamp(1, 99).round()}",
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+          ],
+        ],
+      ),
+    );
   }
 
   Widget _errorView() {
