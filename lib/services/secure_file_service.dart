@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:io';
 import 'dart:math';
 import 'dart:convert';
@@ -172,6 +173,7 @@ class SecureFileService {
     }
 
     final path = _extractPath(normalized);
+    final fallbackPaths = _candidatePrivatePaths(normalized);
 
     if (kIsWeb) {
       // Try direct private URL with JWT first (e.g. /private/:type/:filename).
@@ -184,11 +186,13 @@ class SecureFileService {
       return _downloadViaViewToken(path, onProgress: onProgress);
     }
 
-    final viaFastAccess = await _downloadViaPdfAccessUrl(
-      path,
-      onProgress: onProgress,
-    );
-    if (viaFastAccess != null) return viaFastAccess;
+    for (final candidatePath in fallbackPaths) {
+      final viaFastAccess = await _downloadViaPdfAccessUrl(
+        candidatePath,
+        onProgress: onProgress,
+      );
+      if (viaFastAccess != null) return viaFastAccess;
+    }
 
     final uri = Uri.parse(UploadService.normalizeUrl("/private/view"));
     final payload = {"path": path};
@@ -213,7 +217,10 @@ class SecureFileService {
     } on TimeoutException {
       // Timeout here usually means the primary private endpoint is slow.
       // Fall back silently to the token flow so viewing is not blocked.
-      return _downloadViaViewToken(path, onProgress: onProgress);
+      return _downloadViaViewTokenFallbacks(
+        fallbackPaths,
+        onProgress: onProgress,
+      );
     } catch (e, s) {
       await _logger.logError(
         service: "SecureFileService",
@@ -244,7 +251,10 @@ class SecureFileService {
           "platform": defaultTargetPlatform.toString(),
         },
       );
-      return _downloadViaViewToken(path, onProgress: onProgress);
+      return _downloadViaViewTokenFallbacks(
+        fallbackPaths,
+        onProgress: onProgress,
+      );
     }
 
     // Some environments return a JSON payload with a signed/direct URL instead
@@ -302,7 +312,10 @@ class SecureFileService {
         "platform": defaultTargetPlatform.toString(),
       },
     );
-    return _downloadViaViewToken(path, onProgress: onProgress);
+    return _downloadViaViewTokenFallbacks(
+      fallbackPaths,
+      onProgress: onProgress,
+    );
   }
 
   bool _looksLikePdf(Uint8List bytes) {
@@ -344,6 +357,37 @@ class SecureFileService {
       final refreshed = await _requestViewToken(path);
       return _fetchPdfWithToken(refreshed, onProgress: onProgress);
     }
+  }
+
+  Future<Uint8List> _downloadViaViewTokenFallbacks(
+    List<String> paths, {
+    ValueChanged<double>? onProgress,
+  }) async {
+    Object? lastError;
+    StackTrace? lastStackTrace;
+    for (final path in paths) {
+      try {
+        return await _downloadViaViewToken(path, onProgress: onProgress);
+      } catch (e, s) {
+        lastError = e;
+        lastStackTrace = s;
+        await _logger.logError(
+          service: "SecureFileService",
+          operation: "viewTokenPathFallback",
+          message: e.toString(),
+          stackTrace: s.toString(),
+          payload: {
+            "path": path,
+            "candidateCount": paths.length,
+            "platform": defaultTargetPlatform.toString(),
+          },
+        );
+      }
+    }
+    Error.throwWithStackTrace(
+      lastError ?? Exception("Token alınamadı"),
+      lastStackTrace ?? StackTrace.current,
+    );
   }
 
   Future<_ViewTokenData> _requestViewToken(String path) async {
@@ -829,6 +873,61 @@ class SecureFileService {
     }
 
     return rawPath;
+  }
+
+  List<String> _candidatePrivatePaths(String url) {
+    final primary = _extractPath(url);
+    final candidates = <String>[primary];
+
+    final uri = Uri.tryParse(primary);
+    final segments = uri?.pathSegments ?? Uri(path: primary).pathSegments;
+    if (segments.length >= 3 && segments.first.toLowerCase() == "private") {
+      final type = _canonicalPrivateType(segments[1]);
+      if (type != null) {
+        candidates.add("/private/$type/${segments.skip(2).join("/")}");
+      }
+    }
+    if (segments.length >= 3 && segments[1].toLowerCase() == "private") {
+      final type = _canonicalPrivateType(segments.first);
+      if (type != null) {
+        candidates.add("/private/$type/${segments.skip(2).join("/")}");
+      }
+    }
+    if (segments.length >= 2 && segments.first.toLowerCase() != "private") {
+      final type = _canonicalPrivateType(segments.first);
+      if (type != null) {
+        candidates.add("/private/$type/${segments.skip(1).join("/")}");
+      }
+    }
+
+    return LinkedHashSet<String>.from(
+      candidates.where((path) => path.trim().isNotEmpty),
+    ).toList();
+  }
+
+  String? _canonicalPrivateType(String value) {
+    switch (value.trim().toLowerCase()) {
+      case "kitap":
+      case "book":
+      case "books":
+        return "kitap";
+      case "dergi":
+      case "magazine":
+      case "magazines":
+      case "magazine_issue":
+      case "magazine_issues":
+        return "dergi";
+      case "gazete":
+      case "newspaper":
+      case "newspapers":
+        return "gazete";
+      case "ek":
+      case "supplement":
+      case "supplements":
+        return "ek";
+      default:
+        return null;
+    }
   }
 
   String? _extractUrlFromJson(Uint8List bytes) {
